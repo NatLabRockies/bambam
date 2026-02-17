@@ -38,7 +38,7 @@ gtfs-structures = "0.43.0"
 h3o = { version = "0.8.0", features = ["serde", "geo"] }
 hex = "0.4.3"
 humantime = "2.3.0"
-indexmap = "2.12.0"
+indexmap = { version = "2.12.0", features = ["serde"] }
 inventory = { version = "0.3.21" }
 itertools = { version = "0.14.0" }
 jsonpath-rust = { version = "1.0.4" }
