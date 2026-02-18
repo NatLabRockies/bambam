@@ -43,6 +43,6 @@
   "island_algorithm_configuration": {
     "min_distance": 2,
     "distance_unit": "miles",
-    "parallel_execution": true
+    "parallel_execution": false
   }
 }
