@@ -1,8 +1,8 @@
-use geo::{Coord, LineString};
+use geo::{Bearing, Coord, Haversine, LineString};
 use itertools::Itertools;
 use kdam::{tqdm, Bar, BarExt};
 use rayon::prelude::*;
-use routee_compass_core::model::network::{Edge, EdgeId, EdgeListId, Vertex};
+use routee_compass_core::model::network::{Edge, EdgeId, EdgeList, EdgeListId, Vertex};
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -10,9 +10,10 @@ use std::{
 
 use crate::{
     collection::{
-        OvertureMapsCollectionError, TransportationConnectorRecord, TransportationSegmentRecord,
+        OvertureMapsCollectionError, SegmentAccessRestrictionWhen, SegmentFullType,
+        TransportationConnectorRecord, TransportationSegmentRecord,
     },
-    graph::{segment_split::SegmentSplit, ConnectorInSegment},
+    graph::{omf_graph::OmfEdgeList, segment_split::SegmentSplit, ConnectorInSegment},
 };
 
 /// serializes the Connector records into Vertices and creates a GERS id -> index mapping.
@@ -54,16 +55,19 @@ pub fn create_segment_lookup(segments: &[&TransportationSegmentRecord]) -> HashM
 }
 
 /// collects all splits from all segment records, used to create edges.
-/// the application of split ops is parallelized over the segment records.
+/// the application of split ops is parallelized over the segment records, as splits are
+/// not ordered.
 pub fn find_splits(
     segments: &[&TransportationSegmentRecord],
+    when: Option<&SegmentAccessRestrictionWhen>,
     split_op: fn(
         &TransportationSegmentRecord,
+        Option<&SegmentAccessRestrictionWhen>,
     ) -> Result<Vec<SegmentSplit>, OvertureMapsCollectionError>,
 ) -> Result<Vec<SegmentSplit>, OvertureMapsCollectionError> {
     let result = segments
         .par_iter()
-        .map(|s| split_op(s))
+        .map(|s| split_op(s, when))
         .collect::<Result<Vec<Vec<SegmentSplit>>, OvertureMapsCollectionError>>()?
         .into_iter()
         .flatten()
@@ -188,4 +192,186 @@ pub fn create_geometries(
         .par_iter()
         .map(|split| split.create_geometry_from_split(segments, segment_lookup))
         .collect::<Result<Vec<LineString<f32>>, OvertureMapsCollectionError>>()
+}
+
+pub fn create_speeds(
+    segments: &[&TransportationSegmentRecord],
+    segment_lookup: &HashMap<String, usize>,
+    splits: &[SegmentSplit],
+) -> Result<Vec<Option<f64>>, OvertureMapsCollectionError> {
+    splits
+        .par_iter()
+        .map(|split| split.get_split_speed(segments, segment_lookup))
+        .collect::<Result<Vec<Option<f64>>, OvertureMapsCollectionError>>()
+}
+
+pub fn create_segment_full_types(
+    segments: &[&TransportationSegmentRecord],
+    segment_lookup: &HashMap<String, usize>,
+    splits: &[SegmentSplit],
+) -> Result<Vec<SegmentFullType>, OvertureMapsCollectionError> {
+    splits
+        .par_iter()
+        .map(|split| split.get_split_segment_full_type(segments, segment_lookup))
+        .collect::<Result<Vec<SegmentFullType>, OvertureMapsCollectionError>>()
+}
+
+pub fn create_speed_by_segment_type_lookup<'a>(
+    initial_speeds: &[Option<f64>],
+    segments: &[&TransportationSegmentRecord],
+    segment_lookup: &HashMap<String, usize>,
+    splits: &[SegmentSplit],
+    classes: &'a [SegmentFullType],
+) -> Result<HashMap<&'a SegmentFullType, f64>, OvertureMapsCollectionError> {
+    let split_lenghts = splits
+        .iter()
+        .map(|split| {
+            split
+                .get_split_length_meters(segments, segment_lookup)
+                .map(|v_f32| v_f32 as f64)
+        })
+        .collect::<Result<Vec<f64>, OvertureMapsCollectionError>>()?;
+
+    let mut speed_sum_lookup: HashMap<&SegmentFullType, (f64, f64)> = HashMap::new();
+
+    for ((class, w), speed) in classes.iter().zip(split_lenghts).zip(initial_speeds) {
+        let Some(x) = speed else { continue }; // skip missing speeds
+
+        let element = speed_sum_lookup.entry(class).or_insert((0.0, 0.0));
+        element.0 += w * x;
+        element.1 += w;
+    }
+
+    Ok(speed_sum_lookup
+        .into_iter()
+        .filter(|&(_k, (_wx, w))| w != 0.0)
+        .map(|(k, (wx, w))| (k, wx / w))
+        .collect::<HashMap<&SegmentFullType, f64>>())
+}
+
+/// get the tuples (segment_id, linear reference) referencing the original omf dataset
+pub fn get_segment_omf_ids(
+    segments: &[&TransportationSegmentRecord],
+    segment_lookup: &HashMap<String, usize>,
+    splits: &[SegmentSplit],
+) -> Result<Vec<(String, f64)>, OvertureMapsCollectionError> {
+    splits
+        .par_iter()
+        .map(|split| split.get_omf_segment_id_and_linear_ref(segments, segment_lookup))
+        .collect()
+}
+
+pub fn get_global_average_speed(
+    initial_speeds: &[Option<f64>],
+    segments: &[&TransportationSegmentRecord],
+    segment_lookup: &HashMap<String, usize>,
+    splits: &[SegmentSplit],
+) -> Result<f64, OvertureMapsCollectionError> {
+    let split_lenghts = splits
+        .iter()
+        .map(|split| {
+            split
+                .get_split_length_meters(segments, segment_lookup)
+                .map(|v_f32| v_f32 as f64)
+        })
+        .collect::<Result<Vec<f64>, OvertureMapsCollectionError>>()?;
+
+    let mut total_length = 0.;
+    let mut weighted_sum = 0.;
+    for (opt_speed, length) in initial_speeds.iter().zip(split_lenghts) {
+        let Some(speed) = opt_speed else { continue }; // skip missing speeds
+
+        total_length += length;
+        weighted_sum += length * speed;
+    }
+
+    if total_length < 1e-6 {
+        return Err(OvertureMapsCollectionError::InternalError(format!(
+            "internal division by zero when computing average speed: {initial_speeds:?}"
+        )));
+    }
+
+    Ok(weighted_sum / total_length)
+}
+
+/// Computes the outward bearings of the geometries representing
+/// segment splits using the last two point in the LineStrings
+pub fn bearing_deg_from_geometries(
+    geometries: &[LineString<f32>],
+) -> Result<Vec<f64>, OvertureMapsCollectionError> {
+    geometries
+        .iter()
+        .map(|linestring| {
+            let n = linestring.0.len();
+            if n < 2 {
+                return Err(OvertureMapsCollectionError::InternalError(format!(
+                    "cannot compute bearing on linestring with less than two points: {linestring:?}"
+                )));
+            }
+            let p0 = linestring.0[n - 2];
+            let p1 = linestring.0[n - 1];
+            Ok(Haversine.bearing(p0.into(), p1.into()) as f64)
+        })
+        .collect()
+}
+
+/// Given an OmfEdgeList and a boolean mask, returns an updated edge list
+/// with the mask applied.
+pub fn clean_omf_edge_list(omf_list: OmfEdgeList, mask: Vec<bool>) -> OmfEdgeList {
+    let edges = EdgeList(
+        omf_list
+            .edges
+            .0
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, edge)| mask[idx].then_some(*edge))
+            .collect::<Vec<Edge>>()
+            .into_boxed_slice(),
+    );
+
+    let geometries = omf_list
+        .geometries
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, ls)| mask[idx].then_some(ls))
+        .collect();
+
+    let classes = omf_list
+        .classes
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, cls)| mask[idx].then_some(cls))
+        .collect();
+
+    let speeds = omf_list
+        .speeds
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, s)| mask[idx].then_some(s))
+        .collect();
+
+    let bearings = omf_list
+        .bearings
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, b)| mask[idx].then_some(b))
+        .collect();
+
+    let omf_segment_ids = omf_list
+        .omf_segment_ids
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, b)| mask[idx].then_some(b))
+        .collect();
+
+    OmfEdgeList {
+        edge_list_id: omf_list.edge_list_id,
+        edges,
+        geometries,
+        classes,
+        speeds,
+        speed_lookup: omf_list.speed_lookup,
+        bearings,
+        omf_segment_ids,
+    }
 }

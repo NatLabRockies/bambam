@@ -54,7 +54,7 @@ fn get_ordered_stops(trip: &Trip) -> Result<Vec<StopTime>, ScheduleError> {
         .map(|(_, idx)| {
             trip.stop_times.get(*idx).cloned().ok_or_else(|| {
                 let msg = format!("expected stop index {idx} not found in trip {}", trip.id);
-                ScheduleError::MalformedGtfsError(msg)
+                ScheduleError::MalformedGtfs(msg)
             })
         })
         .collect::<Result<Vec<_>, _>>()

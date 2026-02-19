@@ -7,7 +7,7 @@
         { 
           "type": "class", 
           "classes": ["secondary", "tertiary", "residential", "living_street", "unclassified", "service", "pedestrian", "footway", "steps", "path", "track", "bridleway", "unknown"], 
-          "ignore_unset": true,
+          "allow_unset": true,
           "behavior": "include"
         },
         { "type": "access_mode", "modes": ["foot"] }
@@ -20,7 +20,7 @@
         { 
           "type": "class", 
           "classes": ["primary", "secondary", "tertiary", "residential", "living_street", "unclassified", "service", "pedestrian", "path", "track", "cycleway", "bridleway", "unknown"], 
-          "ignore_unset": true,
+          "allow_unset": true,
           "behavior": "include"
         },
         { "type": "access_mode", "modes": ["bicycle"] }
@@ -33,11 +33,16 @@
         { 
           "type": "class", 
           "classes": ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "living_street", "unclassified", "service", "unknown"], 
-          "ignore_unset": true,
+          "allow_unset": true,
           "behavior": "include"
         },
         { "type": "access_mode", "modes": ["motor_vehicle", "car", "truck", "motorcycle"] }
       ]
     }
-  ]
+  ],
+  "island_algorithm_configuration": {
+    "min_distance": 2,
+    "distance_unit": "miles",
+    "parallel_execution": false
+  }
 }

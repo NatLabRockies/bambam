@@ -2,7 +2,7 @@ use super::{
     delay_aggregation_type::DelayAggregationType, time_delay_record::TimeDelayRecord,
     TimeDelayConfig,
 };
-use crate::util::geo_utils;
+use bambam_core::util::geo_utils;
 use geo::{Geometry, Point};
 use kdam::Bar;
 use routee_compass_core::{

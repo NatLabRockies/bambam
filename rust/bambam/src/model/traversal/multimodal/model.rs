@@ -118,6 +118,15 @@ impl TraversalModel for MultimodalTraversalModel {
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         let (_, edge, _) = trajectory;
+        log::debug!(
+            "begin multimodal traversal along edge {:?} for state at time: {:.2} minutes with tree size {}",
+            (edge.edge_list_id, edge.edge_id),
+            state_model
+                .get_time(state, "trip_time")
+                .unwrap_or_default()
+                .get::<uom::si::time::minute>(),
+            tree.len()
+        );
 
         // first, apply any mode switching for using this edge
         ops::mode_switch(
@@ -149,6 +158,15 @@ impl TraversalModel for MultimodalTraversalModel {
                 self.max_trip_legs,
             )?;
         }
+        log::debug!(
+            "finish multimodal traversal along edge {:?} for state at time: {:.2} minutes with tree size {}",
+            (edge.edge_list_id, edge.edge_id),
+            state_model
+                .get_time(state, "trip_time")
+                .unwrap_or_default()
+                .get::<uom::si::time::minute>(),
+            tree.len()
+        );
         Ok(())
     }
 

@@ -78,8 +78,8 @@ pub enum DateMappingPolicyConfig {
 impl DateMappingPolicyConfig {
     /// build a new [`DateMappingPolicy`] configuration from CLI arguments.
     pub fn new(
-        start_date: &String,
-        end_date: &String,
+        start_date: &str,
+        end_date: &str,
         start_time: Option<&String>,
         end_time: Option<&String>,
         date_mapping_policy: &DateMappingPolicyType,
@@ -89,77 +89,77 @@ impl DateMappingPolicyConfig {
         use DateMappingPolicyConfig as Config;
         use DateMappingPolicyType as Type;
         match date_mapping_policy {
-            Type::ExactDate => Ok(Config::ExactDate(start_date.clone())),
+            Type::ExactDate => Ok(Config::ExactDate(start_date.to_string())),
             Type::ExactRange => Ok(Config::ExactDateRange {
-                start_date: start_date.clone(),
-                end_date: end_date.clone(),
+                start_date: start_date.to_string(),
+                end_date: end_date.to_string(),
             }),
             Type::NearestDate => {
-                let match_weekday = date_mapping_match_weekday.ok_or_else(|| ScheduleError::GtfsAppError(String::from("for nearest-date mapping, must specify 'match_weekday' as 'true' or 'false'")))?;
+                let match_weekday = date_mapping_match_weekday.ok_or_else(|| ScheduleError::GtfsApp(String::from("for nearest-date mapping, must specify 'match_weekday' as 'true' or 'false'")))?;
                 let date_tolerance = date_mapping_date_tolerance.ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "for nearest-date mapping, must specify a date_tolerance in [0, inf)",
                     ))
                 })?;
                 Ok(Self::NearestDate {
-                    date: start_date.clone(),
+                    date: start_date.to_string(),
                     date_tolerance,
                     match_weekday,
                 })
             }
             Type::NearestRange => {
-                let match_weekday = date_mapping_match_weekday.ok_or_else(|| ScheduleError::GtfsAppError(String::from("for nearest-date mapping, must specify 'match_weekday' as 'true' or 'false'")))?;
+                let match_weekday = date_mapping_match_weekday.ok_or_else(|| ScheduleError::GtfsApp(String::from("for nearest-date mapping, must specify 'match_weekday' as 'true' or 'false'")))?;
                 let date_tolerance = date_mapping_date_tolerance.ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "for nearest-date mapping, must specify a date_tolerance in [0, inf)",
                     ))
                 })?;
                 Ok(Self::NearestDateRange {
-                    start_date: start_date.clone(),
-                    end_date: end_date.clone(),
+                    start_date: start_date.to_string(),
+                    end_date: end_date.to_string(),
                     date_tolerance,
                     match_weekday,
                 })
             }
             Type::ExactDateTimeRange => {
                 let start_time = start_time.cloned().ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "must provide start_time for exact date time range policy",
                     ))
                 })?;
                 let end_time = end_time.cloned().ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "must provide end_time for exact date time range policy",
                     ))
                 })?;
 
                 Ok(Config::ExactDateTimeRange {
-                    start_date: start_date.clone(),
-                    end_date: end_date.clone(),
+                    start_date: start_date.to_string(),
+                    end_date: end_date.to_string(),
                     start_time,
                     end_time,
                 })
             }
             Type::NearestDateTimeRange => {
                 let start_time = start_time.cloned().ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "must provide start_time for nearest date time range policy",
                     ))
                 })?;
                 let end_time = end_time.cloned().ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "must provide end_time for nearest date time range policy",
                     ))
                 })?;
-                let match_weekday = date_mapping_match_weekday.ok_or_else(|| ScheduleError::GtfsAppError(String::from("for nearest-date mapping, must specify 'match_weekday' as 'true' or 'false'")))?;
+                let match_weekday = date_mapping_match_weekday.ok_or_else(|| ScheduleError::GtfsApp(String::from("for nearest-date mapping, must specify 'match_weekday' as 'true' or 'false'")))?;
                 let date_tolerance = date_mapping_date_tolerance.ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "for nearest-date mapping, must specify a date_tolerance in [0, inf)",
                     ))
                 })?;
                 Ok(Self::NearestDateTimeRange {
-                    start_date: start_date.clone(),
-                    end_date: end_date.clone(),
+                    start_date: start_date.to_string(),
+                    end_date: end_date.to_string(),
                     start_time,
                     end_time,
                     date_tolerance,
@@ -168,18 +168,18 @@ impl DateMappingPolicyConfig {
             }
             Type::BestCase => {
                 let start_time = start_time.cloned().ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "must provide start_time for best case policy",
                     ))
                 })?;
                 let end_time = end_time.cloned().ok_or_else(|| {
-                    ScheduleError::GtfsAppError(String::from(
+                    ScheduleError::GtfsApp(String::from(
                         "must provide end_time for best case policy",
                     ))
                 })?;
                 Ok(Self::BestCase {
-                    start_date: start_date.clone(),
-                    end_date: end_date.clone(),
+                    start_date: start_date.to_string(),
+                    end_date: end_date.to_string(),
                     start_time,
                     end_time,
                     date_tolerance: date_mapping_date_tolerance,

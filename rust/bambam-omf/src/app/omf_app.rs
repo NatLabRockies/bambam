@@ -5,7 +5,11 @@ use config::{Config, File};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::{cli_bbox::parse_bbox, network::NetworkEdgeListConfiguration, CliBoundingBox},
+    app::{
+        cli_bbox::parse_bbox,
+        network::{IslandDetectionAlgorithmConfiguration, NetworkEdgeListConfiguration},
+        CliBoundingBox,
+    },
     collection::OvertureMapsCollectionError,
 };
 
@@ -22,6 +26,10 @@ pub struct OmfApp {
 pub enum OmfOperation {
     /// download all of the OMF transportation data
     Network {
+        /// descriptive user-provided name for this import region.
+        #[arg(short, long)]
+        name: String,
+
         /// configuration file defining how the network is imported and separated
         /// into mode-specific edge lists.
         #[arg(short, long)]
@@ -44,6 +52,10 @@ pub enum OmfOperation {
         /// bounding box to filter data (format: xmin,xmax,ymin,ymax)
         #[arg(short, long, value_parser = parse_bbox, allow_hyphen_values(true))]
         bbox: Option<CliBoundingBox>,
+
+        /// write the list of segment and connector IDs for each edge created
+        #[arg(long)]
+        omf_ids: bool,
     },
 }
 
@@ -51,11 +63,13 @@ impl OmfOperation {
     pub fn run(&self) -> Result<(), OvertureMapsCollectionError> {
         match self {
             OmfOperation::Network {
+                name,
                 configuration_file,
                 output_directory,
                 local_source,
                 store_raw,
                 bbox,
+                omf_ids,
             } => {
                 let filepath = Path::new(configuration_file);
                 let config = Config::builder()
@@ -73,12 +87,31 @@ impl OmfOperation {
                         );
                         OvertureMapsCollectionError::InvalidUserInput(msg)
                     })?;
+                let island_algorithm_configuration = config
+                    .get::<Option<IslandDetectionAlgorithmConfiguration>>(
+                        "island_algorithm_configuration",
+                    )
+                    .map_err(|e| {
+                        let msg = format!(
+                            "error reading 'island_algorithm_configuration' key in '{configuration_file}': {e}"
+                        );
+                        OvertureMapsCollectionError::InvalidUserInput(msg)
+                    })?;
                 let outdir = match output_directory {
                     Some(out) => Path::new(out),
                     None => Path::new(""),
                 };
                 let local = local_source.as_ref().map(Path::new);
-                crate::app::network::run(bbox.as_ref(), &network_config, outdir, local, *store_raw)
+                crate::app::network::run(
+                    name,
+                    bbox.as_ref(),
+                    &network_config,
+                    outdir,
+                    local,
+                    *store_raw,
+                    island_algorithm_configuration,
+                    *omf_ids,
+                )
             }
         }
     }

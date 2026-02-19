@@ -1,4 +1,4 @@
-use crate::util::polygonal_rtree::PolygonalRTree;
+use bambam_core::util::polygonal_rtree::PolygonalRTree;
 use bamcensus_core::model::identifier::Geoid;
 use flate2::read::GzDecoder;
 use geo::Geometry;

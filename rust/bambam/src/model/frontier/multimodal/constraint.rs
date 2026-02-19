@@ -89,7 +89,7 @@ impl MultimodalFrontierConstraint {
                 })?;
                 let n_legs = match active_mode {
                     Some(active_mode) if active_mode != edge_mode => n_existing_legs + 1,
-                    _ => 0,
+                    _ => n_existing_legs,
                 };
                 let is_valid = n_legs <= *max_legs;
                 Ok(is_valid)

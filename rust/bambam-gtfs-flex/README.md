@@ -1,60 +1,36 @@
-# bambam-gbfs
+# bambam-gtfs-flex
 
-tooling for building and running BAMBAM models from GBFS sources.
+A set of extensions that enable On-Demand Transit modeling in BAMBAM using [GTFS-Flex](https://gtfs.org/community/extensions/flex/) datasets.
 
-## CLI Usage
+## GTFS Flex Service Types
 
-example CLI calls:
+We have observed four types of services:
 
-### top-level GBFS CLI
+  1. Within a Single Zone
+    - Pickups and drop-offs at any two points within the same zone
+  2. Across Multiple Zones
+    - Trips are allowed between any points in different zones (no within-zone trips)
+  3. With Specified Stops
+    - Alike (1) and (2) services, but pickups and drop-offs are allowed only at designated stops
+  4. With Deviated Route
+    - Vehicles follow a fixed route but can deviate to pick up or drop off between stops
 
-```
-% ./target/release/bambam-gbfs
-GBFS Extensions for The Behavior and Advanced Mobility Big Access Model
+## Model Design
 
-Usage: bambam-gbfs <COMMAND>
+In order to track the state of a GTFS Flex trip, we store a few additional fields on the trip state. These fields and their implications in service types 1-3 are described below. Note: service type 4 is implemented via network dataset modifications and not in search algorithm state.
 
-Commands:
-  download  runs a GBFS download, writing data from some source URL to an output directory
-  help      Print this message or the help of the given subcommand(s)
+### Service Type 1: Within a Single Zone
 
-Options:
-  -h, --help     Print help
-  -V, --version  Print version
-```
+In this service type, trips are assigned a src_zone_id when they board. The trip may travel anywhere, but may only treat locations within this zone as destinations. This requires a lookup table from EdgeId -> ZoneId.
 
-### GBFS download command
+### Service Type 2: Across Multiple Zones
 
-```
-% cd rust
-% cargo build -r 
-% ./target/release/bambam-gbfs download --help
-runs a GBFS download, writing data from some source URL to an output directory
+In this service type, trips are assigned a src_zone_id and departure_time when they board. The trip may travel anywhere, but may only treat particular locations as destinations. This requires the above `EdgeId -> ZoneId` lookup as well as a `(ZoneId, DepartureTime) -> [ZoneId]` lookup.
 
-Usage: bambam-gbfs download [OPTIONS] --gbfs-url <GBFS_URL>
+### Service Type 3: With Specified Stops
 
-Options:
-  -g, --gbfs-url <GBFS_URL>
-          a GBFS API URL
-  -o, --output-directory <OUTPUT_DIRECTORY>
-          output directory path [default: .]
-  -c, --collect-duration <COLLECT_DURATION>
-          duration to collect data rows. provide in human-readable time values 2m, 30s, 2h, 2days... [default: 10m]
-  -h, --help
-          Print help
-  -V, --version
-          Print version
-```
+In this service type, trips are assigned a src_zone_id and departure_time when they board. Using the same lookups as (2), we additionally require a EdgeId -> bool mask function which further restricts where boarding and alighting may occur.
 
-### running GBFS download with arguments
+### Service Type 4: With Deviated Route
 
-this isn't yet implemented so with debug logging enabled, the command will run the download function, log the arguments, then panic when it hits the todo!() line.
-
-```
-% RUST_LOG=debug ./target/release/bambam-gbfs download -g https://example.com
-[2025-12-22T17:15:15Z DEBUG bambam_gbfs::app::download::run] run_gbfs_download with url=https://example.com, out_dir=".", duration (seconds)=600
-
-thread 'main' (2745448) panicked at bambam-gbfs/src/app/download/run.rs:20:5:
-not yet implemented: download + post-processing logic
-note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
-```
+In this service type, we are actually running GTFS-style routing. However, we also need to modify some static weights based on the expected delays due to trip deviations. This weights should be modified during trip/model initialization but made fixed to ensure search correctness.

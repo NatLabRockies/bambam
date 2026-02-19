@@ -1,8 +1,6 @@
 use super::{extent_format::ExtentFormat, grid_type::GridType};
-use crate::{
-    model::input_plugin::population::population_source::PopulationSource,
-    util::polygonal_rtree::PolygonalRTree,
-};
+use crate::model::input_plugin::population::population_source::PopulationSource;
+use bambam_core::util::polygonal_rtree::PolygonalRTree;
 use geo::{Area, Geometry};
 use kdam::{Bar, BarExt};
 use rayon::prelude::*;
