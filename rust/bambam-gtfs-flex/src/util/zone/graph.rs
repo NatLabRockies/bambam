@@ -2,10 +2,9 @@ use std::{collections::HashMap, path::Path};
 
 use chrono::NaiveDateTime;
 use kdam::BarBuilder;
-use routee_compass_core::{
-    model::{frontier::FrontierModelError, traversal::TraversalModelError},
-    util::fs::read_utils,
-};
+use routee_compass_core::util::fs::read_utils;
+
+use crate::util::zone::ZoneError;
 
 use super::{ZonalRelation, ZoneId, ZoneRecord};
 
@@ -23,7 +22,7 @@ impl ZoneGraph {
         &self,
         _src_zone_id: &ZoneId,
         _current_time: &NaiveDateTime,
-    ) -> Result<bool, FrontierModelError> {
+    ) -> Result<bool, ZoneError> {
         todo!()
     }
 
@@ -33,7 +32,7 @@ impl ZoneGraph {
         src_zone_id: &ZoneId,
         dst_zone_id: &ZoneId,
         _current_time: &NaiveDateTime,
-    ) -> Result<bool, TraversalModelError> {
+    ) -> Result<bool, ZoneError> {
         // find zone-to-zone trips starting from src_zone_id
         let relations = match self.0.get(src_zone_id) {
             Some(r) => r,
@@ -53,21 +52,21 @@ impl ZoneGraph {
 }
 
 impl TryFrom<&Path> for ZoneGraph {
-    type Error = TraversalModelError;
+    type Error = ZoneError;
 
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
         let bb = BarBuilder::default().desc("zone records");
         let records: Box<[ZoneRecord]> = read_utils::from_csv(&value, true, Some(bb), None)
             .map_err(|e| {
                 let msg = format!("failure reading zone records: {e}");
-                TraversalModelError::BuildError(msg)
+                ZoneError::Build(msg)
             })?;
         ZoneGraph::try_from(&records[..])
     }
 }
 
 impl TryFrom<&[ZoneRecord]> for ZoneGraph {
-    type Error = TraversalModelError;
+    type Error = ZoneError;
 
     fn try_from(value: &[ZoneRecord]) -> Result<Self, Self::Error> {
         let mut graph: ZoneGraphImpl = HashMap::new();
@@ -87,7 +86,7 @@ impl TryFrom<&[ZoneRecord]> for ZoneGraph {
                                 lookup_id,
                                 &prev
                             );
-                            return Err(TraversalModelError::BuildError(msg));
+                            return Err(ZoneError::Build(msg));
                         }
                     }
                 }

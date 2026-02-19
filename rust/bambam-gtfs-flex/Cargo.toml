@@ -18,6 +18,7 @@ chrono = { workspace = true }
 csv = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }
+geojson = { workspace = true }
 kdam = { workspace = true }
 routee-compass-core = { workspace = true }
 ordered-float = { workspace = true }

@@ -1,7 +1,6 @@
 use chrono::TimeDelta;
-use routee_compass_core::model::traversal::TraversalModelError;
 
-use super::{ZoneId, ZoneRecord};
+use super::{ZoneError, ZoneId, ZoneRecord};
 
 /// note:
 /// you know, the zone times for type 3 are time delta values (hh:mm:ss).
@@ -35,7 +34,7 @@ impl ZonalRelation {
 }
 
 impl TryFrom<&ZoneRecord> for ZonalRelation {
-    type Error = TraversalModelError;
+    type Error = ZoneError;
 
     fn try_from(record: &ZoneRecord) -> Result<Self, Self::Error> {
         // depending on the presence of fields on the incoming record we build
@@ -59,7 +58,7 @@ impl TryFrom<&ZoneRecord> for ZonalRelation {
                     "GTFS-Flex trip {} has invalid combination of optional fields",
                     record.trip_id
                 );
-                Err(TraversalModelError::BuildError(msg))
+                Err(ZoneError::Build(msg))
             }
         }
     }
