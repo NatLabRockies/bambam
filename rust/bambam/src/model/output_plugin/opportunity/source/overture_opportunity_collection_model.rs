@@ -167,10 +167,14 @@ impl OvertureOpportunityCollectionModel {
         &self,
         activity_types: &[String],
     ) -> Result<Vec<(Geometry<f32>, Vec<bool>)>, OvertureMapsCollectionError> {
+        let uri = match self.release_version {
+            ReleaseVersion::Latest => self.collector.get_latest_release()?,
+            ReleaseVersion::Monthly { .. } => self.release_version.to_string(),
+        };
         let places_records = self
             .collector
             .collect_from_release(
-                self.release_version.clone(),
+                &uri,
                 &OvertureRecordType::Places,
                 self.places_row_filter_config.clone(),
             )?
@@ -237,10 +241,11 @@ impl OvertureOpportunityCollectionModel {
         let arc_buildings_taxonomy = Arc::new(buildings_taxonomy_model);
 
         // Use the collector to retrieve buildings data
+        let uri = self.release_version.to_string();
         let buildings_records = self
             .collector
             .collect_from_release(
-                self.release_version.clone(),
+                &uri,
                 &OvertureRecordType::Buildings,
                 self.buildings_row_filter_config.clone(),
             )?

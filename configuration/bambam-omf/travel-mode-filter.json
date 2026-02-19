@@ -42,6 +42,7 @@
   ],
   "island_algorithm_configuration": {
     "min_distance": 2,
-    "distance_unit": "miles"
+    "distance_unit": "miles",
+    "parallel_execution": false
   }
 }

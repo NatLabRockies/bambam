@@ -10,7 +10,7 @@ use crate::{
         OvertureMapsCollectorConfig, ReleaseVersion, SegmentAccessRestrictionWhen,
         TransportationCollection,
     },
-    graph::OmfGraphVectorized,
+    graph::{OmfGraphSource, OmfGraphStats, OmfGraphSummary, OmfGraphVectorized},
     util,
 };
 
@@ -39,16 +39,19 @@ impl From<&NetworkEdgeListConfiguration> for SegmentAccessRestrictionWhen {
 pub struct IslandDetectionAlgorithmConfiguration {
     pub min_distance: f64,
     pub distance_unit: DistanceUnit,
+    pub parallel_execution: bool,
 }
 
 /// runs an OMF network import using the provided configuration.
 pub fn run(
+    name: &str,
     bbox: Option<&CliBoundingBox>,
     modes: &[NetworkEdgeListConfiguration],
     output_directory: &Path,
     local_source: Option<&Path>,
     write_json: bool,
     island_detection_configuration: Option<IslandDetectionAlgorithmConfiguration>,
+    export_omf_ids: bool,
 ) -> Result<(), OvertureMapsCollectionError> {
     let collection: TransportationCollection = match local_source {
         Some(src_path) => read_local(src_path),
@@ -62,7 +65,17 @@ pub fn run(
 
     let vectorized_graph =
         OmfGraphVectorized::new(&collection, modes, island_detection_configuration)?;
-    vectorized_graph.write_compass(output_directory, true)?;
+
+    // summarize imported graph
+    let release = match local_source {
+        Some(local) => format!("file://{}", local.to_string_lossy()),
+        None => collection.release.clone(),
+    };
+    let stats = OmfGraphStats::try_from(&vectorized_graph)?;
+    let source = OmfGraphSource::new(&release, name, bbox);
+    let summary = OmfGraphSummary { source, stats };
+
+    vectorized_graph.write_compass(&summary, output_directory, true, export_omf_ids)?;
 
     Ok(())
 }
