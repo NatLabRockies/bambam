@@ -18,7 +18,7 @@ unzip denver_rtd/rtd_gtfs.zip -d "denver_rtd/gtfs/"
 
 # 2. Using RouteE Compass, download a graph of the Denver Metro region _with output geometries_
 echo "Prepare the compass files"
-uv run --with "geopandas,numpy,osmnx,nrel.routee.compass[all]" script/setup_test_bambam_gtfs.py denver_rtd --output_geometries
+uv run --with "geopandas,numpy,osmnx,nlr.routee.compass[all]" script/setup_test_bambam_gtfs.py denver_rtd --output_geometries
 
 # 3. Create RouteE Compass edge list inputs for this archive
 echo "Process gtfs archive for date matching"

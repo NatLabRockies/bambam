@@ -1,4 +1,4 @@
-from nrel.bambam.bambam_app import BambamRunner
+from nlr.bambam.bambam_app import BambamRunner
 import logging
 
 logging.basicConfig(level=logging.INFO)

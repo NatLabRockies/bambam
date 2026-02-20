@@ -1,7 +1,7 @@
 print("importing osmnx, compass")
 import osmnx as ox
-from nrel.routee.compass.io import generate_compass_dataset
-from nrel.routee.compass.io.generate_dataset import GeneratePipelinePhase
+from nlr.routee.compass.io import generate_compass_dataset
+from nlr.routee.compass.io.generate_dataset import GeneratePipelinePhase
 
 if __name__ == "__main__":
 

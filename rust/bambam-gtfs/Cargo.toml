@@ -5,11 +5,11 @@ edition = "2021"
 license = "BSD-3-Clause"
 exclude = ["test", "**/.DS_Store", "target/"]
 readme = "README.md"
-repository = "https://github.com/NREL/bambam"
+repository = "https://github.com/NatLabRockies/bambam"
 documentation = "https://docs.rs/bambam-gtfs"
 description = "GTFS Command Line Utilities for The Behavior and Advanced Mobility Big Access Model"
 keywords = [
-    "nrel",
+    "nlr",
     "access-model",
     "accessibility",
     "multimodal",
