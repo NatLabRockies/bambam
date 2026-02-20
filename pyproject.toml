@@ -51,7 +51,7 @@ all = ["bambam[osm]", "bambam[dev]"]
 
 [project.urls]
 Homepage = "https://github.com/NatLabRockies/bambam"
-Documentation = "https://nlr.github.io/bambam"
+Documentation = "https://natlabrockies.github.io/bambam"
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

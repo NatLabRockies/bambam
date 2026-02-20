@@ -9,7 +9,7 @@ set -e
 
 # create a virtual environment
 echo "downloading boulder and denver scenarios"
-uv run --with osmnx --with "nlr.routee.compass[all]" script/setup_test_bambam.py
+uv run --with osmnx --with "nrel.routee.compass[all]" script/setup_test_bambam.py
 
 echo "downloading University of Colorado Boulder GTFS archive"
 # mkdir boulder_co # this directory already exists, created during the setup_test_bambam.py script

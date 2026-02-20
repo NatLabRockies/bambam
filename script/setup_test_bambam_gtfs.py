@@ -6,7 +6,7 @@ import pandas as pd
 import geopandas as gpd
 from pathlib import Path
 from shapely.geometry import Point, LineString
-from nlr.routee.compass.io import generate_compass_dataset
+from nrel.routee.compass.io import generate_compass_dataset
 
 from transit_output_extract_geojson import process_csv_into_geometry
 
