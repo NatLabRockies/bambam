@@ -1,5 +1,4 @@
 use super::schedule_traversal_engine::ScheduleTraversalEngine;
-use crate::model::bambam_state;
 use chrono::{DateTime, Utc};
 use routee_compass_core::{
     algorithm::search::SearchTree,

@@ -1,10 +1,12 @@
-use crate::model::output_plugin::{
-    isochrone::isochrone_output_format::{self, IsochroneOutputFormat},
-    opportunity::{
-        DestinationOpportunity, OpportunityFormat, OpportunityOrientation, OpportunityRecord,
+use crate::model::output_plugin::opportunity::OpportunityRecord;
+use bambam_core::model::{
+    bambam_field,
+    output_plugin::{
+        isochrone::IsochroneOutputFormat,
+        opportunity::{DestinationOpportunity, OpportunityOrientation},
     },
+    TimeBin,
 };
-use crate::model::{bambam_field, TimeBin};
 use geo::{orient, Geometry};
 use itertools::Itertools;
 use routee_compass::plugin::output::OutputPluginError;

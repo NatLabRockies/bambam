@@ -38,16 +38,21 @@ impl std::fmt::Display for OpportunityRowId {
 impl OpportunityRowId {
     /// create a new opportunity vector identifier based on the table orientation which denotes where opportunities are stored
     pub fn new(
-        branch_label: &Label,
+        child_label: &Label,
         branch: &SearchTreeNode,
         format: &OpportunityOrientation,
     ) -> Result<OpportunityRowId, OutputPluginError> {
         use OpportunityOrientation as O;
         match format {
             // stored at the origin of the edge, corresponding with the branch origin id
-            O::OriginVertexOriented => Ok(Self::OriginVertex(branch_label.clone())),
+            O::OriginVertexOriented => match branch.parent_label() {
+                None => Err(OutputPluginError::InternalError(String::from("while building EdgeOriented OpportunityRowId, was passed tree root, which has no corresponding edge"))),
+                Some(parent_label) => Ok(Self::OriginVertex(parent_label.clone())),
+            },
             // stored at the destination of the edge at the branch's terminal vertex id
-            O::DestinationVertexOriented => Ok(Self::DestinationVertex(branch.label().clone())),
+            O::DestinationVertexOriented => {
+                Ok(Self::DestinationVertex(child_label.clone()))
+            },
             // stored on the edge itself
             O::EdgeOriented => {
                 match branch.incoming_edge() {

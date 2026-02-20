@@ -1,4 +1,5 @@
-use crate::model::output_plugin::opportunity::{OpportunityFormat, OpportunityModelConfig};
+use crate::model::output_plugin::opportunity::OpportunityModelConfig;
+use bambam_core::model::output_plugin::opportunity::OpportunityFormat;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

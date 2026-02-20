@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
-use crate::model::bambam_state::ROUTE_ID;
 use crate::model::state::variable::EMPTY;
 use crate::model::traversal::transit::transit_ops;
-use crate::model::{
-    bambam_state,
-    traversal::transit::{engine::TransitTraversalEngine, schedule::Departure},
-};
+use crate::model::traversal::transit::{engine::TransitTraversalEngine, schedule::Departure};
+use bambam_core::model::bambam_state;
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use routee_compass_core::model::traversal::TraversalModelError;
 use routee_compass_core::model::{
@@ -121,7 +118,7 @@ impl TraversalModel for TransitTraversalModel {
         // get the next departure.
         // in the case that no schedules are found, a sentinel value is returned set
         // far in the future (an "infinity" value). this indicates that this edge should not
-        // have been accepted by the FrontierModel. but at this point, we do not have a
+        // have been accepted by the ConstraintModel. but at this point, we do not have a
         // transit frontier model, so "infinity" must solve the same problem.
         let (next_route, next_departure) = self
             .engine
@@ -141,7 +138,7 @@ impl TraversalModel for TransitTraversalModel {
         // Update state
         state_model.add_time(state, fieldname::TRIP_TIME, &total_time);
         state_model.add_time(state, fieldname::EDGE_TIME, &total_time);
-        state_model.set_custom_i64(state, ROUTE_ID, &next_departure_route_id);
+        state_model.set_custom_i64(state, bambam_state::ROUTE_ID, &next_departure_route_id);
 
         // TRANSIT_BOARDING_TIME accumulates time waiting at transit stops, but not dwell time
         if current_route_id != next_departure_route_id {

@@ -8,15 +8,11 @@ pub fn get_mode_sequence<'a>(
     mode_to_state: &'a MultimodalStateMapping,
 ) -> Result<Vec<&'a str>, LabelModelError> {
     match label {
-        Label::VertexWithU8StateVec {
-            vertex_id,
-            state,
-            state_len,
-        } => {
+        Label::VertexWithU8StateVec { vertex_id, state } => {
             let mut modes: Vec<&str> = vec![];
-            let state_len = *state_len as usize;
+            let state_len = state.state_len as usize;
             for idx in (0..state_len) {
-                match state.get(idx) {
+                match state.state.get(idx) {
                     None => {
                         return Err(LabelModelError::LabelModelError(format!(
                             "internal error: state has fewer than state_len={state_len} entries"

@@ -1,5 +1,6 @@
+use super::opportunity_model::OpportunityModel;
 use super::opportunity_source::OpportunitySource;
-use super::{opportunity_model::OpportunityModel, opportunity_orientation::OpportunityOrientation};
+use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
 use csv::{ReaderBuilder, StringRecord};
 use flate2::read::GzDecoder;
 use geo::{Centroid, Convert, Point};

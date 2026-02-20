@@ -1,7 +1,8 @@
 use crate::model::output_plugin::isochrone::{
-    isochrone_algorithm::IsochroneAlgorithm, isochrone_output_format::IsochroneOutputFormat,
-    time_bin_type::TimeBinType, DestinationPointGeneratorConfig,
+    isochrone_algorithm::IsochroneAlgorithm, time_bin_type::TimeBinType,
+    DestinationPointGeneratorConfig,
 };
+use bambam_core::model::output_plugin::isochrone::IsochroneOutputFormat;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

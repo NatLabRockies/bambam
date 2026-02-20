@@ -11,6 +11,8 @@ use crate::model::state::{
     multimodal_state_ops as ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
 };
 
+/// builds trip leg mode sequences into the tree labels.
+/// does not impose a pareto domination scheme over the space of valid trips.
 pub struct MultimodalLabelModel {
     mode_to_state: MultimodalStateMapping,
     max_trip_legs: LegIdx,
@@ -62,6 +64,10 @@ impl LabelModel for MultimodalLabelModel {
         );
 
         Ok(label)
+    }
+
+    fn compare(&self, prev: &Label, next: &Label) -> Result<std::cmp::Ordering, LabelModelError> {
+        Ok(std::cmp::Ordering::Equal)
     }
 }
 

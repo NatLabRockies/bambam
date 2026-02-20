@@ -1,7 +1,7 @@
 use super::destination_point_generator::DestinationPointGenerator;
 use super::isochrone_algorithm::IsochroneAlgorithm;
-use super::isochrone_output_format::IsochroneOutputFormat;
-use crate::model::{bambam_field as field, bambam_ops, TimeBin};
+use bambam_core::model::output_plugin::isochrone::IsochroneOutputFormat;
+use bambam_core::model::{bambam_field as field, bambam_ops, TimeBin};
 use routee_compass::app::{compass::CompassAppError, search::SearchAppResult};
 use routee_compass::plugin::output::OutputPlugin;
 use routee_compass::plugin::output::OutputPluginError;

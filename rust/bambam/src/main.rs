@@ -66,6 +66,8 @@ mod test {
             query_file: query_file.to_string(),
             chunksize: None,
             newline_delimited: false,
+            parallelism: None,
+            output_directory: None,
         };
         let expected_grid_size = 48;
 
