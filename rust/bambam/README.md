@@ -14,7 +14,7 @@ Access models are crucial for transportation planning, equity analysis, and unde
 
 ## Relationship to RouteE Compass
 
-`bambam` is built on top of [RouteE Compass](https://github.com/NREL/routee-compass), NREL's open-source routing engine. While RouteE Compass provides efficient point-to-point routing and energy-aware navigation, `bambam` extends this functionality to perform large-scale access analysis by:
+`bambam` is built on top of [RouteE Compass](https://github.com/NatLabRockies/routee-compass), NLR's open-source routing engine. While RouteE Compass provides efficient point-to-point routing and energy-aware navigation, `bambam` extends this functionality to perform large-scale access analysis by:
 
 - Computing many-to-many origin-destination matrices
 - Aggregating accessibility metrics across populations
@@ -44,7 +44,7 @@ See the contents of these scripts to review.
 
 ```sh
 # clone the repository
-git clone https://github.com/NREL/bambam
+git clone https://github.com/NatLabRockies/bambam
 cd bambam
 
 # bring in an example

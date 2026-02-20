@@ -1,5 +1,5 @@
 [project]
-name = "nrel_bambam"
+name = "bambam"
 version = "0.1.0"
 description = "The Behavior and Advanced Mobility Big Access Model"
 readme = "README.md"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 keywords = ["access modeling"]
 dependencies = [
-    "nrel_routee_compass>=0.15.2",
+    "nrel-routee-compass>=0.15.2",
     "tomlkit>=0.11.0,<1.0"
 ]
 
@@ -47,11 +47,11 @@ osm = [
     "numpy>=1.26,<3.0",
     "seaborn>=0.12.0,<1.0",
 ]
-all = ["nrel_bambam[osm]", "nrel_bambam[dev]"]
+all = ["bambam[osm]", "bambam[dev]"]
 
 [project.urls]
-Homepage = "https://github.com/NREL/bambam"
-Documentation = "https://nrel.github.io/bambam"
+Homepage = "https://github.com/NatLabRockies/bambam"
+Documentation = "https://natlabrockies.github.io/bambam"
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
@@ -59,7 +59,7 @@ build-backend = "maturin"
 [tool.maturin]
 python-source = "python"
 features = ["pyo3/extension-module"]
-module-name = "nrel.bambam.bambam_py_api"
+module-name = "nlr.bambam.bambam_py_api"
 manifest-path = "rust/bambam-py/Cargo.toml"
 # include = [
 #     "LICENSE.md",

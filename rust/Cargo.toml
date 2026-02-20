@@ -17,7 +17,7 @@ arrow = { version = "55.0.0" }
 bamcensus = { version = "0.1.0" }
 bamcensus-acs = { version = "0.1.0" }
 
-# nrel 
+# nlr 
 bamcensus-core = { version = "0.1.0" }
 bamcensus-lehd = { version = "0.1.0" }
 chrono = { version = "0.4.41", features = ["serde"] }
