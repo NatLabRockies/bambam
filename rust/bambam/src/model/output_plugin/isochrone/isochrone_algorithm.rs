@@ -1,4 +1,5 @@
 use geo::algorithm::concave_hull::ConcaveHull;
+use geo::concave_hull::ConcaveHullOptions;
 use geo::Geometry;
 use geo::KNearestConcaveHull;
 use geo::MultiPoint;
@@ -33,7 +34,8 @@ impl IsochroneAlgorithm {
                 if mp.len() < 3 {
                     Ok(Geometry::Polygon(geo::polygon!()))
                 } else {
-                    let hull = mp.concave_hull(*concavity);
+                    let options = ConcaveHullOptions::default().concavity(*concavity);
+                    let hull = mp.concave_hull_with_options(options);
                     Ok(Geometry::Polygon(hull))
                 }
             }

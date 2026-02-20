@@ -1,10 +1,7 @@
 use super::multimodal_traversal_ops as ops;
-use crate::model::{
-    bambam_state,
-    state::{
-        fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
-        MultimodalMapping, MultimodalStateMapping,
-    },
+use crate::model::state::{
+    fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
+    MultimodalMapping, MultimodalStateMapping,
 };
 use itertools::Itertools;
 use routee_compass_core::{
@@ -419,7 +416,7 @@ mod test {
         let t1_dst = lm
             .label_from_state(t1.2.vertex_id, &et1.result_state, &state_model)
             .expect("invariant failed: unable to create label for vertex 2");
-        tree.insert(t1_src, et1.clone(), t1_dst);
+        tree.insert(t1_src, et1.clone(), t1_dst, Arc::new(lm));
 
         // traverse bike edge
         let t2 = mock_trajectory(1, 1, 1);
@@ -492,7 +489,7 @@ mod test {
         let t1_dst = lm
             .label_from_state(t1.2.vertex_id, &et1.result_state, &state_model)
             .expect("invariant failed: unable to create label for vertex 2");
-        tree.insert(t1_src, et1.clone(), t1_dst);
+        tree.insert(t1_src, et1.clone(), t1_dst, Arc::new(lm));
 
         // ASSERTION 1: trip tries to enter "bike" mode after accessing edge 2 on edge list 1,
         // but this should result in an error, as we have restricted the max number of trip legs to 1.
