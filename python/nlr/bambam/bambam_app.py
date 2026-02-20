@@ -1,4 +1,4 @@
-from nlr.routee.compass.compass_app import CompassApp
+from nrel.routee.compass.compass_app import CompassApp
 from nlr.bambam.bambam_py_api import BambamAppWrapper
 
 class BambamRunner(CompassApp):

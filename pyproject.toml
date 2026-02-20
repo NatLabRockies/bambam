@@ -1,5 +1,5 @@
 [project]
-name = "_bambam"
+name = "bambam"
 version = "0.1.0"
 description = "The Behavior and Advanced Mobility Big Access Model"
 readme = "README.md"
@@ -16,7 +16,7 @@ classifiers = [
 ]
 keywords = ["access modeling"]
 dependencies = [
-    "nlr_routee_compass>=0.15.2",
+    "nrel-routee-compass>=0.15.2",
     "tomlkit>=0.11.0,<1.0"
 ]
 
@@ -47,7 +47,7 @@ osm = [
     "numpy>=1.26,<3.0",
     "seaborn>=0.12.0,<1.0",
 ]
-all = ["nlr_bambam[osm]", "nlr_bambam[dev]"]
+all = ["bambam[osm]", "bambam[dev]"]
 
 [project.urls]
 Homepage = "https://github.com/NatLabRockies/bambam"
