@@ -1,5 +1,5 @@
 from nrel.routee.compass.compass_app import CompassApp
-from nrel.bambam.bambam_py_api import BambamAppWrapper
+from nlr.bambam.bambam_py_api import BambamAppWrapper
 
 class BambamRunner(CompassApp):
     """
