@@ -5,7 +5,8 @@ use crate::model::constraint::multimodal::{
 };
 use crate::model::state::{MultimodalMapping, MultimodalStateMapping};
 use crate::model::{
-    constraint::multimodal::MultimodalConstraintConstraint, state::multimodal_state_ops as state_ops,
+    constraint::multimodal::MultimodalConstraintConstraint,
+    state::multimodal_state_ops as state_ops,
 };
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
@@ -889,7 +890,9 @@ mod test {
         let constraint_limit = 1; // But we only allow 1 leg
 
         let (bike_mtm, bike_mfm, state_model, mut state) = test_setup(
-            vec![MultimodalConstraintConstraint::MaxTripLegs(constraint_limit)],
+            vec![MultimodalConstraintConstraint::MaxTripLegs(
+                constraint_limit,
+            )],
             "bike", // ConstraintModel for bike edges
             &["walk", "bike"],
             &[],
