@@ -1,4 +1,5 @@
-use crate::model::{bambam_state, constraint::time_limit::TimeLimitConfig};
+use crate::model::constraint::time_limit::TimeLimitConfig;
+use bambam_core::model::bambam_state;
 use routee_compass_core::{
     algorithm::search::Direction,
     model::{
