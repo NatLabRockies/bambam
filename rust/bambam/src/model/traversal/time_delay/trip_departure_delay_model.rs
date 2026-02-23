@@ -1,6 +1,5 @@
-use crate::model::bambam_state;
-
 use super::TimeDelayLookup;
+use bambam_core::model::bambam_state;
 use routee_compass_core::{
     algorithm::search::SearchTree,
     model::{

@@ -3,8 +3,7 @@ use crate::model::output_plugin::isochrone::IsochroneOutputPluginConfig;
 use super::time_bin_type::TimeBinType;
 use super::{
     destination_point_generator::DestinationPointGenerator,
-    isochrone_algorithm::IsochroneAlgorithm, isochrone_output_format::IsochroneOutputFormat,
-    isochrone_output_plugin::IsochroneOutputPlugin,
+    isochrone_algorithm::IsochroneAlgorithm, isochrone_output_plugin::IsochroneOutputPlugin,
 };
 use routee_compass::app::compass::CompassComponentError;
 use routee_compass::plugin::output::{OutputPlugin, OutputPluginBuilder, OutputPluginError};

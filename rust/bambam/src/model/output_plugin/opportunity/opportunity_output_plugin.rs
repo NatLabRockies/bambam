@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use super::opportunity_format::OpportunityFormat;
 use super::opportunity_model::OpportunityModel;
 use super::opportunity_model_config::OpportunityModelConfig;
 use crate::model::output_plugin::opportunity::OpportunityPluginConfig;
-use crate::model::{bambam_field, bambam_ops};
+use bambam_core::model::output_plugin::opportunity::OpportunityFormat;
+use bambam_core::model::{bambam_field, bambam_ops};
 use itertools::Itertools;
 use routee_compass::app::{compass::CompassAppError, search::SearchAppResult};
 use routee_compass::plugin::output::OutputPlugin;
