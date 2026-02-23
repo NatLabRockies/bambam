@@ -10,8 +10,8 @@ use routee_compass_core::{
 
 use crate::model::{
     constraint::multimodal::{
-        model::MultimodalConstraintModel, MultimodalConstraintConfig,
-        Constraint, MultimodalConstraintEngine,
+        model::MultimodalConstraintModel, Constraint, MultimodalConstraintConfig,
+        MultimodalConstraintEngine,
     },
     state::{MultimodalMapping, MultimodalStateMapping},
 };

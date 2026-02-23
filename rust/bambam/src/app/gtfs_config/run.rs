@@ -24,7 +24,7 @@ use crate::{
     app::gtfs_config::gtfs_config_error::GtfsConfigError,
     model::{
         constraint::{
-            multimodal::{MultimodalConstraintConfig, ConstraintConfig},
+            multimodal::{ConstraintConfig, MultimodalConstraintConfig},
             time_limit::{TimeLimitConfig, TimeLimitConstraintConfig},
         },
         traversal::{
