@@ -10,7 +10,7 @@ mod service;
 
 pub use builder::MultimodalConstraintBuilder;
 pub use config::MultimodalConstraintConfig;
-pub use constraint::MultimodalConstraintConstraint;
-pub use constraint_config::MultimodalConstraintConstraintConfig;
+pub use constraint::Constraint;
+pub use constraint_config::ConstraintConfig;
 pub use engine::MultimodalConstraintEngine;
 pub use service::MultimodalConstraintService;

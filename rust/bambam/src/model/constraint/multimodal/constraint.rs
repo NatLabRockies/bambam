@@ -1,7 +1,5 @@
 use crate::model::constraint::multimodal::sequence_trie::SubSequenceTrie;
-use crate::model::constraint::multimodal::{
-    multimodal_frontier_ops as ops, MultimodalConstraintConstraintConfig,
-};
+use crate::model::constraint::multimodal::{multimodal_frontier_ops as ops, ConstraintConfig};
 use crate::model::state::{
     multimodal_state_ops as state_ops, MultimodalMapping, MultimodalStateMapping,
 };
@@ -19,14 +17,14 @@ use uom::si::f64::Time;
 ///
 /// only deals with constraints associated with multimodal metadata, since metric-based
 /// constraints must be applied _after_ access + traversal metrics have been run.
-pub enum MultimodalConstraintConstraint {
+pub enum Constraint {
     AllowedModes(HashSet<String>),
     ModeCounts(HashMap<String, usize>),
     MaxTripLegs(usize),
     ExactSequences(SubSequenceTrie), // MaxTime(HashMap<String, Time>),
 }
 
-impl MultimodalConstraintConstraint {
+impl Constraint {
     /// validates an edge for traversal in a multimodal traversal
     pub fn valid_frontier(
         &self,
@@ -37,7 +35,7 @@ impl MultimodalConstraintConstraint {
         mode_to_state: &MultimodalStateMapping,
         max_trip_legs: u64,
     ) -> Result<bool, ConstraintModelError> {
-        use MultimodalConstraintConstraint as MFC;
+        use Constraint as MFC;
 
         match self {
             MFC::AllowedModes(items) => {
@@ -125,11 +123,11 @@ impl MultimodalConstraintConstraint {
     }
 }
 
-impl TryFrom<&MultimodalConstraintConstraintConfig> for MultimodalConstraintConstraint {
+impl TryFrom<&ConstraintConfig> for Constraint {
     type Error = ConstraintModelError;
 
-    fn try_from(value: &MultimodalConstraintConstraintConfig) -> Result<Self, Self::Error> {
-        use MultimodalConstraintConstraintConfig as MFCC;
+    fn try_from(value: &ConstraintConfig) -> Result<Self, Self::Error> {
+        use ConstraintConfig as MFCC;
         match value {
             MFCC::AllowedModes { allowed_modes } => {
                 let modes = allowed_modes.iter().cloned().collect::<HashSet<_>>();
@@ -168,6 +166,6 @@ impl TryFrom<&MultimodalConstraintConstraintConfig> for MultimodalConstraintCons
     }
 }
 
-// MultimodalConstraintConstraint::MaxTime(limits) => {
+// MultimodalConstraint::MaxTime(limits) => {
 //     ops::valid_mode_time(state, state_model, limits)
 // }

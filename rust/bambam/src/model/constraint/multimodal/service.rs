@@ -11,7 +11,7 @@ use routee_compass_core::{
 use crate::model::{
     constraint::multimodal::{
         model::MultimodalConstraintModel, MultimodalConstraintConfig,
-        MultimodalConstraintConstraint, MultimodalConstraintEngine,
+        Constraint, MultimodalConstraintEngine,
     },
     state::{MultimodalMapping, MultimodalStateMapping},
 };
@@ -44,7 +44,7 @@ impl MultimodalConstraintService {
         let constraints = config
             .constraints
             .iter()
-            .map(MultimodalConstraintConstraint::try_from)
+            .map(Constraint::try_from)
             .collect::<Result<Vec<_>, _>>()?;
         let engine = MultimodalConstraintEngine {
             mode: config.this_mode,

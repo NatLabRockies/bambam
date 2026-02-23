@@ -1,13 +1,8 @@
 use std::sync::Arc;
 
-use crate::model::constraint::multimodal::{
-    MultimodalConstraintConstraintConfig, MultimodalConstraintEngine,
-};
+use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
 use crate::model::state::{MultimodalMapping, MultimodalStateMapping};
-use crate::model::{
-    constraint::multimodal::MultimodalConstraintConstraint,
-    state::multimodal_state_ops as state_ops,
-};
+use crate::model::{constraint::multimodal::Constraint, state::multimodal_state_ops as state_ops};
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
     network::Edge,
@@ -27,7 +22,7 @@ impl MultimodalConstraintModel {
     /// used in synchronous contexts like scripting or testing.
     pub fn new_local(
         mode: &str,
-        constraints: Vec<MultimodalConstraintConstraint>,
+        constraints: Vec<Constraint>,
         modes: &[&str],
         route_ids: &[&str],
         max_trip_legs: u64,
@@ -129,8 +124,7 @@ mod test {
 
     use crate::model::{
         constraint::multimodal::{
-            model::MultimodalConstraintModel, sequence_trie::SubSequenceTrie,
-            MultimodalConstraintConstraint,
+            model::MultimodalConstraintModel, sequence_trie::SubSequenceTrie, Constraint,
         },
         state::{multimodal_state_ops as state_ops, MultimodalStateMapping},
         traversal::multimodal::MultimodalTraversalModel,
@@ -141,7 +135,7 @@ mod test {
         // testing validitity of an initial state using constraint "max trip legs = 1"
         let max_trip_legs = 1;
         let (mam, mfm, state_model, state) = test_setup(
-            vec![MultimodalConstraintConstraint::MaxTripLegs(1)],
+            vec![Constraint::MaxTripLegs(1)],
             "walk",
             &["walk", "bike"],
             &[],
@@ -162,7 +156,7 @@ mod test {
         // testing validitity of a state with one leg using constraint "max trip legs = 2"
         let max_trip_legs = 2;
         let (mam, mfm, state_model, mut state) = test_setup(
-            vec![MultimodalConstraintConstraint::MaxTripLegs(1)],
+            vec![Constraint::MaxTripLegs(1)],
             "walk",
             &["walk", "bike"],
             &[],
@@ -189,7 +183,7 @@ mod test {
         // testing validitity of a state with two legs using constraint "max trip legs = 1"
         let max_trip_legs = 2;
         let (mam, mfm, state_model, mut state) = test_setup(
-            vec![MultimodalConstraintConstraint::MaxTripLegs(1)],
+            vec![Constraint::MaxTripLegs(1)],
             "walk",
             &["walk", "bike"],
             &[],
@@ -219,7 +213,7 @@ mod test {
         // our constraint is walk<=2, drive<=1. since this new edge has walk-mode, it will not increase the
         // number of trip legs, so it should be valid.
         let max_trip_legs = 5;
-        let mode_constraint = MultimodalConstraintConstraint::ModeCounts(HashMap::from([
+        let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 2),
             ("drive".to_string(), 1),
         ]));
@@ -260,7 +254,7 @@ mod test {
         // our constraint is walk<=2, drive<=1. since this new edge has drive-mode, it will increase the
         // number of trip legs, so it should be invalid.
         let max_trip_legs = 5;
-        let mode_constraint = MultimodalConstraintConstraint::ModeCounts(HashMap::from([
+        let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 2),
             ("drive".to_string(), 1),
         ]));
@@ -292,10 +286,8 @@ mod test {
     fn test_valid_allowed_modes() {
         // testing validitity of traversing a "walk" edge when the constraint allows only
         // "walk" and "transit" modes. this should be valid.
-        let mode_constraint = MultimodalConstraintConstraint::AllowedModes(HashSet::from([
-            "walk".to_string(),
-            "transit".to_string(),
-        ]));
+        let mode_constraint =
+            Constraint::AllowedModes(HashSet::from(["walk".to_string(), "transit".to_string()]));
         let max_trip_legs = 3;
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -332,10 +324,8 @@ mod test {
     fn test_invalid_allowed_modes() {
         // testing validitity of traversing a "drive" edge when the constraint allows only
         // "walk" and "transit" modes. this should be invalid.
-        let mode_constraint = MultimodalConstraintConstraint::AllowedModes(HashSet::from([
-            "walk".to_string(),
-            "transit".to_string(),
-        ]));
+        let mode_constraint =
+            Constraint::AllowedModes(HashSet::from(["walk".to_string(), "transit".to_string()]));
         let max_trip_legs = 4;
         let (mtm, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -371,7 +361,7 @@ mod test {
             "transit".to_string(),
             "walk".to_string(),
         ]);
-        let mode_constraint = MultimodalConstraintConstraint::ExactSequences(trie);
+        let mode_constraint = Constraint::ExactSequences(trie);
         let max_trip_legs = 3;
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -406,7 +396,7 @@ mod test {
             "transit".to_string(),
             "walk".to_string(),
         ]);
-        let mode_constraint = MultimodalConstraintConstraint::ExactSequences(trie);
+        let mode_constraint = Constraint::ExactSequences(trie);
         let max_trip_legs = 3;
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -445,7 +435,7 @@ mod test {
         // is NOT a matching subsequence. should be invalid.
         let mut trie = SubSequenceTrie::new();
         trie.insert_sequence(vec!["walk".to_string(), "transit".to_string()]);
-        let mode_constraint = MultimodalConstraintConstraint::ExactSequences(trie);
+        let mode_constraint = Constraint::ExactSequences(trie);
         let max_trip_legs = 3;
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -475,7 +465,7 @@ mod test {
 
     /// helper function to set up MultimodalConstraintModel test case assets
     fn test_setup(
-        constraints: Vec<MultimodalConstraintConstraint>,
+        constraints: Vec<Constraint>,
         this_mode: &str,
         modes: &[&str],
         route_ids: &[&str],
@@ -525,7 +515,7 @@ mod test {
         // Test with max_trip_legs = 0 - empty state should be valid since it has 0 legs
         let max_trip_legs = 1;
         let (mam, mfm, state_model, state) = test_setup(
-            vec![MultimodalConstraintConstraint::MaxTripLegs(0)],
+            vec![Constraint::MaxTripLegs(0)],
             "walk",
             &["walk"],
             &[],
@@ -542,7 +532,7 @@ mod test {
     #[test]
     fn test_mode_counts_zero_limit() {
         // Test mode count constraint with 0 limit for a mode
-        let mode_constraint = MultimodalConstraintConstraint::ModeCounts(HashMap::from([
+        let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 0),
             ("bike".to_string(), 1),
         ]));
@@ -566,7 +556,7 @@ mod test {
     #[test]
     fn test_mode_counts_mode_not_in_limits() {
         // Test edge for a mode that's not mentioned in the limits (should be invalid)
-        let mode_constraint = MultimodalConstraintConstraint::ModeCounts(HashMap::from([
+        let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 2),
             ("bike".to_string(), 1),
         ]));
@@ -590,8 +580,7 @@ mod test {
     #[test]
     fn test_mode_counts_same_mode_continuation() {
         // Test that continuing with the same mode doesn't increment the count
-        let mode_constraint =
-            MultimodalConstraintConstraint::ModeCounts(HashMap::from([("walk".to_string(), 1)]));
+        let mode_constraint = Constraint::ModeCounts(HashMap::from([("walk".to_string(), 1)]));
         let max_trip_legs = 2;
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -620,7 +609,7 @@ mod test {
     #[test]
     fn test_allowed_modes_empty_set() {
         // Test with empty allowed modes set (should reject all modes)
-        let mode_constraint = MultimodalConstraintConstraint::AllowedModes(HashSet::new());
+        let mode_constraint = Constraint::AllowedModes(HashSet::new());
         let max_trip_legs = 2;
         let modes = [
             "walk", "bike", "drive", "tnc", "transit", "eBike", "eVTOL", "airplane", "ferry",
@@ -646,7 +635,7 @@ mod test {
     #[test]
     fn test_allowed_modes_case_sensitivity() {
         // Test that mode matching is case-sensitive
-        let mode_constraint = MultimodalConstraintConstraint::AllowedModes(HashSet::from([
+        let mode_constraint = Constraint::AllowedModes(HashSet::from([
             "Walk".to_string(), // Note capital W
         ]));
         let max_trip_legs = 2;
@@ -671,7 +660,7 @@ mod test {
         let mut trie = SubSequenceTrie::new();
         trie.insert_sequence(vec!["walk".to_string(), "transit".to_string()]);
         trie.insert_sequence(vec!["bike".to_string(), "walk".to_string()]);
-        let mode_constraint = MultimodalConstraintConstraint::ExactSequences(trie);
+        let mode_constraint = Constraint::ExactSequences(trie);
         let max_trip_legs = 3;
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -701,7 +690,7 @@ mod test {
     fn test_exact_sequences_empty_trie() {
         // Test with empty trie (should reject all sequences)
         let trie = SubSequenceTrie::new();
-        let mode_constraint = MultimodalConstraintConstraint::ExactSequences(trie);
+        let mode_constraint = Constraint::ExactSequences(trie);
         let max_trip_legs = 2;
         let (mam, mfm, state_model, state) = test_setup(
             vec![mode_constraint],
@@ -728,7 +717,7 @@ mod test {
             "bike".to_string(),
             "walk".to_string(),
         ]);
-        let mode_constraint = MultimodalConstraintConstraint::ExactSequences(trie);
+        let mode_constraint = Constraint::ExactSequences(trie);
         let max_trip_legs = 5;
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
@@ -759,12 +748,9 @@ mod test {
         // Test with multiple constraints where all should pass
         let max_trip_legs = 3;
         let constraints = vec![
-            MultimodalConstraintConstraint::MaxTripLegs(2),
-            MultimodalConstraintConstraint::AllowedModes(HashSet::from([
-                "walk".to_string(),
-                "bike".to_string(),
-            ])),
-            MultimodalConstraintConstraint::ModeCounts(HashMap::from([
+            Constraint::MaxTripLegs(2),
+            Constraint::AllowedModes(HashSet::from(["walk".to_string(), "bike".to_string()])),
+            Constraint::ModeCounts(HashMap::from([
                 ("walk".to_string(), 2),
                 ("bike".to_string(), 1),
             ])),
@@ -792,8 +778,8 @@ mod test {
         // Test with multiple constraints where one should fail
         let max_trip_legs = 3;
         let constraints = vec![
-            MultimodalConstraintConstraint::MaxTripLegs(2),
-            MultimodalConstraintConstraint::AllowedModes(HashSet::from([
+            Constraint::MaxTripLegs(2),
+            Constraint::AllowedModes(HashSet::from([
                 "walk".to_string(), // bike not allowed
             ])),
         ];
@@ -819,7 +805,7 @@ mod test {
     fn test_large_mode_sequence() {
         // Test with a large number of trip legs to ensure performance
         let max_trip_legs = 100;
-        let mode_constraint = MultimodalConstraintConstraint::ModeCounts(HashMap::from([
+        let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 25), // Lower limit to trigger the constraint
             ("bike".to_string(), 25),
         ]));
@@ -856,7 +842,7 @@ mod test {
         // Test transition from valid state to invalid state when adding a new mode
         let max_trip_legs = 1;
         let (bike_mtm, bike_mfm, state_model, mut state) = test_setup(
-            vec![MultimodalConstraintConstraint::MaxTripLegs(1)],
+            vec![Constraint::MaxTripLegs(1)],
             "bike",
             &["walk", "bike"],
             &[],
@@ -890,9 +876,7 @@ mod test {
         let constraint_limit = 1; // But we only allow 1 leg
 
         let (bike_mtm, bike_mfm, state_model, mut state) = test_setup(
-            vec![MultimodalConstraintConstraint::MaxTripLegs(
-                constraint_limit,
-            )],
+            vec![Constraint::MaxTripLegs(constraint_limit)],
             "bike", // ConstraintModel for bike edges
             &["walk", "bike"],
             &[],

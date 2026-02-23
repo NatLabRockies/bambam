@@ -5,7 +5,7 @@ use std::num::NonZeroU64;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
-pub enum MultimodalConstraintConstraintConfig {
+pub enum ConstraintConfig {
     AllowedModes {
         allowed_modes: Vec<String>,
     },

@@ -24,7 +24,7 @@ use crate::{
     app::gtfs_config::gtfs_config_error::GtfsConfigError,
     model::{
         constraint::{
-            multimodal::{MultimodalConstraintConfig, MultimodalConstraintConstraintConfig},
+            multimodal::{MultimodalConstraintConfig, ConstraintConfig},
             time_limit::{TimeLimitConfig, TimeLimitConstraintConfig},
         },
         traversal::{
@@ -426,7 +426,7 @@ pub fn gtfs_traversal_model_config(
 
 /// generates the JSON fields expected for a transit frontier model
 pub fn gtfs_frontier_model_config(
-    constraints: &[MultimodalConstraintConstraintConfig],
+    constraints: &[ConstraintConfig],
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
