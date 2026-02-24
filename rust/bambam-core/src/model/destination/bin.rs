@@ -5,7 +5,6 @@ use routee_compass_core::model::{
 };
 use serde::{Deserialize, Serialize};
 
-
 /// configure a set of bins for aggregate isochrone/opportunity models
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BinsConfig {
@@ -21,7 +20,7 @@ pub enum BinType {
         /// state model feature name to test with
         feature: String,
         /// values to use when constructing the bins
-        values: Vec<f64>,
+        values: Vec<u64>,
         /// unit of values
         unit: DistanceUnit,
     },
@@ -29,7 +28,7 @@ pub enum BinType {
         /// state model feature name to test with
         feature: String,
         /// values to use when constructing the bins
-        values: Vec<f64>,
+        values: Vec<u64>,
         /// unit of values
         unit: TimeUnit,
     },
@@ -37,7 +36,7 @@ pub enum BinType {
         /// state model feature name to test with
         feature: String,
         /// values to use when constructing the bins
-        values: Vec<f64>,
+        values: Vec<u64>,
         /// unit of values
         unit: EnergyUnit,
     },
@@ -45,7 +44,7 @@ pub enum BinType {
         /// state model feature name to test with
         feature: String,
         /// values to use when constructing the bins
-        values: Vec<f64>,
+        values: Vec<u64>,
         /// unit of values
         unit: CustomVariableType,
     },
@@ -87,6 +86,20 @@ pub enum Bin {
 }
 
 impl BinType {
+    /// true if the bin type has ranges of values or if is is a blanket binning
+    /// modifier that is applied across all ranges.
+    pub fn has_range(&self) -> bool {
+        match self {
+            BinType::Distance { .. } => true,
+            BinType::Time { .. } => true,
+            BinType::Energy { .. } => true,
+            BinType::CustomRange { .. } => true,
+            BinType::Boolean { .. } => false,
+        }
+    }
+
+    /// create the collection of bins from this configuration. each of these bins will capture
+    /// a subset of the destinations.
     pub fn build_bins(&self) -> Vec<Bin> {
         match self {
             BinType::Distance {
@@ -98,8 +111,8 @@ impl BinType {
                 .tuple_windows()
                 .map(|(min, max)| Bin::Distance {
                     feature: feature.to_string(),
-                    min: unit.to_uom(*min),
-                    max: unit.to_uom(*max),
+                    min: unit.to_uom(*min as f64),
+                    max: unit.to_uom(*max as f64),
                 })
                 .collect_vec(),
             BinType::Time {
@@ -111,8 +124,8 @@ impl BinType {
                 .tuple_windows()
                 .map(|(min, max)| Bin::Time {
                     feature: feature.to_string(),
-                    min: unit.to_uom(*min),
-                    max: unit.to_uom(*max),
+                    min: unit.to_uom(*min as f64),
+                    max: unit.to_uom(*max as f64),
                 })
                 .collect_vec(),
             BinType::Energy {
@@ -124,8 +137,8 @@ impl BinType {
                 .tuple_windows()
                 .map(|(min, max)| Bin::Energy {
                     feature: feature.to_string(),
-                    min: unit.to_uom(*min),
-                    max: unit.to_uom(*max),
+                    min: unit.to_uom(*min as f64),
+                    max: unit.to_uom(*max as f64),
                 })
                 .collect_vec(),
             BinType::CustomRange {
@@ -141,8 +154,8 @@ impl BinType {
                     .iter()
                     .tuple_windows()
                     .map(|(min, max)| Bin::CustomRange {
-                        min: *min,
-                        max: *max,
+                        min: *min as f64,
+                        max: *max as f64,
                         feature: feature.to_string(),
                         unit: unit.clone(),
                     })
@@ -158,11 +171,24 @@ impl BinType {
 
 impl BinsConfig {
     /// constructs the bins from this configuration.
-    pub fn build(&self) -> Vec<Bin> {
-        self.bin_types
+    pub fn build(&self) -> Result<Vec<Bin>, String> {
+        if self.bin_types.is_empty() {
+            return Err("bin configuration cannot be empty".to_string());
+        }
+        let ranged = self
+            .bin_types
+            .iter()
+            .filter(|b| b.has_range())
+            .collect_vec();
+        if ranged.len() > 1 {
+            return Err("multiple ranged bin types cannot be used simultaneously".to_string());
+        }
+        let result = self
+            .bin_types
             .iter()
             .flat_map(|b| b.build_bins())
-            .collect_vec()
+            .collect_vec();
+        Ok(result)
     }
 }
 
