@@ -1,12 +1,10 @@
 use itertools::Itertools;
-use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::model::{
     state::{CustomVariableType, StateModel, StateModelError, StateVariable},
     unit::{DistanceUnit, EnergyUnit, TimeUnit},
 };
 use serde::{Deserialize, Serialize};
 
-use super::bin;
 
 /// configure a set of bins for aggregate isochrone/opportunity models
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -71,7 +71,7 @@ pub fn apply_predicate<'a>(
 pub fn points_along_linestring(
     linestring: &LineString<f32>,
     stride: &Length,
-    distance_unit: &DistanceUnit,
+    _distance_unit: &DistanceUnit,
 ) -> Result<Vec<Point<f32>>, String> {
     let length: Length =
         Length::new::<uom::si::length::meter>(linestring.length(&Haversine) as f64);
