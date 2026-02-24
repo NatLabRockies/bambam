@@ -14,7 +14,7 @@ inventory = { workspace = true }
 
 itertools = { workspace = true }
 
-pyo3 = { version = "0.27.1", features = ["extension-module", "serde"] }
+pyo3 = { version = "0.28.0", features = ["extension-module", "serde"] }
 routee-compass = { workspace = true }
 routee-compass-core = { workspace = true }
 routee-compass-macros = { workspace = true }

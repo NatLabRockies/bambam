@@ -78,6 +78,8 @@ impl TryFrom<OvertureRecord> for TransportationSegmentRecord {
 }
 
 impl TransportationSegmentRecord {
+    /// retrieve geometry mapped to linestring variant. returns Err if geometry is empty or
+    /// if it is not a linestring
     pub fn get_linestring(&self) -> Result<&LineString<f32>, OvertureMapsCollectionError> {
         let geometry = self.geometry.as_ref().ok_or_else(|| {
             OvertureMapsCollectionError::InvalidGeometry("empty geometry".to_string())
@@ -259,7 +261,7 @@ impl fmt::Display for SegmentSubclass {
 }
 
 /// Fully qualified segment type including type, class and subclass. E.g. road-service-driveway
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SegmentFullType(SegmentSubtype, SegmentClass, Option<SegmentSubclass>);
 
 impl SegmentFullType {
@@ -421,6 +423,18 @@ pub enum SegmentVehicleComparator {
     LessThanEqual,
 }
 
+impl SegmentVehicleComparator {
+    pub fn apply(&self, value: f64, restriction: f64) -> bool {
+        match self {
+            SegmentVehicleComparator::GreaterThan => value > restriction,
+            SegmentVehicleComparator::GreaterThanEqual => value >= restriction,
+            SegmentVehicleComparator::Equal => value == restriction,
+            SegmentVehicleComparator::LessThan => value < restriction,
+            SegmentVehicleComparator::LessThanEqual => value <= restriction,
+        }
+    }
+}
+
 /// units in vehicle restrictions which may be length or weight units.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(untagged)]
@@ -447,11 +461,50 @@ pub enum SegmentLengthUnit {
     Kilometer,
 }
 
+impl SegmentLengthUnit {
+    pub fn to_uom(&self, value: f64) -> uom::si::f64::Length {
+        match self {
+            SegmentLengthUnit::Inches => uom::si::f64::Length::new::<uom::si::length::inch>(value),
+            SegmentLengthUnit::Feet => uom::si::f64::Length::new::<uom::si::length::foot>(value),
+            SegmentLengthUnit::Yard => uom::si::f64::Length::new::<uom::si::length::yard>(value),
+            SegmentLengthUnit::Mile => uom::si::f64::Length::new::<uom::si::length::mile>(value),
+            SegmentLengthUnit::Centimeter => {
+                uom::si::f64::Length::new::<uom::si::length::centimeter>(value)
+            }
+            SegmentLengthUnit::Meter => uom::si::f64::Length::new::<uom::si::length::meter>(value),
+            SegmentLengthUnit::Kilometer => {
+                uom::si::f64::Length::new::<uom::si::length::kilometer>(value)
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(untagged)]
 pub enum SegmentWeightUnit {
     Imperial(SegmentImperialWeightUnit),
     Metric(SegmentMetricWeightUnit),
+}
+
+impl SegmentWeightUnit {
+    pub fn to_uom(&self, value: f64) -> uom::si::f64::Mass {
+        use SegmentImperialWeightUnit as I;
+        use SegmentMetricWeightUnit as M;
+        use SegmentWeightUnit as SWU;
+
+        match self {
+            SWU::Imperial(I::Ounce) => uom::si::f64::Mass::new::<uom::si::mass::ounce>(value),
+            SWU::Imperial(I::Pound) => uom::si::f64::Mass::new::<uom::si::mass::pound>(value),
+            // Couldn't find "Stone" so we use the transformation to Kg
+            SWU::Imperial(I::Stone) => {
+                uom::si::f64::Mass::new::<uom::si::mass::kilogram>(value * 6.350288)
+            }
+            SWU::Imperial(I::LongTon) => uom::si::f64::Mass::new::<uom::si::mass::ton_long>(value),
+            SWU::Metric(M::Kilogram) => uom::si::f64::Mass::new::<uom::si::mass::kilogram>(value),
+            SWU::Metric(M::Gram) => uom::si::f64::Mass::new::<uom::si::mass::gram>(value),
+            SWU::Metric(M::MetricTon) => uom::si::f64::Mass::new::<uom::si::mass::ton>(value),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -625,11 +678,50 @@ impl SegmentAccessRestrictionWhen {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SegmentAccessRestrictionWhenVehicle {
-    dimension: SegmentVehicleDimension,
-    comparison: SegmentVehicleComparator,
-    value: f64,
+    pub dimension: SegmentVehicleDimension,
+    pub comparison: SegmentVehicleComparator,
+    pub value: f64,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    unit: Option<SegmentUnit>,
+    pub unit: Option<SegmentUnit>,
+}
+
+impl SegmentAccessRestrictionWhenVehicle {
+    /// returns true if the when provided would pass the restriction
+    /// based on the comparison logic
+    pub fn is_valid(&self, when: &SegmentAccessRestrictionWhenVehicle) -> bool {
+        use SegmentUnit as SU;
+
+        if when.dimension != self.dimension {
+            return false;
+        }
+
+        match (&self.unit, &when.unit) {
+            (Some(SU::Length(this_unit)), Some(SU::Length(other_unit))) => {
+                let this_value_f64 = this_unit.to_uom(self.value).get::<uom::si::length::meter>();
+                let other_value_f64 = other_unit
+                    .to_uom(when.value)
+                    .get::<uom::si::length::meter>();
+                self.comparison.apply(other_value_f64, this_value_f64)
+            }
+            (Some(SU::Weight(this_unit)), Some(SU::Weight(other_unit))) => {
+                let this_value_f64 = this_unit
+                    .to_uom(self.value)
+                    .get::<uom::si::mass::kilogram>();
+                let other_value_f64 = other_unit
+                    .to_uom(when.value)
+                    .get::<uom::si::mass::kilogram>();
+                self.comparison.apply(other_value_f64, this_value_f64)
+            }
+
+            // Should be handled by the if statement checking the dimension but
+            // just to be sure
+            (Some(SU::Weight(_)), Some(SU::Length(_))) => false,
+            (Some(SU::Length(_)), Some(SU::Weight(_))) => false,
+
+            // If we miss any unit, check the raw values
+            _ => self.comparison.apply(when.value, self.value),
+        }
+    }
 }
 
 /// Describes objects that can be reached by following a transportation
@@ -831,8 +923,8 @@ impl SegmentSpeedLimit {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SpeedLimitWithUnit {
-    value: i32,
-    unit: SegmentSpeedUnit,
+    pub value: i32,
+    pub unit: SegmentSpeedUnit,
 }
 
 impl SpeedLimitWithUnit {

@@ -118,7 +118,7 @@ impl TraversalModel for TransitTraversalModel {
         // get the next departure.
         // in the case that no schedules are found, a sentinel value is returned set
         // far in the future (an "infinity" value). this indicates that this edge should not
-        // have been accepted by the FrontierModel. but at this point, we do not have a
+        // have been accepted by the ConstraintModel. but at this point, we do not have a
         // transit frontier model, so "infinity" must solve the same problem.
         let (next_route, next_departure) = self
             .engine

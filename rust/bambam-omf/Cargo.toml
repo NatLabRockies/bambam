@@ -3,13 +3,14 @@ name = "bambam-omf"
 version = "0.2.3"
 edition = "2021"
 license = "BSD-3-Clause"
+include = ["src/util/bambam-config-omf.toml"]
 exclude = ["test", "**/.DS_Store", "target/"]
 readme = "README.md"
-repository = "https://github.com/NREL/bambam"
+repository = "https://github.com/NatLabRockies/bambam"
 documentation = "https://docs.rs/bambam-omf"
 description = "OvertureMaps Foundation support for The Behavior and Advanced Mobility Big Access Model"
 keywords = [
-    "nrel",
+    "nlr",
     "access-model",
     "accessibility",
     "multimodal",
@@ -36,6 +37,7 @@ geozero = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
+indexmap = { workspace = true }
 log = { workspace = true }
 object_store = { workspace = true }
 opening-hours-syntax = { workspace = true }
@@ -52,6 +54,7 @@ serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+toml = { workspace = true }
 uom = { workspace = true }
 wkb = { workspace = true }
 wkt = { workspace = true }

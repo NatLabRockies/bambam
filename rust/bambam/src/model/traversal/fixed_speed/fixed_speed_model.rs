@@ -1,4 +1,5 @@
-use crate::model::{bambam_state, traversal::fixed_speed::FixedSpeedConfig};
+use crate::model::traversal::fixed_speed::FixedSpeedConfig;
+use bambam_core::model::bambam_state;
 use chrono::format::Fixed;
 use routee_compass_core::{
     algorithm::search::SearchTree,

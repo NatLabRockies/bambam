@@ -23,9 +23,9 @@ use serde_json::json;
 use crate::{
     app::gtfs_config::gtfs_config_error::GtfsConfigError,
     model::{
-        frontier::{
-            multimodal::{MultimodalFrontierConfig, MultimodalFrontierConstraintConfig},
-            time_limit::{TimeLimitConfig, TimeLimitFrontierConfig},
+        constraint::{
+            multimodal::{ConstraintConfig, MultimodalConstraintConfig},
+            time_limit::{TimeLimitConfig, TimeLimitConstraintConfig},
         },
         traversal::{
             multimodal::MultimodalTraversalConfig,
@@ -180,7 +180,7 @@ pub fn run(
             &fq_route_ids_filepath,
             max_trip_legs,
         );
-        let fm_conf = gtfs_frontier_model_config(
+        let cm_conf = gtfs_frontier_model_config(
             &constraints,
             &time_limit,
             &available_modes,
@@ -189,7 +189,7 @@ pub fn run(
         );
         conf_search.push(SearchConfig {
             traversal: tm_conf,
-            frontier: fm_conf,
+            constraint: cm_conf,
         });
     }
 
@@ -267,19 +267,19 @@ fn write_fq_route_id_file(
 }
 
 /// grabs frontier configuration to copy to GTFS edge lists. assumes that, if there exist
-/// one copy of MultimodalFrontierConfig and TimeLimitFrontierConfig, they are the same
+/// one copy of MultimodalConstraintConfig and TimeLimitConstraintConfig, they are the same
 /// across all edge lists.
 pub fn get_frontier_model_arguments(
     base_conf: &CompassAppConfig,
-) -> Result<(MultimodalFrontierConfig, TimeLimitFrontierConfig), GtfsConfigError> {
+) -> Result<(MultimodalConstraintConfig, TimeLimitConstraintConfig), GtfsConfigError> {
     if let Some((edge_list_id, search)) = base_conf.search.iter().enumerate().next() {
-        let models = search.frontier.get("models").ok_or_else(|| GtfsConfigError::RunError(format!("key 'models' missing from traversal model configuration in edge list {edge_list_id}")))?;
+        let models = search.constraint.get("models").ok_or_else(|| GtfsConfigError::RunError(format!("key 'models' missing from traversal model configuration in edge list {edge_list_id}")))?;
         let models_vec = models.as_array().ok_or_else(|| {
             GtfsConfigError::RunError(format!(
                 "traversal model key 'models' in edge list {edge_list_id} is not an array"
             ))
         })?;
-        let mmfc: MultimodalFrontierConfig = find_expected_config(
+        let mmfc: MultimodalConstraintConfig = find_expected_config(
             models_vec,
             EdgeListId(edge_list_id),
             "multimodal",
@@ -287,7 +287,7 @@ pub fn get_frontier_model_arguments(
         .map_err(|e| {
             GtfsConfigError::RunError(format!("while getting frontier model arguments, {e}"))
         })?;
-        let tlfc: TimeLimitFrontierConfig = find_expected_config(
+        let tlfc: TimeLimitConstraintConfig = find_expected_config(
             models_vec,
             EdgeListId(edge_list_id),
             "time_limit",
@@ -426,7 +426,7 @@ pub fn gtfs_traversal_model_config(
 
 /// generates the JSON fields expected for a transit frontier model
 pub fn gtfs_frontier_model_config(
-    constraints: &[MultimodalFrontierConstraintConfig],
+    constraints: &[ConstraintConfig],
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
@@ -447,7 +447,7 @@ pub fn gtfs_frontier_model_config(
                 "max_trip_legs": max_trip_legs as u64
             }
             // // it would be great to use this directly but we need to include the "type" tag in a custom serializer
-            // MultimodalFrontierConfig {
+            // MultimodalConstraintConfig {
             //     this_mode: "transit".to_string(),
             //     constraints: constraints.to_vec(),
             //     available_modes: available_modes.to_vec(),

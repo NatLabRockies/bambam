@@ -39,5 +39,10 @@
         { "type": "access_mode", "modes": ["motor_vehicle", "car", "truck", "motorcycle"] }
       ]
     }
-  ]
+  ],
+  "island_algorithm_configuration": {
+    "min_distance": 2,
+    "distance_unit": "miles",
+    "parallel_execution": false
+  }
 }

@@ -1,18 +1,26 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 use super::serialize_ops as ops;
 use crate::{
-    app::network::NetworkEdgeListConfiguration,
+    app::network::{IslandDetectionAlgorithmConfiguration, NetworkEdgeListConfiguration},
     collection::{
         record::SegmentHeading, OvertureMapsCollectionError, SegmentAccessRestrictionWhen,
         SegmentFullType, TransportationCollection, TransportationSegmentRecord,
     },
-    graph::{segment_ops, vertex_serializable::VertexSerializable},
+    graph::{
+        component_algorithm::island_detection_algorithm, segment_ops,
+        serialize_ops::clean_omf_edge_list, vertex_serializable::VertexSerializable,
+        OmfGraphSummary,
+    },
 };
 use geo::LineString;
+use itertools::Itertools;
 use kdam::tqdm;
 use rayon::prelude::*;
-use routee_compass_core::model::network::{EdgeConfig, EdgeList, EdgeListId, Vertex};
+use routee_compass_core::model::network::{EdgeConfig, EdgeId, EdgeList, EdgeListId, Vertex};
 use wkt::ToWkt;
 
 pub const COMPASS_VERTEX_FILENAME: &str = "vertices-compass.csv.gz";
@@ -21,7 +29,10 @@ pub const GEOMETRIES_FILENAME: &str = "edges-geometries-enumerated.txt.gz";
 pub const SPEEDS_FILENAME: &str = "edges-speeds-mph-enumerated.txt.gz";
 pub const CLASSES_FILENAME: &str = "edges-classes-enumerated.txt.gz";
 pub const SPEED_MAPPING_FILENAME: &str = "edges-classes-speed-mapping.csv.gz";
+pub const OMF_SEGMENT_IDS_FILENAME: &str = "edges-omf-segment-ids.csv.gz";
+pub const OMF_CONNECTOR_IDS_FILENAME: &str = "vertices-omf-connector-ids.txt.gz";
 pub const BEARINGS_FILENAME: &str = "edges-bearings-enumerated.txt.gz";
+pub const GLOBAL_AVG_SPEED_KEY: &str = "_global_";
 
 pub struct OmfGraphVectorized {
     pub vertices: Vec<Vertex>,
@@ -32,12 +43,14 @@ pub struct OmfGraphVectorized {
 }
 
 pub struct OmfEdgeList {
+    pub edge_list_id: EdgeListId,
     pub edges: EdgeList,
     pub geometries: Vec<LineString<f32>>,
     pub classes: Vec<SegmentFullType>,
     pub speeds: Vec<f64>,
     pub speed_lookup: HashMap<String, f64>,
     pub bearings: Vec<f64>,
+    pub omf_segment_ids: Vec<(String, f64)>,
 }
 
 impl OmfGraphVectorized {
@@ -45,6 +58,7 @@ impl OmfGraphVectorized {
     pub fn new(
         collection: &TransportationCollection,
         configuration: &[NetworkEdgeListConfiguration],
+        island_detection_configuration: Option<IslandDetectionAlgorithmConfiguration>,
     ) -> Result<Self, OvertureMapsCollectionError> {
         // process all connectors into vertices
         let (mut vertices, mut vertex_lookup) =
@@ -119,6 +133,9 @@ impl OmfGraphVectorized {
             let global_speed =
                 ops::get_global_average_speed(&speeds, &segments, &segment_lookup, &splits)?;
 
+            // omf ids
+            let omf_segment_ids = ops::get_segment_omf_ids(&segments, &segment_lookup, &splits)?;
+
             // match speeds according to classes
             let speeds = speeds
                 .into_par_iter()
@@ -139,18 +156,63 @@ impl OmfGraphVectorized {
                 .iter()
                 .map(|(&k, v)| (k.as_str(), *v))
                 .collect::<HashMap<String, f64>>();
-            speed_lookup.insert(String::from("_global_"), global_speed);
+            speed_lookup.insert(String::from(GLOBAL_AVG_SPEED_KEY), global_speed);
 
             let edge_list = OmfEdgeList {
+                edge_list_id,
                 edges: EdgeList(edges.into_boxed_slice()),
                 geometries,
                 classes,
                 speeds,
                 speed_lookup,
                 bearings,
+                omf_segment_ids,
             };
             edge_lists.push(edge_list);
         }
+
+        // Compute islands in resulting edge lists and remove island edges
+        if let Some(algorithm_config) = island_detection_configuration {
+            let ref_edge_lists = edge_lists
+                .iter()
+                .map(|e| &e.edges)
+                .collect::<Vec<&EdgeList>>();
+            let island_edges = island_detection_algorithm(
+                &ref_edge_lists,
+                &vertices,
+                algorithm_config.min_distance,
+                algorithm_config.distance_unit,
+                algorithm_config.parallel_execution,
+            )?;
+
+            // Refactor Vec into Hashmap
+            let mut edges_lookup: HashMap<EdgeListId, Vec<EdgeId>> = HashMap::new();
+            for (a, b) in island_edges {
+                edges_lookup.entry(a).or_default().push(b);
+            }
+
+            // Clean the edge lists
+            edge_lists = edge_lists
+                .into_iter()
+                .map(|omf_list| {
+                    let empty_vec = vec![];
+                    let edges_to_remove: HashSet<&EdgeId> = edges_lookup
+                        .get(&omf_list.edge_list_id)
+                        .unwrap_or(&empty_vec)
+                        .iter()
+                        .collect();
+
+                    let mask = omf_list
+                        .edges
+                        .0
+                        .iter()
+                        .map(|edge| !edges_to_remove.contains(&edge.edge_id))
+                        .collect::<Vec<bool>>();
+
+                    clean_omf_edge_list(omf_list, mask)
+                })
+                .collect::<Vec<OmfEdgeList>>();
+        };
 
         let result = Self {
             vertices,
@@ -165,17 +227,26 @@ impl OmfGraphVectorized {
     /// write the graph to disk in vectorized Compass format.
     pub fn write_compass(
         &self,
+        summary: &OmfGraphSummary,
         output_directory: &Path,
         overwrite: bool,
+        export_omf_ids: bool,
     ) -> Result<(), OvertureMapsCollectionError> {
         kdam::term::init(false);
         kdam::term::hide_cursor().map_err(|e| {
             OvertureMapsCollectionError::InternalError(format!("progress bar error: {e}"))
         })?;
+
         // create output directory if missing
         crate::util::fs::create_dirs(output_directory)?;
         use crate::util::fs::serialize_into_csv;
         use crate::util::fs::serialize_into_enumerated_txt;
+
+        // write the TOML summary file
+        write_summary(output_directory, summary)?;
+
+        // copy default configuration file into the output directory
+        crate::util::fs::copy_default_config(output_directory)?;
 
         // write vertices
         serialize_into_csv(
@@ -185,6 +256,25 @@ impl OmfGraphVectorized {
             overwrite,
             "write vertex dataset",
         )?;
+
+        // reversing the vertex lookup to get the connector id of each vertex
+        if export_omf_ids {
+            let connectors_omf_ids = self
+                .vertex_lookup
+                .iter()
+                .sorted_by_key(|(_, v)| *v)
+                .map(|(k, _)| k.clone())
+                .collect::<Vec<String>>();
+
+            // Write connector OMF IDs
+            serialize_into_enumerated_txt(
+                &connectors_omf_ids,
+                OMF_CONNECTOR_IDS_FILENAME,
+                output_directory,
+                overwrite,
+                "write connector OMF ids",
+            )?;
+        }
 
         // write each edge list
         let edge_list_iter = tqdm!(
@@ -259,6 +349,17 @@ impl OmfGraphVectorized {
                 overwrite,
                 "write bearings",
             )?;
+
+            // Write OMF ids
+            if export_omf_ids {
+                serialize_into_csv(
+                    &edge_list.omf_segment_ids,
+                    OMF_SEGMENT_IDS_FILENAME,
+                    &mode_dir,
+                    overwrite,
+                    "write omf ids",
+                )?;
+            }
         }
         eprintln!();
 
@@ -268,4 +369,20 @@ impl OmfGraphVectorized {
 
         Ok(())
     }
+}
+
+fn write_summary(
+    output_directory: &Path,
+    summary: &OmfGraphSummary,
+) -> Result<(), OvertureMapsCollectionError> {
+    let summary_toml = toml::to_string_pretty(&summary).map_err(|e| {
+        OvertureMapsCollectionError::InternalError(format!("failure serializing summary TOML: {e}"))
+    })?;
+    let summary_path = output_directory.join("summary.toml");
+    std::fs::write(&summary_path, &summary_toml).map_err(|e| {
+        OvertureMapsCollectionError::WriteError {
+            path: summary_path,
+            message: e.to_string(),
+        }
+    })
 }
