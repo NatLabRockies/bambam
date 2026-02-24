@@ -7,7 +7,7 @@ use chrono::NaiveDateTime;
 use geo::Geometry;
 use kdam::BarBuilder;
 use routee_compass_core::{
-    model::{frontier::FrontierModelError, network::Vertex, traversal::TraversalModelError},
+    model::{constraint::ConstraintModelError, network::Vertex, traversal::TraversalModelError},
     util::{fs::read_utils, geo::PolygonalRTree},
 };
 
@@ -22,10 +22,10 @@ impl ZoneLookup {
         &self,
         src_zone_id: &ZoneId,
         current_time: &NaiveDateTime,
-    ) -> Result<bool, FrontierModelError> {
+    ) -> Result<bool, ConstraintModelError> {
         self.graph
             .valid_departure(src_zone_id, current_time)
-            .map_err(|e| FrontierModelError::FrontierModelError(e.to_string()))
+            .map_err(|e| ConstraintModelError::ConstraintModelError(e.to_string()))
     }
 
     /// is it valid to end a trip that began at the src zone and reached this dst zone
