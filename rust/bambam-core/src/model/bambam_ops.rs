@@ -28,28 +28,42 @@ pub fn collect_destinations<'a>(
     time_bin: Option<&'a TimeBin>,
     state_model: &'a StateModel,
 ) -> DestinationsIter<'a> {
-    match search_result.trees.first() {
-        None => Box::new(std::iter::empty()),
-        Some(tree) => {
-            let tree_destinations =
-                tree.iter()
-                    .filter_map(move |(label, branch)| match branch.incoming_edge() {
-                        None => None,
-                        Some(et) => {
-                            let result_state = &et.result_state;
-                            let within_bin = match &time_bin {
-                                Some(bin) => bin.state_time_within_bin(result_state, state_model),
-                                None => Ok(true),
-                            };
-                            match within_bin {
-                                Ok(true) => Some(Ok((label.clone(), branch))),
-                                Ok(false) => None,
-                                Err(e) => Some(Err(e)),
-                            }
-                        }
-                    });
+    let tree = match search_result.trees.first() {
+        None => return Box::new(std::iter::empty()),
+        Some(t) => t,
+    };
 
-            Box::new(tree_destinations)
+    let tree_destinations = tree
+        .iter()
+        .filter_map(move |(label, branch)| apply_predicate(label, branch, time_bin, state_model));
+
+    Box::new(tree_destinations)
+}
+
+/// apply the destinations predicate to this label/branch combination. designed
+/// to be run from within a FilterMap call. returns
+/// - None if the destination should be ignored
+/// - Some(Ok(_)) if the destination is valid
+/// - Some(Err(_)) if we encountered an error
+pub fn apply_predicate<'a>(
+    label: &Label,
+    branch: &'a SearchTreeNode,
+    time_bin: Option<&'a TimeBin>,
+    state_model: &'a StateModel,
+) -> Option<Result<(Label, &'a SearchTreeNode), StateModelError>> {
+    match branch.incoming_edge() {
+        None => None,
+        Some(et) => {
+            let result_state = &et.result_state;
+            let within_bin = match &time_bin {
+                Some(bin) => bin.state_time_within_bin(result_state, state_model),
+                None => Ok(true),
+            };
+            match within_bin {
+                Ok(true) => Some(Ok((label.clone(), branch))),
+                Ok(false) => None,
+                Err(e) => Some(Err(e)),
+            }
         }
     }
 }
@@ -57,7 +71,7 @@ pub fn collect_destinations<'a>(
 pub fn points_along_linestring(
     linestring: &LineString<f32>,
     stride: &Length,
-    _distance_unit: &DistanceUnit,
+    distance_unit: &DistanceUnit,
 ) -> Result<Vec<Point<f32>>, String> {
     let length: Length =
         Length::new::<uom::si::length::meter>(linestring.length(&Haversine) as f64);

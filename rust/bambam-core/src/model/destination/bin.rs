@@ -6,7 +6,7 @@ use routee_compass_core::model::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::model::common::destination::bin;
+use super::bin;
 
 /// configure a set of bins for aggregate isochrone/opportunity models
 #[derive(Serialize, Deserialize, Debug, Clone)]

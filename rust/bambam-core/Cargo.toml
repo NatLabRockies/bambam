@@ -19,6 +19,7 @@ categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
 itertools = { workspace = true }
+log = { workspace = true }
 routee-compass = { workspace = true }
 routee-compass-core = { workspace = true }
 routee-compass-powertrain = { workspace = true }
