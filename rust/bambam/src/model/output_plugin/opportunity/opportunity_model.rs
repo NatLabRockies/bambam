@@ -1,9 +1,9 @@
-use super::{
-    opportunity_orientation::OpportunityOrientation, opportunity_spatial_row::OpportunitySpatialRow,
-};
-use crate::model::bambam_ops::DestinationsIter;
-use crate::model::output_plugin::opportunity::{
-    opportunity_row_id::OpportunityRowId, DestinationOpportunity,
+use super::opportunity_spatial_row::OpportunitySpatialRow;
+use bambam_core::model::{
+    bambam_ops::DestinationsIter,
+    output_plugin::opportunity::{
+        DestinationOpportunity, OpportunityOrientation, OpportunityRowId,
+    },
 };
 use geo::Convert;
 use itertools::Itertools;

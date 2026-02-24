@@ -1,7 +1,7 @@
 use crate::model::output_plugin::opportunity::OpportunityPluginConfig;
 
 use super::{
-    opportunity_format::OpportunityFormat, opportunity_model_config::OpportunityModelConfig,
+    opportunity_model_config::OpportunityModelConfig,
     opportunity_output_plugin::OpportunityOutputPlugin,
 };
 use routee_compass::{

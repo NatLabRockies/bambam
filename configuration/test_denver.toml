@@ -72,9 +72,10 @@ vertex_list_input_file = "../denver_co/vertices-compass.csv.gz"
 [mapping]
 type = "edge"
 geometry = { input_file = "../denver_co/edges-geometries-enumerated.txt.gz" }
-tolerance.distance = 15.0
-tolerance.unit = "meters"
-queries_without_destinations = false
+# avg edge length of h3 resolution 8. see <https://h3geo.org/docs/core-library/restable/#edge-lengths>
+tolerance.distance = 0.531414010
+tolerance.unit = "kilometers"
+queries_without_destinations = true
 matching_type = ["point", "vertex_id", "edge_id"]
 
 [algorithm]

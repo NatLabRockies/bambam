@@ -1,4 +1,4 @@
-use crate::model::TimeBin;
+use bambam_core::model::TimeBin;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
