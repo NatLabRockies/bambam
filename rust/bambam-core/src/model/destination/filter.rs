@@ -79,7 +79,7 @@ impl DestinationPredicate {
     ) -> Result<bool, DestinationError> {
         match self {
             DestinationPredicate::Boolean { feature, negate } => {
-                let variable = state_model.get_custom_bool(state, &feature).map_err(|e| {
+                let variable = state_model.get_custom_bool(state, feature).map_err(|e| {
                     DestinationError::StateErrorInPredicate {
                         predicate: self.clone(),
                         error: e,
