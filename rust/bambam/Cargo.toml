@@ -5,11 +5,11 @@ edition = "2021"
 license = "BSD-3-Clause"
 exclude = ["test", "**/.DS_Store", "target/"]
 readme = "README.md"
-repository = "https://github.com/NREL/bambam"
+repository = "https://github.com/NatLabRockies/bambam"
 documentation = "https://docs.rs/bambam"
 description = "The Behavior and Advanced Mobility Big Access Model"
 keywords = [
-    "nrel",
+    "nlr",
     "access-model",
     "accessibility",
     "multimodal",
@@ -18,53 +18,55 @@ keywords = [
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
-bamcensus-core = { workspace = true }
-bamcensus-acs = { workspace = true }
-bamcensus-lehd = { workspace = true }
-bamcensus = { workspace = true }
-routee-compass = { workspace = true }
-routee-compass-core = { workspace = true }
-routee-compass-powertrain = { workspace = true }
-bambam-osm = { version = "0.2.3", path = "../bambam-osm" }
-bambam-omf = { version = "0.2.3", path = "../bambam-omf" }
+bambam-core = { version = "0.2.3", path = "../bambam-core" }
 bambam-gbfs = { version = "0.2.3", path = "../bambam-gbfs" } 
-
-uom = { workspace = true}
-inventory = { workspace = true}
-jsonpath-rust = { workspace = true }
-log = { workspace = true }
-itertools = { workspace = true}
-chrono = { workspace = true}
-skiplist = { workspace = true }
-zip = { workspace = true }
+bambam-gtfs-flex = { version = "0.2.3", path = "../bambam-gtfs-flex" } 
+bambam-omf = { version = "0.2.3", path = "../bambam-omf" }
+bambam-osm = { version = "0.2.3", path = "../bambam-osm" }
+bamcensus = { workspace = true }
+bamcensus-acs = { workspace = true }
+bamcensus-core = { workspace = true }
+bamcensus-lehd = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+config = { workspace = true }
+csv = { workspace = true }
 # rusqlite = { workspace = true}
 
 env_logger = { workspace = true }
-config = { workspace = true }
-thiserror = { workspace = true }
-kdam = { workspace = true }
-clap = { workspace = true }
-regex = { workspace = true }
-
-serde = { workspace = true}
-serde_json = { workspace = true}
-csv = { workspace = true}
 flate2 = { workspace = true }
-toml = { workspace = true }
-
-rstar = { workspace = true}
-geo = { workspace = true}
+geo = { workspace = true }
 geo-traits = { workspace = true }
 geo-types = { workspace = true }
-wkt = { workspace = true}
-wkb = { workspace = true }
-hex = { workspace = true }
-geojson = { workspace = true}
-rand = { workspace = true }
-shapefile = { workspace = true}
-
-h3o = { workspace = true}
+geojson = { workspace = true }
 gtfs-structures = { workspace = true }
 
+h3o = { workspace = true }
+hex = { workspace = true }
+inventory = { workspace = true }
+itertools = { workspace = true }
+jsonpath-rust = { workspace = true }
+kdam = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+
 rayon = { workspace = true }
+regex = { workspace = true }
+routee-compass = { workspace = true }
+routee-compass-core = { workspace = true }
+routee-compass-powertrain = { workspace = true }
+
+rstar = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+shapefile = { workspace = true }
+skiplist = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
+toml = { workspace = true }
+
+uom = { workspace = true }
+wkb = { workspace = true }
+wkt = { workspace = true }
+zip = { workspace = true }

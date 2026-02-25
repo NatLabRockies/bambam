@@ -26,6 +26,9 @@ jobs:
       - name: Run unit tests
         run: cargo test --workspace --manifest-path=rust/Cargo.toml -- --skip test_e2e
 
+      - name: Publish bambam-core
+        run: cargo publish -p bambam-core --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+      
       - name: Publish bambam-osm
         run: cargo publish -p bambam-osm --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
 

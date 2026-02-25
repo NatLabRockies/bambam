@@ -6,15 +6,15 @@ license = "BSD-3-Clause"
 description = "GBFS Extensions for The Behavior and Advanced Mobility Big Access Model"
 
 [dependencies]
+chrono = { workspace = true }
+clap = { workspace = true }
 env_logger = { workspace = true }
+geo = { workspace = true }
+humantime = { workspace = true }
+kdam = { workspace = true }
+log = { workspace = true }
+reqwest = { workspace = true }
 routee-compass-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
-chrono = { workspace = true }
-humantime = { workspace = true }
-log = { workspace = true }
-geo = { workspace = true }
-reqwest = { workspace = true }
-clap = { workspace = true }
-kdam = { workspace = true }

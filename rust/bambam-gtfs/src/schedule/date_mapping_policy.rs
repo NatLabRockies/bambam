@@ -75,7 +75,7 @@ impl TryFrom<&DateMappingPolicyConfig> for DateMappingPolicy {
         match value {
             DateMappingPolicyConfig::ExactDate(date_str) => {
                 let date = NaiveDate::parse_from_str(date_str, APP_DATE_FORMAT).map_err(|e| {
-                    ScheduleError::GtfsAppError(format!(
+                    ScheduleError::GtfsApp(format!(
                         "failure reading date for exact date mapping policy: {e}"
                     ))
                 })?;
@@ -87,13 +87,13 @@ impl TryFrom<&DateMappingPolicyConfig> for DateMappingPolicy {
             } => {
                 let start_date =
                     NaiveDate::parse_from_str(start_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_date for exact range mapping policy: {e}"
                         ))
                     })?;
                 let end_date =
                     NaiveDate::parse_from_str(end_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_date for exact range mapping policy: {e}"
                         ))
                     })?;
@@ -108,7 +108,7 @@ impl TryFrom<&DateMappingPolicyConfig> for DateMappingPolicy {
                 match_weekday,
             } => {
                 let date = NaiveDate::parse_from_str(date, APP_DATE_FORMAT).map_err(|e| {
-                    ScheduleError::GtfsAppError(format!(
+                    ScheduleError::GtfsApp(format!(
                         "failure reading date for nearest date mapping policy: {e}"
                     ))
                 })?;
@@ -126,13 +126,13 @@ impl TryFrom<&DateMappingPolicyConfig> for DateMappingPolicy {
             } => {
                 let start_date =
                     NaiveDate::parse_from_str(start_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_date for nearest range mapping policy: {e}"
                         ))
                     })?;
                 let end_date =
                     NaiveDate::parse_from_str(end_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_date for nearest range mapping policy: {e}"
                         ))
                     })?;
@@ -151,25 +151,25 @@ impl TryFrom<&DateMappingPolicyConfig> for DateMappingPolicy {
             } => {
                 let start_date =
                     NaiveDate::parse_from_str(start_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_date for exact date time range mapping policy: {e}"
                         ))
                     })?;
                 let end_date =
                     NaiveDate::parse_from_str(end_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_date for exact date time range mapping policy: {e}"
                         ))
                     })?;
                 let start_time =
                     NaiveTime::parse_from_str(start_time, APP_TIME_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_time for exact date time range mapping policy: {e}"
                         ))
                     })?;
                 let end_time =
                     NaiveTime::parse_from_str(end_time, APP_TIME_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_time for exact date time range mapping policy: {e}"
                         ))
                     })?;
@@ -190,25 +190,25 @@ impl TryFrom<&DateMappingPolicyConfig> for DateMappingPolicy {
             } => {
                 let start_date = NaiveDate::parse_from_str(start_date, APP_DATE_FORMAT)
                     .map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_date for nearest date time range mapping policy: {e}"
                         ))
                     })?;
                 let end_date = NaiveDate::parse_from_str(end_date, APP_DATE_FORMAT)
                     .map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_date for nearest date time range mapping policy: {e}"
                         ))
                     })?;
                 let start_time =
                     NaiveTime::parse_from_str(start_time, APP_TIME_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_time for nearest date time range mapping policy: {e}"
                         ))
                     })?;
                 let end_time =
                     NaiveTime::parse_from_str(end_time, APP_TIME_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_time for nearest date time range mapping policy: {e}"
                         ))
                     })?;
@@ -230,25 +230,25 @@ impl TryFrom<&DateMappingPolicyConfig> for DateMappingPolicy {
             } => {
                 let start_date =
                     NaiveDate::parse_from_str(start_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_date for best case mapping policy: {e}"
                         ))
                     })?;
                 let end_date =
                     NaiveDate::parse_from_str(end_date, APP_DATE_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_date for best case mapping policy: {e}"
                         ))
                     })?;
                 let start_time =
                     NaiveTime::parse_from_str(start_time, APP_TIME_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading start_time for best case mapping policy: {e}"
                         ))
                     })?;
                 let end_time =
                     NaiveTime::parse_from_str(end_time, APP_TIME_FORMAT).map_err(|e| {
-                        ScheduleError::GtfsAppError(format!(
+                        ScheduleError::GtfsApp(format!(
                             "failure reading end_time for best case mapping policy: {e}"
                         ))
                     })?;
@@ -347,7 +347,7 @@ impl DateMappingPolicy {
                     format!("While attempting to pick nearest date within {date_tolerance} days matching weekday: {e2}."),
                     format!("While attempting to pick nearest date within {date_tolerance} days without matching weekday: {e3}.")
                 ].join("  ");
-                Err(ScheduleError::InvalidDataError(msg))
+                Err(ScheduleError::InvalidData(msg))
             }
         }
     }
@@ -394,7 +394,7 @@ fn pick_exact_date(
     match (c_opt, cd_opt) {
         (None, None) => {
             let msg = format!("cannot pick date with trip_id '{}' as it does not match calendar or calendar dates", trip.trip_id);
-            Err(ScheduleError::MalformedGtfsError(msg))
+            Err(ScheduleError::MalformedGtfs(msg))
         }
         (Some(c), None) => date_ops::find_in_calendar(target, c),
         (None, Some(cd)) => date_ops::confirm_add_exception(target, cd),
@@ -403,14 +403,14 @@ fn pick_exact_date(
                 if date_ops::confirm_no_delete_exception(target, cd) {
                     Ok(*target)
                 } else {
-                    Err(ScheduleError::InvalidDataError(format!(
+                    Err(ScheduleError::InvalidData(format!(
                     "date {} is valid for calendar.txt but has exception of deleted in calendar_dates.txt",
                     target.format(APP_DATE_FORMAT)
                 )))
                 }
             }
             Err(ce) => date_ops::confirm_add_exception(target, cd)
-                .map_err(|e| ScheduleError::InvalidDataError(format!("{ce}, {e}"))),
+                .map_err(|e| ScheduleError::InvalidData(format!("{ce}, {e}"))),
         },
     }
 }
@@ -429,7 +429,7 @@ fn pick_nearest_date(
     match (c_opt, cd_opt) {
         (None, None) => {
             let msg = format!("cannot pick date with trip_id '{}' as it does not match calendar or calendar dates", trip.trip_id);
-            Err(ScheduleError::MalformedGtfsError(msg))
+            Err(ScheduleError::MalformedGtfs(msg))
         }
         (None, Some(cd)) => {
             date_ops::find_nearest_add_exception(target, cd, date_tolerance, match_weekday)
@@ -444,7 +444,7 @@ fn pick_nearest_date(
             )?;
             matches.first().cloned().ok_or_else(|| {
                 let msg = date_ops::error_msg_suffix(target, &c.start_date, &c.end_date);
-                ScheduleError::InvalidDataError(format!(
+                ScheduleError::InvalidData(format!(
                     "could not find nearest (by {date_tolerance} days) date {msg}"
                 ))
             })
@@ -485,7 +485,7 @@ fn pick_nearest_date(
                 .cloned();
 
             min_distance_match.ok_or_else(|| {
-                ScheduleError::InvalidDataError(format!(
+                ScheduleError::InvalidData(format!(
                     "no match found across calendar + calendar_dates {}",
                     date_ops::error_msg_suffix(target, &c.start_date, &c.end_date)
                 ))

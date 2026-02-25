@@ -3,13 +3,14 @@ name = "bambam-omf"
 version = "0.2.3"
 edition = "2021"
 license = "BSD-3-Clause"
+include = ["src/util/bambam-config-omf.toml"]
 exclude = ["test", "**/.DS_Store", "target/"]
 readme = "README.md"
-repository = "https://github.com/NREL/bambam"
+repository = "https://github.com/NatLabRockies/bambam"
 documentation = "https://docs.rs/bambam-omf"
 description = "OvertureMaps Foundation support for The Behavior and Advanced Mobility Big Access Model"
 keywords = [
-    "nrel",
+    "nlr",
     "access-model",
     "accessibility",
     "multimodal",
@@ -18,15 +19,12 @@ keywords = [
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
-bamcensus-core = { workspace = true }
-bamcensus-acs = { workspace = true }
-bamcensus-lehd = { workspace = true }
-bamcensus = { workspace = true }
-routee-compass = { workspace = true }
-routee-compass-core = { workspace = true }
-routee-compass-powertrain = { workspace = true }
 
 arrow = { workspace = true }
+bamcensus = { workspace = true }
+bamcensus-acs = { workspace = true }
+bamcensus-core = { workspace = true }
+bamcensus-lehd = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
@@ -39,18 +37,24 @@ geozero = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
+indexmap = { workspace = true }
 log = { workspace = true }
 object_store = { workspace = true }
-parquet = { workspace = true }
 opening-hours-syntax = { workspace = true }
 ordered-float = { workspace = true }
+parquet = { workspace = true }
 rayon = { workspace = true }
 reqwest = { workspace = true }
+routee-compass = { workspace = true }
+routee-compass-core = { workspace = true }
+routee-compass-powertrain = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 serde_arrow = { workspace = true }
+serde_bytes = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+toml = { workspace = true }
 uom = { workspace = true }
-wkt = { workspace = true }
 wkb = { workspace = true }
+wkt = { workspace = true }

@@ -22,7 +22,7 @@ pub enum Highway {
     SecondaryLink,
     TertiaryLink,
 
-    // special road types (elided except for those expected here: <https://github.nrel.gov/choehne/UrbanMEP/blob/UrbanMEP-SA/scripts/osm_utils.py>)
+    // special road types (elided except for those expected here: <https://github.nlr.gov/choehne/UrbanMEP/blob/UrbanMEP-SA/scripts/osm_utils.py>)
     LivingStreet,
     Service,
     Pedestrian,

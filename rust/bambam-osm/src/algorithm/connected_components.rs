@@ -47,7 +47,7 @@ fn add_undirected_edge(src: &OsmNodeId, dst: &OsmNodeId, g: &mut UndirectedAdjac
 /// * `fwd` - forward traversal segments, the "out-edges" of the nodes
 /// * `rev` - reverse traversal segments, the "in-edges" of the nodes
 /// * `nodes` - the graph nodes included to find components.
-///              this can either be the complete set or a subset.
+///  this can either be the complete set or a subset.
 ///
 /// # Result
 ///

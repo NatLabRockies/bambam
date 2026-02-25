@@ -53,7 +53,7 @@ impl Buffer<f32> for Point<f32> {
 /// * `point` - a WGS84 point with x,y ordering
 /// * `radius` - buffer size, in meters
 /// * `resolution` - number of evenly-space points to place along the new buffer cirumference.
-///                  more points make a better approximation of a circle.
+///  more points make a better approximation of a circle.
 ///
 /// * Returns
 ///

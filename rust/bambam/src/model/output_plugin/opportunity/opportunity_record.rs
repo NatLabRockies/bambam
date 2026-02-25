@@ -1,4 +1,4 @@
-use crate::model::{
+use bambam_core::model::{
     bambam_field, bambam_state, output_plugin::opportunity::OpportunityOrientation, TimeBin,
 };
 use routee_compass::plugin::output::OutputPluginError;

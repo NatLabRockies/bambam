@@ -79,7 +79,7 @@ pub fn find_in_calendar(
         Ok(*target)
     } else {
         let msg = error_msg_suffix(target, start, end);
-        Err(ScheduleError::InvalidDataError(format!(
+        Err(ScheduleError::InvalidData(format!(
             "no calendar.txt dates match {msg}"
         )))
     }
@@ -101,7 +101,7 @@ pub fn confirm_add_exception(
                 "no calendar_dates match target date '{}' with exception_type as 'added'",
                 target.format(APP_DATE_FORMAT),
             );
-            Err(ScheduleError::InvalidDataError(msg))
+            Err(ScheduleError::InvalidData(msg))
         }
     }
 }
@@ -154,7 +154,7 @@ pub fn find_nearest_add_exception(
                 target.format(APP_DATE_FORMAT),
                 mwd_str
             );
-            Err(ScheduleError::InvalidDataError(msg))
+            Err(ScheduleError::InvalidData(msg))
         }
     }
 }
@@ -179,7 +179,7 @@ pub fn step_date(date: NaiveDate, step: i64) -> Result<NaiveDate, ScheduleError>
             step,
             date.format(APP_DATE_FORMAT)
         );
-        ScheduleError::InvalidDataError(msg)
+        ScheduleError::InvalidData(msg)
     })
 }
 
@@ -228,7 +228,7 @@ mod tests {
         let result = step_date(date, 1);
         assert!(result.is_err());
 
-        if let Err(ScheduleError::InvalidDataError(msg)) = result {
+        if let Err(ScheduleError::InvalidData(msg)) = result {
             assert!(msg.contains("failure adding"));
             assert!(msg.contains("bounds error"));
         } else {
@@ -243,7 +243,7 @@ mod tests {
         let result = step_date(date, -1);
         assert!(result.is_err());
 
-        if let Err(ScheduleError::InvalidDataError(msg)) = result {
+        if let Err(ScheduleError::InvalidData(msg)) = result {
             assert!(msg.contains("failure subtracting"));
             assert!(msg.contains("bounds error"));
         } else {
@@ -288,7 +288,7 @@ mod tests {
 
         let result = confirm_add_exception(&target, &calendar_dates);
         assert!(result.is_err());
-        if let Err(ScheduleError::InvalidDataError(msg)) = result {
+        if let Err(ScheduleError::InvalidData(msg)) = result {
             assert!(msg.contains("no calendar_dates match target date"));
             assert!(msg.contains("06-15-2023")); // MM-DD-YYYY format
             assert!(msg.contains("exception_type as 'added'"));
@@ -478,7 +478,7 @@ mod tests {
 
         let result = find_nearest_add_exception(&target, &calendar_dates, 5, false);
         assert!(result.is_err());
-        if let Err(ScheduleError::InvalidDataError(msg)) = result {
+        if let Err(ScheduleError::InvalidData(msg)) = result {
             assert!(msg.contains("no Added entry in calendar_dates.txt"));
             assert!(msg.contains("within 5 days"));
             assert!(msg.contains("06-15-2023")); // MM-DD-YYYY format
@@ -507,7 +507,7 @@ mod tests {
 
         let result = find_nearest_add_exception(&target, &calendar_dates, 5, true);
         assert!(result.is_err());
-        if let Err(ScheduleError::InvalidDataError(msg)) = result {
+        if let Err(ScheduleError::InvalidData(msg)) = result {
             assert!(msg.contains("no Added entry in calendar_dates.txt"));
             assert!(msg.contains("with matching weekday"));
         } else {
@@ -643,7 +643,7 @@ mod tests {
 
         let result = find_in_calendar(&target, &calendar);
         assert!(result.is_err());
-        if let Err(ScheduleError::InvalidDataError(msg)) = result {
+        if let Err(ScheduleError::InvalidData(msg)) = result {
             assert!(msg.contains("no calendar.txt dates match"));
             assert!(msg.contains("06-05-2023"));
             assert!(msg.contains("[06-10-2023,06-30-2023]"));
@@ -661,7 +661,7 @@ mod tests {
 
         let result = find_in_calendar(&target, &calendar);
         assert!(result.is_err());
-        if let Err(ScheduleError::InvalidDataError(msg)) = result {
+        if let Err(ScheduleError::InvalidData(msg)) = result {
             assert!(msg.contains("no calendar.txt dates match"));
             assert!(msg.contains("06-25-2023"));
             assert!(msg.contains("[06-01-2023,06-20-2023]"));

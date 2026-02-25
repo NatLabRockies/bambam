@@ -485,17 +485,13 @@ fn build_path(
 ///
 ///    1) It is its own neighbor (ie, it self-loops).
 ///
-///    2) Or, it has no incoming edges or no outgoing edges (ie, all its incident
-///    edges are inbound or all its incident edges are outbound).
+///    2) Or, it has no incoming edges or no outgoing edges (ie, all its incident edges are inbound or all its incident edges are outbound).
 ///
 ///    3) Or, it does not have exactly two neighbors and degree of 2 or 4.
 ///
-///    4) Or, if `node_attrs_include` is not None and it has one or more of the
-///    attributes in `node_attrs_include`.
+///    4) Or, if `node_attrs_include` is not None and it has one or more of the attributes in `node_attrs_include`.
 ///
-///    5) Or, if `edge_attrs_differ` is not None and its incident edges have
-///    different values than each other for any of the edge attributes in
-///    `edge_attrs_differ`.
+///    5) Or, if `edge_attrs_differ` is not None and its incident edges have different values than each other for any of the edge attributes in `edge_attrs_differ`.
 fn node_is_endpoint(id: &OsmNodeId, graph: &OsmGraph) -> Result<bool, OsmError> {
     // neighbors is the set of unique nodes connected to this node
     let succ = graph.get_out_neighbors(id).unwrap_or_default();

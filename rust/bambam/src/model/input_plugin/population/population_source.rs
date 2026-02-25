@@ -1,4 +1,5 @@
-use crate::{model::input_plugin::grid, util::polygonal_rtree::PolygonalRTree};
+use crate::model::input_plugin::grid;
+use bambam_core::util::polygonal_rtree::PolygonalRTree;
 use bamcensus::app::acs_tiger::{self, AcsTigerResponse};
 use bamcensus_acs::model::{AcsApiQueryParams, AcsGeoidQuery, AcsType};
 use bamcensus_core::model::identifier::{Geoid, GeoidType};

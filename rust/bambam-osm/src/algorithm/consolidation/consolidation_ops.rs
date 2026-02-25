@@ -27,9 +27,9 @@ use std::sync::Mutex;
 ///
 /// * `graph`      - the original graph data from the .pbf file
 /// * `tolerance`  - edge-connected endpoints within this distance threshold are merged
-///                  into a new graph vertex by their centroid
+///  into a new graph vertex by their centroid
 /// * `ignore_osm_parsing_errors` - if true, do not fail if a maxspeed or other attribute is not
-///                                 valid wrt the OpenStreetMaps documentation
+///  valid wrt the OpenStreetMaps documentation
 pub fn consolidate_graph(
     graph: &mut OsmGraph,
     tolerance: uom::si::f64::Length,
@@ -339,7 +339,7 @@ fn consolidate_nodes(node_ids: Vec<OsmNodeId>, graph: &mut OsmGraph) -> Result<(
 /// modifies the way.nodes collection so it does not include any removed nodes and
 /// the new consolidated node is inserted in the correct place depending on the way direction.
 fn update_way_nodes(
-    ways: &mut Vec<OsmWayData>,
+    ways: &mut [OsmWayData],
     new_node_id: &OsmNodeId,
     remove_nodes: &HashSet<OsmNodeId>,
     dir: &AdjacencyDirection,
@@ -374,8 +374,7 @@ fn update_way_nodes(
 /// geometry indices.
 ///
 /// # Arguments
-/// * `geometry_indices`             - indices into the spatial intersection vector that
-///                                    will be considered for clustering
+/// * `geometry_indices`             - indices into the spatial intersection vector that will be considered for clustering
 /// * `simplified`                   - the simplified graph
 /// * `endpoint_index_osmid_mapping` - maps indices to Node OSMIDs
 ///

@@ -8,17 +8,17 @@ crate-type = ["cdylib"]
 
 [dependencies]
 bambam = { path = "../bambam", version = "0.2.1" }
-routee-compass = { workspace = true }
-routee-compass-core = { workspace = true }
-routee-compass-py = { workspace = true }
-routee-compass-macros = { workspace = true }
+chrono = { workspace = true }
+config = { workspace = true }
 inventory = { workspace = true }
 
 itertools = { workspace = true }
+
+pyo3 = { version = "0.28.0", features = ["extension-module", "serde"] }
+routee-compass = { workspace = true }
+routee-compass-core = { workspace = true }
+routee-compass-macros = { workspace = true }
+routee-compass-py = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-chrono = { workspace = true }
-config = { workspace = true }
 thiserror = { workspace = true }
-
-pyo3 = { version = "0.27.1", features = ["extension-module", "serde"] }

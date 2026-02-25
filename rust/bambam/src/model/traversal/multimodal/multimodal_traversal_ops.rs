@@ -1,7 +1,7 @@
-use crate::model::{
-    bambam_state,
-    state::{fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalStateMapping},
+use crate::model::state::{
+    fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalStateMapping,
 };
+use bambam_core::model::bambam_state;
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
 use uom::si::f64::{Length, Time};

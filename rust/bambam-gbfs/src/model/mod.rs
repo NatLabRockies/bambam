@@ -1,2 +1,2 @@
-pub mod frontier;
+pub mod constraint;
 pub mod traversal;

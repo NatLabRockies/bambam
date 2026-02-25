@@ -7,12 +7,25 @@ description = "Simple GTFS-Flex scanner"
 repository = "https://github.com/NREL/bambam"
 readme = "README.md"
 
-[dependencies]
-zip = "0.6"
-serde_json = "1.0"
-csv = "1.2"
-chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-geo-types = "0.7"
+[features]
+default = ["type4"]
+type4 = ["dep:gtfs-structures"]
 
+[dependencies]
+gtfs-structures = { workspace = true, optional = true }
+bambam-core = { version = "0.2.3", path = "../bambam-core" } 
+chrono = { workspace = true }
+csv = { workspace = true }
+geo = { workspace = true }
+geo-types = { workspace = true }
+geojson = { workspace = true }
+kdam = { workspace = true }
+routee-compass-core = { workspace = true }
+ordered-float = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+zip = { workspace = true }
+skiplist = { workspace = true }
+thiserror = { workspace = true }
+uom = { workspace = true }
 # No external dependencies needed for the simple version

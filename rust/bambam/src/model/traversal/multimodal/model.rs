@@ -1,10 +1,7 @@
 use super::multimodal_traversal_ops as ops;
-use crate::model::{
-    bambam_state,
-    state::{
-        fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
-        MultimodalMapping, MultimodalStateMapping,
-    },
+use crate::model::state::{
+    fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
+    MultimodalMapping, MultimodalStateMapping,
 };
 use itertools::Itertools;
 use routee_compass_core::{
@@ -118,6 +115,15 @@ impl TraversalModel for MultimodalTraversalModel {
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         let (_, edge, _) = trajectory;
+        log::debug!(
+            "begin multimodal traversal along edge {:?} for state at time: {:.2} minutes with tree size {}",
+            (edge.edge_list_id, edge.edge_id),
+            state_model
+                .get_time(state, "trip_time")
+                .unwrap_or_default()
+                .get::<uom::si::time::minute>(),
+            tree.len()
+        );
 
         // first, apply any mode switching for using this edge
         ops::mode_switch(
@@ -149,6 +155,15 @@ impl TraversalModel for MultimodalTraversalModel {
                 self.max_trip_legs,
             )?;
         }
+        log::debug!(
+            "finish multimodal traversal along edge {:?} for state at time: {:.2} minutes with tree size {}",
+            (edge.edge_list_id, edge.edge_id),
+            state_model
+                .get_time(state, "trip_time")
+                .unwrap_or_default()
+                .get::<uom::si::time::minute>(),
+            tree.len()
+        );
         Ok(())
     }
 
@@ -401,7 +416,7 @@ mod test {
         let t1_dst = lm
             .label_from_state(t1.2.vertex_id, &et1.result_state, &state_model)
             .expect("invariant failed: unable to create label for vertex 2");
-        tree.insert(t1_src, et1.clone(), t1_dst);
+        tree.insert(t1_src, et1.clone(), t1_dst, Arc::new(lm));
 
         // traverse bike edge
         let t2 = mock_trajectory(1, 1, 1);
@@ -474,7 +489,7 @@ mod test {
         let t1_dst = lm
             .label_from_state(t1.2.vertex_id, &et1.result_state, &state_model)
             .expect("invariant failed: unable to create label for vertex 2");
-        tree.insert(t1_src, et1.clone(), t1_dst);
+        tree.insert(t1_src, et1.clone(), t1_dst, Arc::new(lm));
 
         // ASSERTION 1: trip tries to enter "bike" mode after accessing edge 2 on edge list 1,
         // but this should result in an error, as we have restricted the max number of trip legs to 1.

@@ -244,7 +244,7 @@ fn load_vertices_and_create_spatial_index(
         Some(bar_builder),
         None,
     )
-    .map_err(|e| ScheduleError::FailedToCreateVertexIndexError(format!("{e}")))?;
+    .map_err(|e| ScheduleError::FailedToCreateVertexIndex(format!("{e}")))?;
     let tol: Length = uom::si::f64::Length::new::<uom::si::length::meter>(tolerance_meters);
     Ok(Arc::new(SpatialIndex::new_vertex_oriented(
         &vertices,
@@ -269,14 +269,12 @@ fn manifest_into_rows(
         .from_path(path_buf.as_path())
         .map_err(|e| {
             let filename = path_buf.to_str().unwrap_or_default();
-            ScheduleError::GtfsAppError(format!("failure reading '{filename}': {e}"))
+            ScheduleError::GtfsApp(format!("failure reading '{filename}': {e}"))
         })?;
     let rows = reader
         .into_deserialize::<GtfsProvider>()
         .map(|r| {
-            r.map_err(|e| {
-                ScheduleError::GtfsAppError(format!("failure reading GTFS manifest row: {e}"))
-            })
+            r.map_err(|e| ScheduleError::GtfsApp(format!("failure reading GTFS manifest row: {e}")))
         })
         .collect::<Result<Vec<GtfsProvider>, ScheduleError>>()?;
     let us_rows: Vec<GtfsProvider> = rows

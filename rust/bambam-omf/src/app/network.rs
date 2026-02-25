@@ -1,14 +1,18 @@
 use std::path::Path;
 
+use geo::{Contains, Geometry};
+use rayon::prelude::*;
+use routee_compass_core::model::unit::DistanceUnit;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     app::CliBoundingBox,
     collection::{
         filter::TravelModeFilter, ObjectStoreSource, OvertureMapsCollectionError,
-        OvertureMapsCollectorConfig, ReleaseVersion, TransportationCollection,
+        OvertureMapsCollectorConfig, ReleaseVersion, SegmentAccessRestrictionWhen,
+        TransportationCollection,
     },
-    graph::OmfGraphVectorized,
+    graph::{OmfGraphSource, OmfGraphStats, OmfGraphSummary, OmfGraphVectorized},
     util,
 };
 
@@ -16,15 +20,41 @@ use crate::{
 pub struct NetworkEdgeListConfiguration {
     pub mode: String,
     pub filter: Vec<TravelModeFilter>,
+    pub island_algorithm_config: Option<IslandDetectionAlgorithmConfiguration>,
+}
+
+impl From<&NetworkEdgeListConfiguration> for SegmentAccessRestrictionWhen {
+    fn from(value: &NetworkEdgeListConfiguration) -> Self {
+        let user_modes_opt = value.filter.iter().find_map(|f| match f {
+            TravelModeFilter::MatchesModeAccess { modes } => Some(modes.clone()),
+            _ => None,
+        });
+        let mut result = SegmentAccessRestrictionWhen::default();
+        if let Some(modes) = user_modes_opt {
+            result.mode = Some(modes);
+        }
+        result
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct IslandDetectionAlgorithmConfiguration {
+    pub min_distance: f64,
+    pub distance_unit: DistanceUnit,
+    pub parallel_execution: bool,
 }
 
 /// runs an OMF network import using the provided configuration.
 pub fn run(
+    name: &str,
     bbox: Option<&CliBoundingBox>,
     modes: &[NetworkEdgeListConfiguration],
     output_directory: &Path,
     local_source: Option<&Path>,
     write_json: bool,
+    island_detection_configuration: Option<IslandDetectionAlgorithmConfiguration>,
+    export_omf_ids: bool,
+    extent: Option<Geometry<f32>>,
 ) -> Result<(), OvertureMapsCollectionError> {
     let collection: TransportationCollection = match local_source {
         Some(src_path) => read_local(src_path),
@@ -36,8 +66,25 @@ pub fn run(
         collection.to_json(output_directory)?;
     }
 
-    let vectorized_graph = OmfGraphVectorized::new(&collection, modes)?;
-    vectorized_graph.write_compass(output_directory, true)?;
+    let collection = if let Some(ext_geom) = extent {
+        apply_extent_to_collection(collection, ext_geom)
+    } else {
+        collection
+    };
+
+    let vectorized_graph =
+        OmfGraphVectorized::new(&collection, modes, island_detection_configuration)?;
+
+    // summarize imported graph
+    let release = match local_source {
+        Some(local) => format!("file://{}", local.to_string_lossy()),
+        None => collection.release.clone(),
+    };
+    let stats = OmfGraphStats::try_from(&vectorized_graph)?;
+    let source = OmfGraphSource::new(&release, name, bbox);
+    let summary = OmfGraphSummary { source, stats };
+
+    vectorized_graph.write_compass(&summary, output_directory, true, export_omf_ids)?;
 
     Ok(())
 }
@@ -62,8 +109,14 @@ fn run_collector(
     bbox_arg: Option<&CliBoundingBox>,
 ) -> Result<TransportationCollection, OvertureMapsCollectionError> {
     let object_store = ObjectStoreSource::AmazonS3;
-    let batch_size = 128;
-    let collector = OvertureMapsCollectorConfig::new(object_store, batch_size).build()?;
+    let rg_chunk_size = 4;
+    let file_concurrency_limit = 64;
+    let collector = OvertureMapsCollectorConfig::new(
+        object_store,
+        Some(rg_chunk_size),
+        Some(file_concurrency_limit),
+    )
+    .build()?;
     let release = ReleaseVersion::Latest;
     let bbox = bbox_arg.ok_or_else(|| {
         let msg = String::from("must provide bbox argument for download");
@@ -72,10 +125,46 @@ fn run_collector(
     log::info!(
         "running OMF import with
         object store {object_store:?}
-        batch size {batch_size}
+        rg_chunk_size {rg_chunk_size}
+        file_concurrency_limit {file_concurrency_limit}
         release {release}
         (xmin,xmax,ymin,ymax): {bbox}"
     );
 
     TransportationCollection::try_from_collector(collector, release, Some(bbox.into()))
+}
+
+/// filters segments and connectors in a transportation collection
+/// using an arbitrary extent with the `contains` predicate. empty geometries are ignored (filtered out)
+fn apply_extent_to_collection(
+    collection: TransportationCollection,
+    extent: Geometry<f32>,
+) -> TransportationCollection {
+    let filtered_segments = collection
+        .segments
+        .into_par_iter()
+        .filter(|segment| {
+            segment
+                .get_linestring()
+                .map(|linestring| extent.contains(linestring))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    let filtered_connectors = collection
+        .connectors
+        .into_par_iter()
+        .filter(|connector| {
+            connector
+                .get_geometry()
+                .map(|geometry| extent.contains(geometry))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    TransportationCollection {
+        release: collection.release.clone(),
+        connectors: filtered_connectors,
+        segments: filtered_segments,
+    }
 }
