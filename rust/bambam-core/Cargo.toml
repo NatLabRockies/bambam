@@ -35,3 +35,4 @@ geojson = { workspace = true }
 wkb = { workspace = true }
 rstar = { workspace = true }
 chrono = { workspace = true }
+thiserror = { workspace = true }

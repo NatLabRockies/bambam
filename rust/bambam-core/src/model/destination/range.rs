@@ -1,21 +1,16 @@
 use itertools::Itertools;
 use routee_compass_core::model::{
-    state::{CustomVariableType, StateModel, StateModelError, StateVariable},
+    state::{CustomVariableType, StateModel, StateVariable},
     unit::{DistanceUnit, EnergyUnit, TimeUnit},
 };
 use serde::{Deserialize, Serialize};
 
-/// configure a set of bins for aggregate isochrone/opportunity models
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct BinsConfig {
-    /// the type of bin to create
-    pub bin_types: Vec<BinType>,
-}
+use crate::model::destination::DestinationError;
 
 /// type, unit and feature name of the state variable used for binning
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", tag = "type")]
-pub enum BinType {
+pub enum BinRangeConfig {
     Distance {
         /// state model feature name to test with
         feature: String,
@@ -48,100 +43,86 @@ pub enum BinType {
         /// unit of values
         unit: CustomVariableType,
     },
-    Boolean {
-        feature: String,
-        negate: bool,
-    },
 }
 
 /// a single bin between for values in the range [min, max).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", tag = "type")]
-pub enum Bin {
+pub enum BinRange {
     Distance {
         feature: String,
         min: uom::si::f64::Length,
         max: uom::si::f64::Length,
+        unit: DistanceUnit,
     },
     Time {
         feature: String,
         min: uom::si::f64::Time,
         max: uom::si::f64::Time,
+        unit: TimeUnit,
     },
     Energy {
         feature: String,
         min: uom::si::f64::Energy,
         max: uom::si::f64::Energy,
+        unit: EnergyUnit,
     },
     CustomRange {
         feature: String,
-        unit: CustomVariableType,
         min: f64,
         max: f64,
-    },
-    Boolean {
-        feature: String,
-        negate: bool,
+        unit: CustomVariableType,
     },
 }
 
-impl BinType {
-    /// true if the bin type has ranges of values or if is is a blanket binning
-    /// modifier that is applied across all ranges.
-    pub fn has_range(&self) -> bool {
-        match self {
-            BinType::Distance { .. } => true,
-            BinType::Time { .. } => true,
-            BinType::Energy { .. } => true,
-            BinType::CustomRange { .. } => true,
-            BinType::Boolean { .. } => false,
-        }
-    }
-
+impl BinRangeConfig {
     /// create the collection of bins from this configuration. each of these bins will capture
     /// a subset of the destinations.
-    pub fn build_bins(&self) -> Vec<Bin> {
+    pub fn build_bins(&self) -> Vec<BinRange> {
         match self {
-            BinType::Distance {
+            BinRangeConfig::Distance {
                 feature,
                 values,
                 unit,
             } => values
                 .iter()
                 .tuple_windows()
-                .map(|(min, max)| Bin::Distance {
+                .map(|(min, max)| BinRange::Distance {
                     feature: feature.to_string(),
                     min: unit.to_uom(*min as f64),
                     max: unit.to_uom(*max as f64),
+                    unit: *unit,
                 })
                 .collect_vec(),
-            BinType::Time {
+            BinRangeConfig::Time {
                 feature,
                 values,
                 unit,
             } => values
                 .iter()
                 .tuple_windows()
-                .map(|(min, max)| Bin::Time {
+                .map(|(min, max)| BinRange::Time {
                     feature: feature.to_string(),
                     min: unit.to_uom(*min as f64),
                     max: unit.to_uom(*max as f64),
+                    unit: *unit,
                 })
                 .collect_vec(),
-            BinType::Energy {
+            BinRangeConfig::Energy {
                 feature,
                 values,
                 unit,
             } => values
                 .iter()
                 .tuple_windows()
-                .map(|(min, max)| Bin::Energy {
+                .map(|(min, max)| BinRange::Energy {
                     feature: feature.to_string(),
                     min: unit.to_uom(*min as f64),
                     max: unit.to_uom(*max as f64),
+                    unit: *unit,
                 })
                 .collect_vec(),
-            BinType::CustomRange {
+            BinRangeConfig::CustomRange {
                 feature,
                 values,
                 unit,
@@ -153,7 +134,7 @@ impl BinType {
                 values
                     .iter()
                     .tuple_windows()
-                    .map(|(min, max)| Bin::CustomRange {
+                    .map(|(min, max)| BinRange::CustomRange {
                         min: *min as f64,
                         max: *max as f64,
                         feature: feature.to_string(),
@@ -161,88 +142,139 @@ impl BinType {
                     })
                     .collect_vec()
             }
-            BinType::Boolean { feature, negate } => vec![Bin::Boolean {
-                feature: feature.clone(),
-                negate: *negate,
-            }],
         }
     }
 }
 
-impl BinsConfig {
-    /// constructs the bins from this configuration.
-    pub fn build(&self) -> Result<Vec<Bin>, String> {
-        if self.bin_types.is_empty() {
-            return Err("bin configuration cannot be empty".to_string());
-        }
-        let ranged = self
-            .bin_types
-            .iter()
-            .filter(|b| b.has_range())
-            .collect_vec();
-        if ranged.len() > 1 {
-            return Err("multiple ranged bin types cannot be used simultaneously".to_string());
-        }
-        let result = self
-            .bin_types
-            .iter()
-            .flat_map(|b| b.build_bins())
-            .collect_vec();
-        Ok(result)
-    }
-}
-
-impl Bin {
+impl BinRange {
     /// determine whether a trip state is within some bin
     pub fn within_bin(
         &self,
         state: &[StateVariable],
         state_model: &StateModel,
-    ) -> Result<bool, StateModelError> {
+    ) -> Result<bool, DestinationError> {
         match self {
-            Bin::Distance { feature, min, max } => {
-                let value = state_model.get_distance(state, feature)?;
+            BinRange::Distance {
+                feature, min, max, ..
+            } => {
+                let value = state_model.get_distance(state, feature).map_err(|e| {
+                    DestinationError::StateErrorInBin {
+                        bin: self.clone(),
+                        error: e,
+                    }
+                })?;
                 let result = within_bin(min, &value, max);
                 Ok(result)
             }
-            Bin::Time { feature, min, max } => {
-                let value = state_model.get_time(state, feature)?;
+            BinRange::Time {
+                feature, min, max, ..
+            } => {
+                let value = state_model.get_time(state, feature).map_err(|e| {
+                    DestinationError::StateErrorInBin {
+                        bin: self.clone(),
+                        error: e,
+                    }
+                })?;
                 let result = within_bin(min, &value, max);
                 Ok(result)
             }
-            Bin::Energy { feature, min, max } => {
-                let value = state_model.get_energy(state, feature)?;
+            BinRange::Energy {
+                feature, min, max, ..
+            } => {
+                let value = state_model.get_energy(state, feature).map_err(|e| {
+                    DestinationError::StateErrorInBin {
+                        bin: self.clone(),
+                        error: e,
+                    }
+                })?;
                 let result = within_bin(min, &value, max);
                 Ok(result)
             }
-            Bin::CustomRange {
+            BinRange::CustomRange {
                 feature,
                 unit,
                 min,
                 max,
             } => match unit {
                 CustomVariableType::FloatingPoint => {
-                    let value = state_model.get_custom_f64(state, feature)?;
+                    let value = state_model.get_custom_f64(state, feature).map_err(|e| {
+                        DestinationError::StateErrorInBin {
+                            bin: self.clone(),
+                            error: e,
+                        }
+                    })?;
                     Ok(within_bin(min, &value, max))
                 }
                 CustomVariableType::SignedInteger => {
-                    let value = state_model.get_custom_i64(state, feature)?;
+                    let value = state_model.get_custom_i64(state, feature).map_err(|e| {
+                        DestinationError::StateErrorInBin {
+                            bin: self.clone(),
+                            error: e,
+                        }
+                    })?;
                     Ok(within_bin(min, &(value as f64), max))
                 }
                 CustomVariableType::UnsignedInteger => {
-                    let value = state_model.get_custom_u64(state, feature)?;
+                    let value = state_model.get_custom_u64(state, feature).map_err(|e| {
+                        DestinationError::StateErrorInBin {
+                            bin: self.clone(),
+                            error: e,
+                        }
+                    })?;
                     Ok(within_bin(min, &(value as f64), max))
                 }
                 CustomVariableType::Boolean => {
-                    let value = state_model.get_custom_bool(state, feature)?;
+                    let value = state_model.get_custom_bool(state, feature).map_err(|e| {
+                        DestinationError::StateErrorInBin {
+                            bin: self.clone(),
+                            error: e,
+                        }
+                    })?;
                     Ok(within_bin(min, &((value as i64) as f64), max))
                 }
             },
-            Bin::Boolean { feature, negate } => {
-                let value = state_model.get_custom_bool(state, feature)?;
-                Ok(if *negate { !value } else { value })
-            }
         }
+    }
+}
+
+impl std::fmt::Display for BinRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BinRange::Distance {
+                feature,
+                min,
+                max,
+                unit,
+            } => {
+                let (min_v, max_v) = (unit.from_uom(*min), unit.from_uom(*max));
+                format!("{feature} in [{min_v}, {max_v}) {unit}")
+            }
+            BinRange::Time {
+                feature,
+                min,
+                max,
+                unit,
+            } => {
+                let (min_v, max_v) = (unit.from_uom(*min), unit.from_uom(*max));
+                format!("{feature} in [{min_v}, {max_v}) {unit}")
+            }
+            BinRange::Energy {
+                feature,
+                min,
+                max,
+                unit,
+            } => {
+                let (min_v, max_v) = (unit.from_uom(*min), unit.from_uom(*max));
+                format!("{feature} in [{min_v}, {max_v}) {unit}")
+            }
+            BinRange::CustomRange {
+                feature,
+                unit,
+                min,
+                max,
+            } => format!("{feature} in [{min}, {max}) stored as {unit}"),
+        };
+        write!(f, "{s}")
     }
 }
 
