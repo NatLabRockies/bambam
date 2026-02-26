@@ -669,7 +669,7 @@ fn create_writer(
 /// tests if a GTFS archive has at least one Stop that intersects the provided extent.
 fn archive_intersects_extent(gtfs: &Gtfs, extent: &Geometry) -> Result<bool, ScheduleError> {
     for stop in gtfs.stops.values() {
-        if let Some(point) = get_stop_location(stop.clone(), &gtfs) {
+        if let Some(point) = get_stop_location(stop.clone(), gtfs) {
             if extent.contains(&point) {
                 return Ok(true);
             }
