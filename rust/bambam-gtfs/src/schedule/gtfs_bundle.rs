@@ -10,6 +10,14 @@ pub struct GtfsBundle {
 }
 
 impl GtfsBundle {
+    pub fn empty() -> Self {
+        Self {
+            edges: vec![],
+            metadata: serde_json::Value::Null,
+            date_mapping: HashSet::new(),
+        }
+    }
+
     /// true if no GTFS edges were created or if no schedules were recorded
     /// for any edges in this GTFS bundle.
     pub fn is_empty(&self) -> bool {

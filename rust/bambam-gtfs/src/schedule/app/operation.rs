@@ -9,7 +9,7 @@ use crate::schedule::{
     GtfsSummary, MissingStopLocationPolicy,
 };
 use clap::Subcommand;
-use geo::{Coord, LineString};
+use geo::{Coord, Geometry, LineString};
 use gtfs_structures::Gtfs;
 use itertools::Itertools;
 use kdam::Bar;
@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashSet, fs::File, io::Write, path::Path, time::Duration};
 use uom::si::f64::Length;
-use wkt::ToWkt;
+use wkt::{ToWkt, TryFromWkt};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Subcommand)]
 pub enum GtfsOperation {
@@ -111,6 +111,9 @@ pub enum GtfsOperation {
         #[arg(long)]
         date_mapping_match_weekday: Option<bool>,
 
+        #[arg(long)]
+        extent_file: Option<String>,
+
         #[arg(long, default_value_t = true)]
         overwrite: bool,
 
@@ -169,6 +172,7 @@ impl GtfsOperation {
                 vertex_match_tolerance,
                 missing_stop_location_policy,
                 distance_calculation_policy,
+                extent_file,
                 output_directory,
                 overwrite,
                 parallelism,
@@ -202,6 +206,10 @@ impl GtfsOperation {
                             serde_json::to_string_pretty(&date_mapping_config).unwrap_or_default(),
                         )
                     });
+                let extent = match read_extent_file(extent_file.as_ref()) {
+                    Ok(e) => e,
+                    Err(err) => panic!("{}", err),
+                };
 
                 let config = Arc::new(ProcessBundlesConfig {
                     start_date: start_date.clone(),
@@ -211,6 +219,7 @@ impl GtfsOperation {
                     missing_stop_location_policy: missing_stop_location_policy.clone(),
                     distance_calculation_policy: distance_calculation_policy.clone(),
                     date_mapping_policy: date_mapping_policy.clone(),
+                    extent,
                     output_directory: output_directory.clone(),
                     overwrite: *overwrite,
                 });
@@ -427,4 +436,26 @@ fn download(rows: &[GtfsProvider], parallelism: usize) {
             Err(e) => log::error!("{e}"),
         }
     }
+}
+
+fn read_extent_file(extent_file: Option<&String>) -> Result<Option<Geometry>, ScheduleError> {
+    let extent_file = match extent_file {
+        Some(f) => f,
+        None => return Ok(None),
+    };
+    let extent_string = std::fs::read_to_string(extent_file).map_err(|e| {
+        ScheduleError::InvalidData(format!("failed to read WKT from '{extent_file}': {e}"))
+    })?;
+    let extent = Geometry::try_from_wkt_str(&extent_string).map_err(|e| {
+        ScheduleError::InvalidData(format!("could not read file '{extent_file}' as WKT: {e}"))
+    })?;
+    match &extent {
+        Geometry::Polygon(_) => Ok(()),
+        Geometry::MultiPolygon(_) => Ok(()),
+        Geometry::GeometryCollection(_) => Ok(()),
+        _ => Err(ScheduleError::InvalidData(format!(
+            "WKT in '{extent_file}' is not polygonal"
+        ))),
+    }?;
+    Ok(Some(extent))
 }

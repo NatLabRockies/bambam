@@ -1,7 +1,7 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
-use geo::{LineString, Point};
+use geo::{Contains, Geometry, LineString, Point};
 use gtfs_structures::{Gtfs, Stop, StopTime};
 use itertools::Itertools;
 use kdam::{Bar, BarBuilder, BarExt};
@@ -48,6 +48,9 @@ pub struct ProcessBundlesConfig {
     pub distance_calculation_policy: DistanceCalculationPolicy,
     /// app logic applied when filtering/mapping by date and time
     pub date_mapping_policy: DateMappingPolicy,
+    /// optional boundary for including GTFS archives. if included, filters archives
+    /// to those that intersect with the area within the provided extent.
+    pub extent: Option<Geometry>,
     /// directory to write outputs
     pub output_directory: String,
     /// if true, allow overwriting files in output directory
@@ -172,6 +175,13 @@ pub fn process_bundle(
     // read the GTFS archive. pre-process by removing Trips that contain stops
     // which do not map to the road network vertices within the matching distance threshold.
     let gtfs = Arc::new(read_gtfs(bundle_file, c.spatial_index.clone())?);
+
+    // if user provided an extent, use it to filter GTFS archives
+    if let Some(extent) = c.extent.as_ref() {
+        if !archive_intersects_extent(&gtfs, extent)? {
+            return Ok(GtfsBundle::empty());
+        }
+    }
 
     // Pre-compute lat,lon location of all stops
     // with `get_stop_location` which returns the lat,lon
@@ -654,4 +664,16 @@ fn create_writer(
         .quote_style(quote_style)
         .from_writer(buffer);
     Some(writer)
+}
+
+/// tests if a GTFS archive has at least one Stop that intersects the provided extent.
+fn archive_intersects_extent(gtfs: &Gtfs, extent: &Geometry) -> Result<bool, ScheduleError> {
+    for stop in gtfs.stops.values() {
+        if let Some(point) = get_stop_location(stop.clone(), &gtfs) {
+            if extent.contains(&point) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
