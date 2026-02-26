@@ -175,8 +175,8 @@ pub fn run(
             &available_modes,
             &fq_route_ids_filepath,
             max_trip_legs,
-        );
-        let cm_conf = gtfs_frontier_model_config(
+        )?;
+        let cm_conf = gtfs_constraint_model_config(
             &constraints,
             &time_limit,
             &available_modes,
@@ -383,8 +383,8 @@ pub fn gtfs_traversal_model_config(
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
-) -> serde_json::Value {
-    json![{
+) -> Result<serde_json::Value, GtfsConfigError> {
+    let result = json![{
         "type": "combined",
         "models": [
             {
@@ -417,41 +417,46 @@ pub fn gtfs_traversal_model_config(
             //     max_trip_legs: max_trip_legs as u64,
             // }
         ]
-    }]
+    }];
+    Ok(result)
 }
 
 /// generates the JSON fields expected for a transit frontier model
-pub fn gtfs_frontier_model_config(
+pub fn gtfs_constraint_model_config(
     constraints: &[ConstraintConfig],
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
-) -> serde_json::Value {
-    json![{
+) -> Result<serde_json::Value, GtfsConfigError> {
+    let mut mmc = json!(MultimodalConstraintConfig {
+        this_mode: "transit".to_string(),
+        constraints: constraints.to_vec(),
+        available_modes: available_modes.to_vec(),
+        route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
+        max_trip_legs: max_trip_legs as u64
+    });
+    match mmc.as_object_mut() {
+        Some(obj) => obj.insert("type".to_string(), json!("multimodal")),
+        None => {
+            return Err(GtfsConfigError::InternalError(
+                "could not modify MultimodalConstraintConfig".to_string(),
+            ))
+        }
+    };
+
+    let result = json![{
         "type": "combined",
         "models": [
             {
                 "type": "time_limit",
-                "time_limit": { "time": time_limit.time, "time_unit": time_limit.time_unit }},
-            {
-                "type": "multimodal",
-                "this_mode": "transit",
-                "constraints": constraints.to_vec(),
-                "available_modes": available_modes.to_vec(),
-                "route_ids_input_file": Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-                "max_trip_legs": max_trip_legs as u64
-            }
-            // // it would be great to use this directly but we need to include the "type" tag in a custom serializer
-            // MultimodalConstraintConfig {
-            //     this_mode: "transit".to_string(),
-            //     constraints: constraints.to_vec(),
-            //     available_modes: available_modes.to_vec(),
-            //     route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-            //     max_trip_legs: max_trip_legs as u64
-            // }
+                "time_limit": { "time": time_limit.time, "time_unit": time_limit.time_unit }
+            },
+            mmc
+
         ]
-    }]
+    }];
+    Ok(result)
 }
 
 pub struct GtfsEdgeListEntry {
