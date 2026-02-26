@@ -10,6 +10,7 @@ pub struct GtfsBundle {
 }
 
 impl GtfsBundle {
+    /// create an empty bundle.
     pub fn empty() -> Self {
         Self {
             edges: vec![],

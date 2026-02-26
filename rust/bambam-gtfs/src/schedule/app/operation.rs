@@ -231,8 +231,10 @@ impl GtfsOperation {
                             log::error!("failure running preprocess-bundle: {e}");
                         })
                 } else {
-                    let bundle = bundle_ops::process_bundle(input, config.clone())
+                    let bundle_opt = bundle_ops::process_bundle(input, config.clone())
                         .expect("failure processing GTFS bundle");
+                    let bundle = bundle_opt
+                        .expect("failed to create a valid BAMBAM input, see logs for explanation");
                     bundle_ops::write_bundle(&bundle, config.clone(), config.starting_edge_list_id)
                         .expect("failure writing GTFS bundle");
                 }

@@ -117,9 +117,11 @@ pub fn batch_process(
         .flat_map(|chunks| chunks.into_iter().flat_map(|chunk| chunk.into_iter()))
         .collect_vec()
         .into_iter()
-        .filter(|e| match e {
-            Ok(e) if e.is_empty() => false, // remove empty results
-            _ => true,
+        .filter_map(|e| match e {
+            Ok(None) => None,                     // remove None results
+            Ok(Some(e)) if e.is_empty() => None,  // remove empty results
+            Ok(Some(bundle)) => Some(Ok(bundle)), // retain successful runs
+            Err(e) => Some(Err(e)),               // retain error messages
         })
         .partition_result();
 
@@ -170,7 +172,7 @@ pub fn batch_process(
 pub fn process_bundle(
     bundle_file: &str,
     c: Arc<ProcessBundlesConfig>,
-) -> Result<GtfsBundle, ScheduleError> {
+) -> Result<Option<GtfsBundle>, ScheduleError> {
     log::debug!("process_bundle called for {bundle_file}");
     // read the GTFS archive. pre-process by removing Trips that contain stops
     // which do not map to the road network vertices within the matching distance threshold.
@@ -179,7 +181,7 @@ pub fn process_bundle(
     // if user provided an extent, use it to filter GTFS archives
     if let Some(extent) = c.extent.as_ref() {
         if !archive_intersects_extent(&gtfs, extent)? {
-            return Ok(GtfsBundle::empty());
+            return Ok(None);
         }
     }
 
@@ -260,7 +262,7 @@ pub fn process_bundle(
         date_mapping,
     };
 
-    Ok(result)
+    Ok(Some(result))
 }
 
 /// reads a GTFS archive.
