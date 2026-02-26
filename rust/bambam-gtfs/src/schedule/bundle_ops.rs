@@ -169,7 +169,9 @@ pub fn process_bundle(
     c: Arc<ProcessBundlesConfig>,
 ) -> Result<GtfsBundle, ScheduleError> {
     log::debug!("process_bundle called for {bundle_file}");
-    let gtfs = Arc::new(Gtfs::new(bundle_file)?);
+    // read the GTFS archive. pre-process by removing Trips that contain stops
+    // which do not map to the road network vertices within the matching distance threshold.
+    let gtfs = Arc::new(read_gtfs(bundle_file, c.spatial_index.clone())?);
 
     // Pre-compute lat,lon location of all stops
     // with `get_stop_location` which returns the lat,lon
@@ -177,12 +179,7 @@ pub fn process_bundle(
     let stop_locations: HashMap<String, Option<Point<f64>>> = gtfs
         .stops
         .iter()
-        .map(|(stop_id, stop)| {
-            (
-                stop_id.clone(),
-                get_stop_location(stop.clone(), gtfs.clone()),
-            )
-        })
+        .map(|(stop_id, stop)| (stop_id.clone(), get_stop_location(stop.clone(), &gtfs)))
         .collect();
 
     // Construct edge lists
@@ -254,6 +251,46 @@ pub fn process_bundle(
     };
 
     Ok(result)
+}
+
+/// reads a GTFS archive.
+pub fn read_gtfs(gtfs_file: &str, spatial_index: Arc<SpatialIndex>) -> Result<Gtfs, ScheduleError> {
+    let mut gtfs = Gtfs::new(gtfs_file)?;
+    let mut disconnected_stops = HashSet::new();
+    for stop in gtfs.stops.values() {
+        let remove_route = match get_stop_location(stop.clone(), &gtfs) {
+            None => true,
+            Some(point) => match match_closest_graph_id(&point, spatial_index.clone()) {
+                Ok(_) => false,
+                Err(_) => true,
+            },
+        };
+        if remove_route {
+            disconnected_stops.insert(&stop.id);
+        };
+    }
+    let mut disconnected_trips = HashSet::new();
+    let trip_ids = gtfs.trips.keys().collect_vec();
+    for trip_id in trip_ids {
+        let trip = gtfs.get_trip(trip_id)?;
+        for stop_time in trip.stop_times.iter() {
+            if disconnected_stops.contains(&stop_time.stop.id) {
+                disconnected_trips.insert(trip.id.clone());
+                break;
+            }
+        }
+    }
+    for trip_id in disconnected_trips.iter() {
+        gtfs.trips.remove(trip_id);
+    }
+    if disconnected_stops.len() > 0 {
+        log::info!(
+            "removed {} stops, {} trips due to map matching threshold",
+            disconnected_stops.len(),
+            disconnected_trips.len(),
+        )
+    }
+    Ok(gtfs)
 }
 
 /// writes the provided bundle to files enumerated by the provided edge_list_id.
@@ -474,7 +511,7 @@ fn create_datetime(gtfs_time: u32, date: &NaiveDate) -> Result<NaiveDateTime, Sc
 }
 
 // Checks the stop and its parent for lon,lat location. Returns None if this fails (parent doesn't exists or doesn't have location)
-fn get_stop_location(stop: Arc<Stop>, gtfs: Arc<Gtfs>) -> Option<Point<f64>> {
+fn get_stop_location(stop: Arc<Stop>, gtfs: &Gtfs) -> Option<Point<f64>> {
     // Happy path, we have the info in this point
     // lon,lat is required if `location_type` in [0, 1, 2]
     if let (Some(lon), Some(lat)) = (stop.longitude, stop.latitude) {
