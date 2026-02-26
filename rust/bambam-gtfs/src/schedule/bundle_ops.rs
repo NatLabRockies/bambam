@@ -260,10 +260,7 @@ pub fn read_gtfs(gtfs_file: &str, spatial_index: Arc<SpatialIndex>) -> Result<Gt
     for stop in gtfs.stops.values() {
         let remove_route = match get_stop_location(stop.clone(), &gtfs) {
             None => true,
-            Some(point) => match match_closest_graph_id(&point, spatial_index.clone()) {
-                Ok(_) => false,
-                Err(_) => true,
-            },
+            Some(point) => match_closest_graph_id(&point, spatial_index.clone()).is_err(),
         };
         if remove_route {
             disconnected_stops.insert(&stop.id);
@@ -283,7 +280,7 @@ pub fn read_gtfs(gtfs_file: &str, spatial_index: Arc<SpatialIndex>) -> Result<Gt
     for trip_id in disconnected_trips.iter() {
         gtfs.trips.remove(trip_id);
     }
-    if disconnected_stops.len() > 0 {
+    if !disconnected_stops.is_empty() {
         log::info!(
             "removed {} stops, {} trips due to map matching threshold",
             disconnected_stops.len(),
