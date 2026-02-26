@@ -67,18 +67,14 @@ pub fn run(
     base_config_filepath: &str,
     base_config_relative_path: Option<&str>,
 ) -> Result<(), GtfsConfigError> {
-    let base_str =
-        std::fs::read_to_string(base_config_filepath).map_err(|e| GtfsConfigError::ReadError {
-            filepath: base_config_filepath.to_string(),
-            error: e.to_string(),
-        })?;
-
     // we will load and modify the base TOML configuration file. in particular,
     // we are modifying the `[[graph.edge_list]]` and `[[search]]` sections.
     let mut compass_conf: CompassAppConfig =
-        toml::from_str(base_str.as_str()).map_err(|e| GtfsConfigError::ReadError {
-            filepath: base_config_filepath.to_string(),
-            error: e.to_string(),
+        CompassAppConfig::try_from(Path::new(base_config_filepath)).map_err(|e| {
+            GtfsConfigError::ReadError {
+                filepath: base_config_filepath.to_string(),
+                error: e.to_string(),
+            }
         })?;
 
     // temporary collections to modify when updating the base config
