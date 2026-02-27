@@ -97,7 +97,7 @@ pub fn run(
     }
 
     // grab configuration arguments to copy into each GTFS frontier model configuration
-    let (mmfc, tlfc) = get_frontier_model_arguments(&compass_conf)?;
+    let (mmfc, tlfc) = get_constraint_model_arguments(&compass_conf)?;
     let time_limit = tlfc.time_limit.clone();
     let constraints = mmfc.constraints.clone();
     let max_trip_legs = mmfc.max_trip_legs as usize;
@@ -183,7 +183,7 @@ pub fn run(
             &available_modes,
             &fq_route_ids_filepath,
             max_trip_legs,
-        );
+        )?;
         conf_search.push(SearchConfig {
             traversal: tm_conf,
             constraint: cm_conf,
@@ -266,7 +266,7 @@ fn write_fq_route_id_file(
 /// grabs frontier configuration to copy to GTFS edge lists. assumes that, if there exist
 /// one copy of MultimodalConstraintConfig and TimeLimitConstraintConfig, they are the same
 /// across all edge lists.
-pub fn get_frontier_model_arguments(
+pub fn get_constraint_model_arguments(
     base_conf: &CompassAppConfig,
 ) -> Result<(MultimodalConstraintConfig, TimeLimitConstraintConfig), GtfsConfigError> {
     if let Some((edge_list_id, search)) = base_conf.search.iter().enumerate().next() {
@@ -282,7 +282,7 @@ pub fn get_frontier_model_arguments(
             "multimodal",
         )
         .map_err(|e| {
-            GtfsConfigError::RunError(format!("while getting frontier model arguments, {e}"))
+            GtfsConfigError::RunError(format!("while getting constraint model arguments, {e}"))
         })?;
         let tlfc: TimeLimitConstraintConfig = find_expected_config(
             models_vec,
@@ -290,13 +290,13 @@ pub fn get_frontier_model_arguments(
             "time_limit",
         )
         .map_err(|e| {
-            GtfsConfigError::RunError(format!("while getting frontier model arguments, {e}"))
+            GtfsConfigError::RunError(format!("while getting constraint model arguments, {e}"))
         })?;
 
         return Ok((mmfc, tlfc));
     }
     Err(GtfsConfigError::RunError(String::from(
-        "no frontier model found in configuration with multimodal arguments",
+        "no constraint model found in configuration with multimodal arguments",
     )))
 }
 
@@ -421,7 +421,6 @@ pub fn gtfs_constraint_model_config(
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
 ) -> Result<serde_json::Value, GtfsConfigError> {
-    let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
     let mut mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
         constraints: constraints.to_vec(),
@@ -429,7 +428,9 @@ pub fn gtfs_constraint_model_config(
         route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
         max_trip_legs: max_trip_legs as u64,
     };
+    let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
     let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
+
     let result = json![{
         "type": "combined",
         "models": [tlm, mmc]
