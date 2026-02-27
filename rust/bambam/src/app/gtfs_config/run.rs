@@ -14,6 +14,7 @@ use routee_compass_core::{
     model::{
         map::MapModelGeometryConfig,
         network::{EdgeListConfig, EdgeListId},
+        traversal::default::distance::DistanceTraversalConfig,
         unit::DistanceUnit,
     },
 };
@@ -384,39 +385,30 @@ pub fn gtfs_traversal_model_config(
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
 ) -> Result<serde_json::Value, GtfsConfigError> {
+    let route_ids_input_file = Some(fq_route_ids_filepath.to_string_lossy().to_string());
+    let dtc_conf = DistanceTraversalConfig {
+        distance_unit: Some(DistanceUnit::Miles),
+        include_trip_distance: Some(true),
+    };
+    let ttc_conf = TransitTraversalConfig {
+        edges_schedules_input_file: edges_schedules.to_string(),
+        gtfs_metadata_input_file: edges_metadata.to_string(),
+        schedule_loading_policy: ScheduleLoadingPolicy::All,
+        route_ids_input_file,
+    };
+    let mtc_conf = MultimodalTraversalConfig {
+        this_mode: "transit".to_string(),
+        available_modes: available_modes.to_vec(),
+        route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
+        max_trip_legs: max_trip_legs as u64,
+    };
+    let dtc = as_json_with_type_tag(&dtc_conf, "distance")?;
+    let ttc = as_json_with_type_tag(&ttc_conf, "transit")?;
+    let mtc = as_json_with_type_tag(&mtc_conf, "multimodal")?;
+
     let result = json![{
         "type": "combined",
-        "models": [
-            {
-                "type": "distance",
-                "distance_unit": "miles"
-            },
-            {
-                "type": "transit",
-                "edges_schedules_input_file": edges_schedules.to_string(),
-                "gtfs_metadata_input_file": edges_metadata.to_string(),
-                "route_ids_input_file": Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-                "schedule_loading_policy": ScheduleLoadingPolicy::All
-            },
-            // TransitTraversalConfig {
-            //     edges_schedules_input_file: edges_schedules.to_string(),
-            //     gtfs_metadata_input_file: edges_metadata.to_string(),
-            //     schedule_loading_policy: ScheduleLoadingPolicy::All
-            // },
-            {
-                "type": "multimodal",
-                "this_mode": "transit".to_string(),
-                "available_modes": available_modes.to_vec(),
-                "route_ids_input_file": Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-                "max_trip_legs": max_trip_legs as u64,
-            }
-            // MultimodalTraversalConfig {
-            //     this_mode: "transit".to_string(),
-            //     available_modes: available_modes.to_vec(),
-            //     route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-            //     max_trip_legs: max_trip_legs as u64,
-            // }
-        ]
+        "models": [dtc, ttc, mtc]
     }];
     Ok(result)
 }
@@ -429,32 +421,18 @@ pub fn gtfs_constraint_model_config(
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
 ) -> Result<serde_json::Value, GtfsConfigError> {
-    let mut mmc = json!(MultimodalConstraintConfig {
+    let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
+    let mut mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
         constraints: constraints.to_vec(),
         available_modes: available_modes.to_vec(),
         route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-        max_trip_legs: max_trip_legs as u64
-    });
-    match mmc.as_object_mut() {
-        Some(obj) => obj.insert("type".to_string(), json!("multimodal")),
-        None => {
-            return Err(GtfsConfigError::InternalError(
-                "could not modify MultimodalConstraintConfig".to_string(),
-            ))
-        }
+        max_trip_legs: max_trip_legs as u64,
     };
-
+    let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
     let result = json![{
         "type": "combined",
-        "models": [
-            {
-                "type": "time_limit",
-                "time_limit": { "time": time_limit.time, "time_unit": time_limit.time_unit }
-            },
-            mmc
-
-        ]
+        "models": [tlm, mmc]
     }];
     Ok(result)
 }
@@ -587,4 +565,21 @@ fn create_writer(
         .quote_style(quote_style)
         .from_writer(buffer);
     Some(writer)
+}
+
+/// helper function that serializes the value T and then adds a "type" field to the object.
+fn as_json_with_type_tag<T>(value: &T, type_tag: &str) -> Result<serde_json::Value, GtfsConfigError>
+where
+    T: Serialize,
+{
+    let mut value_json = json!(value);
+    match value_json.as_object_mut() {
+        Some(obj) => obj.insert("type".to_string(), json!(type_tag)),
+        None => {
+            return Err(GtfsConfigError::InternalError(
+                "can only call as_json_with_type_tag on JSON Objects ({})".to_string(),
+            ))
+        }
+    };
+    Ok(value_json)
 }
