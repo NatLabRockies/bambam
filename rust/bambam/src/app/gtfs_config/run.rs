@@ -14,6 +14,7 @@ use routee_compass_core::{
     model::{
         map::MapModelGeometryConfig,
         network::{EdgeListConfig, EdgeListId},
+        traversal::default::distance::DistanceTraversalConfig,
         unit::DistanceUnit,
     },
 };
@@ -67,18 +68,14 @@ pub fn run(
     base_config_filepath: &str,
     base_config_relative_path: Option<&str>,
 ) -> Result<(), GtfsConfigError> {
-    let base_str =
-        std::fs::read_to_string(base_config_filepath).map_err(|e| GtfsConfigError::ReadError {
-            filepath: base_config_filepath.to_string(),
-            error: e.to_string(),
-        })?;
-
     // we will load and modify the base TOML configuration file. in particular,
     // we are modifying the `[[graph.edge_list]]` and `[[search]]` sections.
     let mut compass_conf: CompassAppConfig =
-        toml::from_str(base_str.as_str()).map_err(|e| GtfsConfigError::ReadError {
-            filepath: base_config_filepath.to_string(),
-            error: e.to_string(),
+        CompassAppConfig::try_from(Path::new(base_config_filepath)).map_err(|e| {
+            GtfsConfigError::ReadError {
+                filepath: base_config_filepath.to_string(),
+                error: e.to_string(),
+            }
         })?;
 
     // temporary collections to modify when updating the base config
@@ -100,7 +97,7 @@ pub fn run(
     }
 
     // grab configuration arguments to copy into each GTFS frontier model configuration
-    let (mmfc, tlfc) = get_frontier_model_arguments(&compass_conf)?;
+    let (mmfc, tlfc) = get_constraint_model_arguments(&compass_conf)?;
     let time_limit = tlfc.time_limit.clone();
     let constraints = mmfc.constraints.clone();
     let max_trip_legs = mmfc.max_trip_legs as usize;
@@ -179,14 +176,14 @@ pub fn run(
             &available_modes,
             &fq_route_ids_filepath,
             max_trip_legs,
-        );
-        let cm_conf = gtfs_frontier_model_config(
+        )?;
+        let cm_conf = gtfs_constraint_model_config(
             &constraints,
             &time_limit,
             &available_modes,
             &fq_route_ids_filepath,
             max_trip_legs,
-        );
+        )?;
         conf_search.push(SearchConfig {
             traversal: tm_conf,
             constraint: cm_conf,
@@ -269,7 +266,7 @@ fn write_fq_route_id_file(
 /// grabs frontier configuration to copy to GTFS edge lists. assumes that, if there exist
 /// one copy of MultimodalConstraintConfig and TimeLimitConstraintConfig, they are the same
 /// across all edge lists.
-pub fn get_frontier_model_arguments(
+pub fn get_constraint_model_arguments(
     base_conf: &CompassAppConfig,
 ) -> Result<(MultimodalConstraintConfig, TimeLimitConstraintConfig), GtfsConfigError> {
     if let Some((edge_list_id, search)) = base_conf.search.iter().enumerate().next() {
@@ -285,7 +282,7 @@ pub fn get_frontier_model_arguments(
             "multimodal",
         )
         .map_err(|e| {
-            GtfsConfigError::RunError(format!("while getting frontier model arguments, {e}"))
+            GtfsConfigError::RunError(format!("while getting constraint model arguments, {e}"))
         })?;
         let tlfc: TimeLimitConstraintConfig = find_expected_config(
             models_vec,
@@ -293,13 +290,13 @@ pub fn get_frontier_model_arguments(
             "time_limit",
         )
         .map_err(|e| {
-            GtfsConfigError::RunError(format!("while getting frontier model arguments, {e}"))
+            GtfsConfigError::RunError(format!("while getting constraint model arguments, {e}"))
         })?;
 
         return Ok((mmfc, tlfc));
     }
     Err(GtfsConfigError::RunError(String::from(
-        "no frontier model found in configuration with multimodal arguments",
+        "no constraint model found in configuration with multimodal arguments",
     )))
 }
 
@@ -387,75 +384,58 @@ pub fn gtfs_traversal_model_config(
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
-) -> serde_json::Value {
-    json![{
+) -> Result<serde_json::Value, GtfsConfigError> {
+    let route_ids_input_file = Some(fq_route_ids_filepath.to_string_lossy().to_string());
+    let dtc_conf = DistanceTraversalConfig {
+        distance_unit: Some(DistanceUnit::Miles),
+        include_trip_distance: Some(true),
+    };
+    let ttc_conf = TransitTraversalConfig {
+        edges_schedules_input_file: edges_schedules.to_string(),
+        gtfs_metadata_input_file: edges_metadata.to_string(),
+        schedule_loading_policy: ScheduleLoadingPolicy::All,
+        route_ids_input_file,
+    };
+    let mtc_conf = MultimodalTraversalConfig {
+        this_mode: "transit".to_string(),
+        available_modes: available_modes.to_vec(),
+        route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
+        max_trip_legs: max_trip_legs as u64,
+    };
+    let dtc = as_json_with_type_tag(&dtc_conf, "distance")?;
+    let ttc = as_json_with_type_tag(&ttc_conf, "transit")?;
+    let mtc = as_json_with_type_tag(&mtc_conf, "multimodal")?;
+
+    let result = json![{
         "type": "combined",
-        "models": [
-            {
-                "type": "distance",
-                "distance_unit": "miles"
-            },
-            {
-                "type": "transit",
-                "edges_schedules_input_file": edges_schedules.to_string(),
-                "gtfs_metadata_input_file": edges_metadata.to_string(),
-                "route_ids_input_file": Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-                "schedule_loading_policy": ScheduleLoadingPolicy::All
-            },
-            // TransitTraversalConfig {
-            //     edges_schedules_input_file: edges_schedules.to_string(),
-            //     gtfs_metadata_input_file: edges_metadata.to_string(),
-            //     schedule_loading_policy: ScheduleLoadingPolicy::All
-            // },
-            {
-                "type": "multimodal",
-                "this_mode": "transit".to_string(),
-                "available_modes": available_modes.to_vec(),
-                "route_ids_input_file": Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-                "max_trip_legs": max_trip_legs as u64,
-            }
-            // MultimodalTraversalConfig {
-            //     this_mode: "transit".to_string(),
-            //     available_modes: available_modes.to_vec(),
-            //     route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-            //     max_trip_legs: max_trip_legs as u64,
-            // }
-        ]
-    }]
+        "models": [dtc, ttc, mtc]
+    }];
+    Ok(result)
 }
 
 /// generates the JSON fields expected for a transit frontier model
-pub fn gtfs_frontier_model_config(
+pub fn gtfs_constraint_model_config(
     constraints: &[ConstraintConfig],
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
-) -> serde_json::Value {
-    json![{
+) -> Result<serde_json::Value, GtfsConfigError> {
+    let mut mmc_conf = MultimodalConstraintConfig {
+        this_mode: "transit".to_string(),
+        constraints: constraints.to_vec(),
+        available_modes: available_modes.to_vec(),
+        route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
+        max_trip_legs: max_trip_legs as u64,
+    };
+    let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
+    let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
+
+    let result = json![{
         "type": "combined",
-        "models": [
-            {
-                "type": "time_limit",
-                "time_limit": { "time": time_limit.time, "time_unit": time_limit.time_unit }},
-            {
-                "type": "multimodal",
-                "this_mode": "transit",
-                "constraints": constraints.to_vec(),
-                "available_modes": available_modes.to_vec(),
-                "route_ids_input_file": Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-                "max_trip_legs": max_trip_legs as u64
-            }
-            // // it would be great to use this directly but we need to include the "type" tag in a custom serializer
-            // MultimodalConstraintConfig {
-            //     this_mode: "transit".to_string(),
-            //     constraints: constraints.to_vec(),
-            //     available_modes: available_modes.to_vec(),
-            //     route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-            //     max_trip_legs: max_trip_legs as u64
-            // }
-        ]
-    }]
+        "models": [tlm, mmc]
+    }];
+    Ok(result)
 }
 
 pub struct GtfsEdgeListEntry {
@@ -586,4 +566,21 @@ fn create_writer(
         .quote_style(quote_style)
         .from_writer(buffer);
     Some(writer)
+}
+
+/// helper function that serializes the value T and then adds a "type" field to the object.
+fn as_json_with_type_tag<T>(value: &T, type_tag: &str) -> Result<serde_json::Value, GtfsConfigError>
+where
+    T: Serialize,
+{
+    let mut value_json = json!(value);
+    match value_json.as_object_mut() {
+        Some(obj) => obj.insert("type".to_string(), json!(type_tag)),
+        None => {
+            return Err(GtfsConfigError::InternalError(
+                "can only call as_json_with_type_tag on JSON Objects ({})".to_string(),
+            ))
+        }
+    };
+    Ok(value_json)
 }
