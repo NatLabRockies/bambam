@@ -287,7 +287,7 @@ pub fn read_gtfs(
             (true, MissingStopLocationPolicy::Fail) => {
                 return Err(ScheduleError::MapMatchError {
                     stop_id: stop.id.clone(),
-                    error: format!("failed to map match stop with policy set to 'fail'. see CLI --help command for options."),
+                    error: "failed to map match stop with policy set to 'fail'. see CLI --help command for options.".to_string(),
                 });
             }
             (true, MissingStopLocationPolicy::DropStop) => {
