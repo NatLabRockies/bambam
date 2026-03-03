@@ -233,8 +233,9 @@ impl GtfsOperation {
                 } else {
                     let bundle_opt = bundle_ops::process_bundle(input, config.clone())
                         .expect("failure processing GTFS bundle");
-                    let bundle = bundle_opt
-                        .expect("failed to create a valid BAMBAM input, see logs for explanation");
+                    let bundle = bundle_opt.expect(
+                        "GTFS archive import was skipped as the extent does not intersect any archives",
+                    );
                     bundle_ops::write_bundle(&bundle, config.clone(), config.starting_edge_list_id)
                         .expect("failure writing GTFS bundle");
                 }
@@ -454,7 +455,21 @@ fn read_extent_file(extent_file: Option<&String>) -> Result<Option<Geometry>, Sc
     match &extent {
         Geometry::Polygon(_) => Ok(()),
         Geometry::MultiPolygon(_) => Ok(()),
-        Geometry::GeometryCollection(_) => Ok(()),
+        Geometry::GeometryCollection(gc) => {
+            // test features within geometry collection
+            for g in gc.iter() {
+                match g {
+                    Geometry::Polygon(_) => {}
+                    Geometry::MultiPolygon(_) => {}
+                    _ => {
+                        return Err(ScheduleError::InvalidData(format!(
+                        "WKT in '{extent_file}' is a GeometryCollection with non-polygonal features"
+                    )))
+                    }
+                }
+            }
+            Ok(())
+        }
         _ => Err(ScheduleError::InvalidData(format!(
             "WKT in '{extent_file}' is not polygonal"
         ))),

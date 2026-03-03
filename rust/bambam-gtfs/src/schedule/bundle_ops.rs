@@ -1,7 +1,7 @@
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
-use geo::{Contains, Geometry, LineString, Point};
+use geo::{Geometry, Intersects, LineString, Point};
 use gtfs_structures::{Gtfs, Stop, StopTime};
 use itertools::Itertools;
 use kdam::{Bar, BarBuilder, BarExt};
@@ -176,7 +176,11 @@ pub fn process_bundle(
     log::debug!("process_bundle called for {bundle_file}");
     // read the GTFS archive. pre-process by removing Trips that contain stops
     // which do not map to the road network vertices within the matching distance threshold.
-    let gtfs = Arc::new(read_gtfs(bundle_file, c.spatial_index.clone())?);
+    let gtfs = Arc::new(read_gtfs(
+        bundle_file,
+        c.spatial_index.clone(),
+        &c.missing_stop_location_policy,
+    )?);
 
     // if user provided an extent, use it to filter GTFS archives
     if let Some(extent) = c.extent.as_ref() {
@@ -265,8 +269,13 @@ pub fn process_bundle(
     Ok(Some(result))
 }
 
-/// reads a GTFS archive.
-pub fn read_gtfs(gtfs_file: &str, spatial_index: Arc<SpatialIndex>) -> Result<Gtfs, ScheduleError> {
+/// reads a GTFS archive. applies the missing stop matching policy, removing any disconnected
+/// Routes that include Stops that cannot be map matched.
+pub fn read_gtfs(
+    gtfs_file: &str,
+    spatial_index: Arc<SpatialIndex>,
+    missing_stop_matching_policy: &MissingStopLocationPolicy,
+) -> Result<Gtfs, ScheduleError> {
     let mut gtfs = Gtfs::new(gtfs_file)?;
     let mut disconnected_stops = HashSet::new();
     for stop in gtfs.stops.values() {
@@ -274,9 +283,18 @@ pub fn read_gtfs(gtfs_file: &str, spatial_index: Arc<SpatialIndex>) -> Result<Gt
             None => true,
             Some(point) => match_closest_graph_id(&point, spatial_index.clone()).is_err(),
         };
-        if remove_route {
-            disconnected_stops.insert(&stop.id);
-        };
+        match (remove_route, missing_stop_matching_policy) {
+            (true, MissingStopLocationPolicy::Fail) => {
+                return Err(ScheduleError::MapMatchError {
+                    stop_id: stop.id.clone(),
+                    error: format!("failed to map match stop with policy set to 'fail'. see CLI --help command for options."),
+                });
+            }
+            (true, MissingStopLocationPolicy::DropStop) => {
+                let _ = disconnected_stops.insert(&stop.id);
+            }
+            _ => {}
+        }
     }
     let mut disconnected_trips = HashSet::new();
     let trip_ids = gtfs.trips.keys().collect_vec();
@@ -425,16 +443,8 @@ fn process_schedule(
     }
 
     // match this stop time pair to the graph or apply optional fallback policy
-    let map_match_result = map_match(src, dst, stop_locations, c.spatial_index.clone())?;
     let ((src_id, src_point), (dst_id, dst_point)) =
-        match (map_match_result, &c.missing_stop_location_policy) {
-            (Some(result), _) => result,
-            (None, MissingStopLocationPolicy::Fail) => {
-                let msg = format!("{} or {}", src.stop.id, dst.stop.id);
-                return Err(ScheduleError::MissingStopLocationAndParent(msg));
-            }
-            (None, MissingStopLocationPolicy::DropStop) => return Ok(None),
-        };
+        map_match(src, dst, stop_locations, c.spatial_index.clone())?;
 
     // This only gets to run if all previous conditions are met
     // it adds the edge if it has not yet been added.
@@ -594,7 +604,7 @@ fn map_match(
     dst: &StopTime,
     stop_locations: &HashMap<String, Option<Point<f64>>>,
     spatial_index: Arc<SpatialIndex>,
-) -> Result<Option<MapMatchResult>, ScheduleError> {
+) -> Result<MapMatchResult, ScheduleError> {
     // Since `stop_locations` is computed from `gtfs.stops`, this should never fail
     let maybe_src = stop_locations.get(&src.stop.id).ok_or_else(|| {
         ScheduleError::MalformedGtfs(format!(
@@ -621,9 +631,16 @@ fn map_match(
             // For instance, what happens if src_compass == dst_compass?
             let src_point = src_point_.to_owned();
             let dst_point = dst_point_.to_owned();
-            Ok(Some(((src_compass, src_point), (dst_compass, dst_point))))
+            Ok(((src_compass, src_point), (dst_compass, dst_point)))
         }
-        _ => Ok(None),
+        _ => {
+            let msg = format!(
+                "while map matching stop times between stops '{}' and '{}' could not find POINTs for both stops",
+                src.stop.id,
+                dst.stop.id
+            );
+            Err(ScheduleError::MalformedGtfs(msg))
+        }
     }
 }
 
@@ -672,7 +689,7 @@ fn create_writer(
 fn archive_intersects_extent(gtfs: &Gtfs, extent: &Geometry) -> Result<bool, ScheduleError> {
     for stop in gtfs.stops.values() {
         if let Some(point) = get_stop_location(stop.clone(), gtfs) {
-            if extent.contains(&point) {
+            if extent.intersects(&point) {
                 return Ok(true);
             }
         }

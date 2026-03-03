@@ -14,8 +14,8 @@ pub enum ScheduleError {
     },
     #[error("Spatial index matched an edge instead of a vertex")]
     SpatialIndexIncorrectMap,
-    #[error("Missing lon,lat data and parent_location for stop: {0}")]
-    MissingStopLocationAndParent(String),
+    #[error("Error matching stop '{stop_id}': {error}")]
+    MapMatchError { stop_id: String, error: String },
     #[error("Missing both arrival and departure times: {0}")]
     MissingAllStopTimes(String),
     #[error("At least one of the stops in edge is missing shape distance traveled: {0} or {1}")]
