@@ -270,7 +270,7 @@ pub fn process_bundle(
 }
 
 /// reads a GTFS archive. applies the missing stop matching policy, removing any disconnected
-/// Routes that include Stops that cannot be map matched.
+/// Trips that include Stops which cannot be map matched.
 pub fn read_gtfs(
     gtfs_file: &str,
     spatial_index: Arc<SpatialIndex>,
@@ -290,7 +290,7 @@ pub fn read_gtfs(
                     error: "failed to map match stop with policy set to 'fail'. see CLI --help command for options.".to_string(),
                 });
             }
-            (true, MissingStopLocationPolicy::DropStop) => {
+            (true, MissingStopLocationPolicy::Drop) => {
                 let _ = disconnected_stops.insert(&stop.id);
             }
             _ => {}
