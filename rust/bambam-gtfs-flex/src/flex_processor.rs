@@ -1,11 +1,9 @@
 use crate::calendar::{read_calendar_from_flex, Calendar};
-use crate::locations::{read_locations_from_flex, Location};
 use crate::stop_times::{read_stop_times_from_flex, StopTimes};
 use crate::trips::{read_trips_from_flex, Trips};
 
 use chrono::Datelike;
 use chrono::NaiveTime;
-use geo_types::Geometry;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
@@ -19,8 +17,6 @@ pub struct ValidZone {
     destination_zone: String,
     start_pickup_drop_off_window: Option<NaiveTime>,
     end_pickup_drop_off_window: Option<NaiveTime>,
-    origin_zone_geom: Option<Geometry>,
-    destination_zone_geom: Option<Geometry>,
 }
 
 /// process all GTFS-Flex feeds in the given directory
@@ -101,33 +97,13 @@ pub fn process_flex_files(flex_directory_path: &Path, date_requested: &str) -> i
             // println!("      stop_times.txt records: {:?}", stop_times);
             println!("      stop_times.txt read!");
 
-            // read locations.geojson
-            let locations = read_locations_from_flex(&path)?.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "Error in locations.geojson")
-            })?;
-            // println!("      locations.geojson content: {:?}", locations);
-            println!("      locations.geojson read!");
-
             // process files for requested date and time and get valid zones
             let valid_zones =
-                join_flex_files(&calendar, &trips, &stop_times, &locations, date_requested)?;
+                join_flex_files(&calendar, &trips, &stop_times, date_requested)?;
 
             println!(
-                "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window, origin_zone_geom, destination_zone_geom): {:#?}",
+                "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window): {:#?}",
                 valid_zones
-                    .iter()
-                    .map(|vz| {
-                        (
-                            &vz.trip_id,
-                            &vz.origin_zone,
-                            &vz.destination_zone,
-                            vz.start_pickup_drop_off_window,
-                            vz.end_pickup_drop_off_window,
-                            vz.origin_zone_geom.as_ref().map(|g| format!("{:?}", g).chars().take(50).collect::<String>() + "..."),
-                            vz.destination_zone_geom.as_ref().map(|g| format!("{:?}", g).chars().take(50).collect::<String>() + "..."),
-                        )
-                    })
-                    .collect::<Vec<_>>()
             );
         }
     }
@@ -137,12 +113,11 @@ pub fn process_flex_files(flex_directory_path: &Path, date_requested: &str) -> i
     Ok(())
 }
 
-/// process calender, trips, stop_times, and locaitons files for the requested date and time
+/// process calender, trips, and stop_times files for the requested date and time
 pub fn join_flex_files(
     calendar: &[Calendar],
     trips: &[Trips],
     stop_times: &[StopTimes],
-    _locations: &[Location],
     date_requested: &str,
 ) -> io::Result<Vec<ValidZone>> {
     // parse requested date
@@ -175,8 +150,7 @@ pub fn join_flex_files(
     let active_trips: Vec<&Trips> = trips
         .iter()
         .filter(|t| active_service_ids.contains(&t.service_id.as_str()))
-        .collect();
-
+        .collect();   
     // println!("          active trips: {:?}", active_trips);
 
     // filter stop_times for active trips and by requested time
@@ -186,10 +160,6 @@ pub fn join_flex_files(
         .filter(|st| active_trip_ids.contains(&st.trip_id.as_str()))
         .collect();
     // println!("          active stop_times: {:?}", active_stop_times);
-
-    // build location lookup map
-    let location_map: HashMap<String, &Location> =
-        locations.iter().map(|loc| (loc.id.clone(), loc)).collect();
 
     // group stop_times by trip_id
     let mut stop_times_by_trip: HashMap<String, Vec<&StopTimes>> = HashMap::new();
@@ -230,27 +200,14 @@ pub fn join_flex_files(
                 .find(|st| st.pickup_type == 1 && st.drop_off_type == 2)
                 .map(|st| st.end_pickup_drop_off_window);
 
-            // append geometries to origin and destination zones
             match (origin, destination) {
-                (Some(origin_zone), Some(destination_zone)) => {
-                    let origin_zone_geom = location_map
-                        .get(&origin_zone)
-                        .map(|loc| loc.geometry.clone());
-
-                    let destination_zone_geom = location_map
-                        .get(&destination_zone)
-                        .map(|loc| loc.geometry.clone());
-
-                    Some(ValidZone {
-                        trip_id,
-                        origin_zone,
-                        start_pickup_drop_off_window,
-                        end_pickup_drop_off_window,
-                        destination_zone,
-                        origin_zone_geom,
-                        destination_zone_geom,
-                    })
-                }
+                (Some(origin_zone), Some(destination_zone)) => Some(ValidZone {
+                    trip_id,
+                    origin_zone,
+                    start_pickup_drop_off_window,
+                    end_pickup_drop_off_window,
+                    destination_zone,
+                }),
                 _ => None,
             }
         })

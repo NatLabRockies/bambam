@@ -2,7 +2,6 @@ use std::path::Path;
 
 mod calendar;
 mod flex_processor;
-mod locations;
 mod stop_times;
 mod trips;
 
