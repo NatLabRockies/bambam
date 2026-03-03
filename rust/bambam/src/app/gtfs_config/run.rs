@@ -263,7 +263,7 @@ fn write_fq_route_id_file(
     }
 }
 
-/// grabs frontier configuration to copy to GTFS edge lists. assumes that, if there exist
+/// grabs relevant configuration to copy to GTFS edge lists. assumes that, if there exist
 /// one copy of MultimodalConstraintConfig and TimeLimitConstraintConfig, they are the same
 /// across all edge lists.
 pub fn get_constraint_model_arguments(
@@ -421,7 +421,7 @@ pub fn gtfs_constraint_model_config(
     fq_route_ids_filepath: &Path,
     max_trip_legs: usize,
 ) -> Result<serde_json::Value, GtfsConfigError> {
-    let mut mmc_conf = MultimodalConstraintConfig {
+    let mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
         constraints: constraints.to_vec(),
         available_modes: available_modes.to_vec(),
