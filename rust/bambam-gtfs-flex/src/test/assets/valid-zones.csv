@@ -1,5 +1,5 @@
-trip_id,origin_zone,start_pickup_drop_off_window,end_pickup_drop_off_window,destination_zone
-t_5298036_b_77503_tn_0,area_713,06:30:00,20:00:00,area_714
-t_5374944_b_77497_tn_0,area_715,06:15:00,08:00:00,area_715
-t_5374945_b_77497_tn_0,area_708,08:00:00,17:00:00,area_708
-t_5374946_b_77497_tn_0,area_715,17:00:00,17:45:00,area_715
+feed,trip_id,origin_zone,start_pickup_drop_off_window,end_pickup_drop_off_window,destination_zone
+on-demand-services-between-multiple-zones-river-valley,t_5298036_b_77503_tn_0,area_713,06:30:00,20:00:00,area_714
+on-demand-services-within-a-single-zone,t_5374945_b_77497_tn_0,area_708,08:00:00,17:00:00,area_708
+on-demand-services-within-a-single-zone,t_5374944_b_77497_tn_0,area_715,06:15:00,08:00:00,area_715
+on-demand-services-within-a-single-zone,t_5374946_b_77497_tn_0,area_715,17:00:00,17:45:00,area_715

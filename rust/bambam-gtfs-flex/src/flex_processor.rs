@@ -13,6 +13,7 @@ use std::path::Path;
 /// a valid origin-destination zone pair for a trip
 #[derive(Debug, Serialize)]
 pub struct ValidZone {
+    pub feed: String,
     pub trip_id: String,
     pub origin_zone: String,
     pub start_pickup_drop_off_window: Option<NaiveTime>,
@@ -83,6 +84,12 @@ pub fn process_flex_files(
 
         if path.is_file() && path.extension().is_some_and(|e| e == "zip") {
             println!("  Processing {:?}", path);
+            // extract feed name
+            let feed_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown_feed")
+                .to_string();
 
             // read calender.txt
             let calendar = read_calendar_from_flex(&path)?.ok_or_else(|| {
@@ -106,14 +113,23 @@ pub fn process_flex_files(
 
             // process files for requested date and time and get valid zones
             let valid_zones =
-                join_flex_files(&calendar, &trips, &stop_times, date_requested)?;
+                join_flex_files(&calendar, &trips, &stop_times, date_requested, &feed_name)?;
 
             // println!(
             //     "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window): {:#?}",
             //     valid_zones
             // );
             
-            all_valid_zones.extend(valid_zones);
+            // valid zones with feed name
+            let valid_zones_with_feed: Vec<ValidZone> = valid_zones
+                .into_iter()
+                .map(|mut zone| {
+                    zone.feed = feed_name.clone();
+                    zone
+                })
+                .collect();
+
+            all_valid_zones.extend(valid_zones_with_feed);
         }
     }
 
@@ -128,6 +144,7 @@ pub fn join_flex_files(
     trips: &[Trips],
     stop_times: &[StopTimes],
     date_requested: &str,
+    feed_name: &str,     
 ) -> io::Result<Vec<ValidZone>> {
     // parse requested date
     let date = chrono::NaiveDate::parse_from_str(date_requested, "%Y%m%d")
@@ -153,7 +170,7 @@ pub fn join_flex_files(
         .map(|c| c.service_id.as_str())
         .collect();
 
-    println!("          active service_ids: {:?}", active_service_ids);
+    // println!("          active service_ids: {:?}", active_service_ids);
 
     // filter trips by active service_ids
     let active_trips: Vec<&Trips> = trips
@@ -211,6 +228,7 @@ pub fn join_flex_files(
 
             match (origin, destination) {
                 (Some(origin_zone), Some(destination_zone)) => Some(ValidZone {
+                    feed: feed_name.to_string(),
                     trip_id,
                     origin_zone,
                     start_pickup_drop_off_window,
