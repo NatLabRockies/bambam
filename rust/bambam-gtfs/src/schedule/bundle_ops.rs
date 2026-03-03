@@ -279,11 +279,11 @@ pub fn read_gtfs(
     let mut gtfs = Gtfs::new(gtfs_file)?;
     let mut disconnected_stops = HashSet::new();
     for stop in gtfs.stops.values() {
-        let remove_route = match get_stop_location(stop.clone(), &gtfs) {
+        let remove_stop = match get_stop_location(stop.clone(), &gtfs) {
             None => true,
             Some(point) => match_closest_graph_id(&point, spatial_index.clone()).is_err(),
         };
-        match (remove_route, missing_stop_matching_policy) {
+        match (remove_stop, missing_stop_matching_policy) {
             (true, MissingStopLocationPolicy::Fail) => {
                 return Err(ScheduleError::MapMatchError {
                     stop_id: stop.id.clone(),
