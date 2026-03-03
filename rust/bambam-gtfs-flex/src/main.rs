@@ -15,7 +15,14 @@ fn main() -> std::io::Result<()> {
     let date_requested = "20240902";
 
     // process GTFS-Flex feeds in the specified directory for the requested date
-    process_gtfs_flex_bundle(flex_dir, date_requested)?;
+    let valid_zones = process_gtfs_flex_bundle(flex_dir, date_requested)?;
+
+    // write valid zones to a csv file
+    let mut writer = csv::Writer::from_path(flex_dir.join("valid-zones.csv"))?;
+    for zone in valid_zones {
+        writer.serialize(zone)?;
+    }
+    writer.flush()?;
 
     Ok(())
 }

@@ -4,36 +4,38 @@ use crate::trips::{read_trips_from_flex, Trips};
 
 use chrono::Datelike;
 use chrono::NaiveTime;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::Path;
 
 /// a valid origin-destination zone pair for a trip
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct ValidZone {
-    trip_id: String,
-    origin_zone: String,
-    destination_zone: String,
-    start_pickup_drop_off_window: Option<NaiveTime>,
-    end_pickup_drop_off_window: Option<NaiveTime>,
+    pub trip_id: String,
+    pub origin_zone: String,
+    pub start_pickup_drop_off_window: Option<NaiveTime>,
+    pub end_pickup_drop_off_window: Option<NaiveTime>,
+    pub destination_zone: String,
 }
 
 /// process all GTFS-Flex feeds in the given directory
 pub fn process_gtfs_flex_bundle(
     flex_directory_path: &Path,
     date_requested: &str,
-) -> io::Result<()> {
+) -> io::Result<Vec<ValidZone>> {
     println!("=== Processing GTFS-Flex bundle ===");
 
     // discover gtfs-flex feeds
     discover_gtfs_flex_feeds(flex_directory_path)?;
 
     // process files in each feed
-    process_flex_files(flex_directory_path, date_requested)?;
+    let all_valid_zones =
+        process_flex_files(flex_directory_path, date_requested)?;
 
     println!("=== GTFS-Flex processing complete ===");
-    Ok(())
+    Ok(all_valid_zones)
 }
 
 /// discover all zip files in the given directory
@@ -67,8 +69,13 @@ pub fn discover_gtfs_flex_feeds(flex_directory_path: &Path) -> io::Result<()> {
 
 /// iterate over gtfs-flex feeds and process files from each feed
 /// return valid zones for the requested date
-pub fn process_flex_files(flex_directory_path: &Path, date_requested: &str) -> io::Result<()> {
+pub fn process_flex_files(
+    flex_directory_path: &Path,
+    date_requested: &str,
+) -> io::Result<Vec<ValidZone>> {
     println!("Processing GTFS-Flex feeds in {:?}", flex_directory_path);
+    
+    let mut all_valid_zones = Vec::new();
 
     for entry in std::fs::read_dir(flex_directory_path)? {
         let entry = entry?;
@@ -101,16 +108,18 @@ pub fn process_flex_files(flex_directory_path: &Path, date_requested: &str) -> i
             let valid_zones =
                 join_flex_files(&calendar, &trips, &stop_times, date_requested)?;
 
-            println!(
-                "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window): {:#?}",
-                valid_zones
-            );
+            // println!(
+            //     "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window): {:#?}",
+            //     valid_zones
+            // );
+            
+            all_valid_zones.extend(valid_zones);
         }
     }
 
     println!("GTFS-Flex feeds processed!");
 
-    Ok(())
+    Ok(all_valid_zones)
 }
 
 /// process calender, trips, and stop_times files for the requested date and time
