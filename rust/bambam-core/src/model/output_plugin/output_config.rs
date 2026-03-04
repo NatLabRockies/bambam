@@ -1,16 +1,13 @@
-use bambam_core::model::{
+use crate::model::{
     destination::{BinRangeConfig, DestinationPredicateConfig},
-    output_plugin::{
-        isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
-        opportunity::OpportunityFormat,
-    },
+    output_plugin::isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
 };
 use serde::{Deserialize, Serialize};
 
 ///
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "format", rename_all = "snake_case")]
-pub enum BambamOutputPluginConfig {
+pub enum BambamOutputConfig {
     Aggregate {
         /// the method for binning the output. required when opportunity_format == Aggregate.
         binning: BinRangeConfig,

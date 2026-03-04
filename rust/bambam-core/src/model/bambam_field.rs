@@ -11,6 +11,7 @@ pub const TIME_BINS: &str = "bin";
 pub const TIME_BIN: &str = "time_bin";
 pub const INFO: &str = "info";
 pub const MODE: &str = "mode";
+pub const OUTPUT_CONFIG: &str = "output_config";
 pub const ISOCHRONE: &str = "isochrone";
 pub const ISOCHRONE_ALGORITHM: &str = "isochrone_algorithm";
 pub const ISOCHRONE_FORMAT: &str = "isochrone_format";

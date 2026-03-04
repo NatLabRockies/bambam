@@ -1,15 +1,16 @@
-use bambam_core::model::bambam_typed;
+use bambam_core::model::{
+    bambam_typed,
+    output_plugin::{opportunity::OpportunityFormat, BambamOutputConfig},
+};
 use routee_compass::{
     app::{compass::CompassAppError, search::SearchAppResult},
     plugin::output::{OutputPlugin, OutputPluginError},
 };
 use routee_compass_core::algorithm::search::SearchInstance;
 
-use crate::model::output_plugin::bambam::config::BambamOutputPluginConfig;
-
 /// scaffolds the output row with fields that are parameters to the downstream
 /// BAMBAM output plugins.
-pub struct BambamOutputPlugin(pub BambamOutputPluginConfig);
+pub struct BambamOutputPlugin(pub BambamOutputConfig);
 
 impl OutputPlugin for BambamOutputPlugin {
     fn process(
@@ -19,14 +20,22 @@ impl OutputPlugin for BambamOutputPlugin {
     ) -> Result<(), OutputPluginError> {
         let mut row = bambam_typed::BambamOutputRow::new(output);
         let mut info = row.info()?;
+
+        // TODO: oh, this would require either
+        // - untyped nested keys (info.output_config.isochrone_format)
+        // - wholly deserializing info.output_config to access inner fields
+        // is this ok? desirable?
+        // info.set_output_config(&self.0)?;
+
         match &self.0 {
-            BambamOutputPluginConfig::Aggregate {
+            BambamOutputConfig::Aggregate {
                 binning,
                 destination_filter,
                 geometry_model,
                 isochrone_algorithm,
                 isochrone_format,
             } => {
+                info.set_opportunity_format(OpportunityFormat::Aggregate)?;
                 info.set_bin_range(binning)?;
                 if let Some(f) = destination_filter {
                     info.set_destination_filter(f)?;
@@ -35,7 +44,8 @@ impl OutputPlugin for BambamOutputPlugin {
                 info.set_isochrone_algorithm(isochrone_algorithm)?;
                 info.set_isochrone_format(isochrone_format)?;
             }
-            BambamOutputPluginConfig::Disaggregate { destination_filter } => {
+            BambamOutputConfig::Disaggregate { destination_filter } => {
+                info.set_opportunity_format(OpportunityFormat::Disaggregate)?;
                 if let Some(f) = destination_filter {
                     info.set_destination_filter(f)?;
                 }

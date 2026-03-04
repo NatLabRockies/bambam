@@ -48,6 +48,7 @@ use crate::model::{
     output_plugin::{
         isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
         opportunity::{OpportunityFormat, OpportunityOrientation},
+        BambamOutputConfig,
     },
 };
 
@@ -146,6 +147,13 @@ impl<'a> InfoSection<'a> {
     }
     pub fn set_activity_types(&mut self, v: &[String]) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::ACTIVITY_TYPES, v)
+    }
+
+    pub fn get_output_config(&self) -> Result<Option<BambamOutputConfig>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::OUTPUT_CONFIG)
+    }
+    pub fn set_output_config(&mut self, v: &BambamOutputConfig) -> Result<(), OutputPluginError> {
+        set_field(self.0, bambam_field::OUTPUT_CONFIG, v)
     }
 
     pub fn get_bin_range(&self) -> Result<Option<BinRangeConfig>, OutputPluginError> {
