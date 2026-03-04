@@ -1,10 +1,8 @@
 use crate::model::output_plugin::isochrone::IsochroneOutputPluginConfig;
 
+use super::isochrone_output_plugin::IsochroneOutputPlugin;
 use super::time_bin_type::TimeBinType;
-use super::{
-    destination_point_generator::DestinationPointGenerator,
-    isochrone_algorithm::IsochroneAlgorithm, isochrone_output_plugin::IsochroneOutputPlugin,
-};
+use bambam_core::model::output_plugin::isochrone::GeometryModel;
 use routee_compass::app::compass::CompassComponentError;
 use routee_compass::plugin::output::{OutputPlugin, OutputPluginBuilder, OutputPluginError};
 use routee_compass::plugin::PluginError;
@@ -22,7 +20,7 @@ impl OutputPluginBuilder for IsochroneOutputPluginBuilder {
             .map_err(|e| {
                 PluginError::BuildFailed(format!("failure reading isochrone configuration: {e}"))
             })?;
-        let generator = DestinationPointGenerator::try_from(&config.destination_point_generator)?;
+        let generator = GeometryModel::try_from(&config.destination_point_generator)?;
         let bins = config
             .time_bin
             .create_bins()

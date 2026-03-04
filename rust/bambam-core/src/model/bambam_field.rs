@@ -12,7 +12,11 @@ pub const TIME_BIN: &str = "time_bin";
 pub const INFO: &str = "info";
 pub const MODE: &str = "mode";
 pub const ISOCHRONE: &str = "isochrone";
+pub const ISOCHRONE_ALGORITHM: &str = "isochrone_algorithm";
 pub const ISOCHRONE_FORMAT: &str = "isochrone_format";
+pub const GEOMETRY_MODEL: &str = "geometry_model";
+pub const BIN_RANGE: &str = "bin_range";
+pub const DESTINATION_FILTER: &str = "destination_filter";
 pub const TREE_SIZE: &str = "tree_size";
 pub const ACTIVITY_TYPES: &str = "activity_types";
 pub const OPPORTUNITIES: &str = "opportunities";
@@ -25,8 +29,6 @@ pub const OPP_FMT_AGGREGATE: &str = "aggregate";
 pub const OPP_FMT_DISAGGREGATE: &str = "disaggregate";
 pub const OPPORTUNITY_PLUGIN_RUNTIME: &str = "opportunity_runtime";
 pub const OPPORTUNITY_BIN_RUNTIME: &str = "bin_runtime";
-pub const BIN_RANGE: &str = "bin_range";
-pub const DESTINATION_FILTER: &str = "destination_filter";
 pub const COST: &str = "cost";
 
 pub mod get {

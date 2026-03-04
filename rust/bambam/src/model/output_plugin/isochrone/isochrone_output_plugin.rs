@@ -1,6 +1,6 @@
-use super::destination_point_generator::DestinationPointGenerator;
-use super::isochrone_algorithm::IsochroneAlgorithm;
-use bambam_core::model::output_plugin::isochrone::IsochroneOutputFormat;
+use bambam_core::model::output_plugin::isochrone::{
+    GeometryModel, IsochroneAlgorithm, IsochroneOutputFormat,
+};
 use bambam_core::model::{bambam_field as field, bambam_ops, TimeBin};
 use routee_compass::app::{compass::CompassAppError, search::SearchAppResult};
 use routee_compass::plugin::output::OutputPlugin;
@@ -13,7 +13,7 @@ pub struct IsochroneOutputPlugin {
     time_bins: Vec<TimeBin>,
     isochrone_algorithm: IsochroneAlgorithm,
     isochrone_output_format: IsochroneOutputFormat,
-    destination_point_generator: DestinationPointGenerator,
+    destination_point_generator: GeometryModel,
 }
 
 impl OutputPlugin for IsochroneOutputPlugin {
@@ -78,7 +78,7 @@ impl IsochroneOutputPlugin {
         time_bins: Vec<TimeBin>,
         isochrone_algorithm: IsochroneAlgorithm,
         isochrone_output_format: IsochroneOutputFormat,
-        destination_point_generator: DestinationPointGenerator,
+        destination_point_generator: GeometryModel,
     ) -> Result<IsochroneOutputPlugin, OutputPluginError> {
         Ok(IsochroneOutputPlugin {
             time_bins,

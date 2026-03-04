@@ -46,7 +46,7 @@ use crate::model::{
     bambam_field,
     destination::{BinRangeConfig, DestinationPredicateConfig},
     output_plugin::{
-        isochrone::IsochroneOutputFormat,
+        isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
         opportunity::{OpportunityFormat, OpportunityOrientation},
     },
 };
@@ -165,6 +165,23 @@ impl<'a> InfoSection<'a> {
         v: &[DestinationPredicateConfig],
     ) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::DESTINATION_FILTER, v)
+    }
+
+    pub fn get_geometry_model(&self) -> Result<Option<GeometryModelConfig>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::GEOMETRY_MODEL)
+    }
+    pub fn set_geometry_model(&mut self, v: &GeometryModelConfig) -> Result<(), OutputPluginError> {
+        set_field(self.0, bambam_field::GEOMETRY_MODEL, v)
+    }
+
+    pub fn get_isochrone_algorithm(&self) -> Result<Option<IsochroneAlgorithm>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::ISOCHRONE_ALGORITHM)
+    }
+    pub fn set_isochrone_algorithm(
+        &mut self,
+        v: &IsochroneAlgorithm,
+    ) -> Result<(), OutputPluginError> {
+        set_field(self.0, bambam_field::ISOCHRONE_ALGORITHM, v)
     }
 
     pub fn get_isochrone_format(&self) -> Result<Option<IsochroneOutputFormat>, OutputPluginError> {

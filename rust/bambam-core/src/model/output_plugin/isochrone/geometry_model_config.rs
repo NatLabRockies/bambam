@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
-pub enum DestinationPointGeneratorConfig {
+pub enum GeometryModelConfig {
     DestinationPoint,
     LinestringCoordinates,
     LinestringStride {
