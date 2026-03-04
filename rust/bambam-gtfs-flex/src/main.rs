@@ -1,5 +1,6 @@
 use std::path::Path;
 
+mod agency;
 mod calendar;
 mod flex_processor;
 mod stop_times;
