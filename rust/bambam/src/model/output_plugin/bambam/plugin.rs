@@ -1,22 +1,22 @@
 use bambam_core::model::bambam_typed;
-use routee_compass::plugin::output::OutputPlugin;
+use routee_compass::{
+    app::{compass::CompassAppError, search::SearchAppResult},
+    plugin::output::{OutputPlugin, OutputPluginError},
+};
+use routee_compass_core::algorithm::search::SearchInstance;
 
 use crate::model::output_plugin::bambam::config::BambamOutputPluginConfig;
 
+/// scaffolds the output row with fields that are parameters to the downstream
+/// BAMBAM output plugins.
 pub struct BambamOutputPlugin(pub BambamOutputPluginConfig);
 
 impl OutputPlugin for BambamOutputPlugin {
     fn process(
         &self,
         output: &mut serde_json::Value,
-        result: &Result<
-            (
-                routee_compass::app::search::SearchAppResult,
-                routee_compass_core::algorithm::search::SearchInstance,
-            ),
-            routee_compass::app::compass::CompassAppError,
-        >,
-    ) -> Result<(), routee_compass::plugin::output::OutputPluginError> {
+        result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
+    ) -> Result<(), OutputPluginError> {
         let mut row = bambam_typed::BambamOutputRow::new(output);
         let mut info = row.info()?;
         match &self.0 {
