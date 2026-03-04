@@ -16,6 +16,7 @@ use std::path::Path;
 pub struct ValidZone {
     pub agency_id: Option<String>,
     pub feed: String,
+    pub requested_date: String,
     pub trip_id: String,
     pub origin_zone: String,
     pub start_pickup_drop_off_window: Option<NaiveTime>,
@@ -251,6 +252,7 @@ pub fn join_flex_files(
                 (Some(origin_zone), Some(destination_zone)) => Some(ValidZone {
                     agency_id: agency_id.clone(),
                     feed: feed_name.to_string(),
+                    requested_date: date_requested.to_string(),
                     trip_id,
                     origin_zone,
                     start_pickup_drop_off_window,
