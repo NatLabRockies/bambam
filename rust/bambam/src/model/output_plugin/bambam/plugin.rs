@@ -34,8 +34,10 @@ impl OutputPlugin for BambamOutputPlugin {
                 geometry_model,
                 isochrone_algorithm,
                 isochrone_format,
+                opportunity_orientation,
             } => {
                 info.set_opportunity_format(OpportunityFormat::Aggregate)?;
+                info.set_opportunity_orientation(*opportunity_orientation)?;
                 info.set_bin_range(binning)?;
                 if let Some(f) = destination_filter {
                     info.set_destination_filter(f)?;
@@ -44,8 +46,12 @@ impl OutputPlugin for BambamOutputPlugin {
                 info.set_isochrone_algorithm(isochrone_algorithm)?;
                 info.set_isochrone_format(isochrone_format)?;
             }
-            BambamOutputConfig::Disaggregate { destination_filter } => {
+            BambamOutputConfig::Disaggregate {
+                destination_filter,
+                opportunity_orientation,
+            } => {
                 info.set_opportunity_format(OpportunityFormat::Disaggregate)?;
+                info.set_opportunity_orientation(*opportunity_orientation)?;
                 if let Some(f) = destination_filter {
                     info.set_destination_filter(f)?;
                 }
