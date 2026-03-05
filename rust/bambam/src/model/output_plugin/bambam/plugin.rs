@@ -19,7 +19,7 @@ impl OutputPlugin for BambamOutputPlugin {
         result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
     ) -> Result<(), OutputPluginError> {
         let mut row = bambam_typed::BambamOutputRow::new(output);
-        let mut info = row.info()?;
+        let mut info = row.info_mut()?;
 
         // TODO: oh, this would require either
         // - untyped nested keys (info.output_config.isochrone_format)

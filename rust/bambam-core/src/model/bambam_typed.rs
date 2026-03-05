@@ -2,7 +2,7 @@
 //!
 //! Rather than fully deserializing an output row into [`crate::model::BambamResult`] and
 //! re-serializing it at every output-plugin boundary, each section wrapper holds a
-//! `&mut serde_json::Value` pointing at a specific subtree and exposes typed getters
+//! `&serde_json::Value` or `&mut serde_json::Value` pointing at a specific subtree and exposes typed getters
 //! and setters that only parse the fields they actually touch.
 //!
 //! The [`BambamOutputRow`] struct is the single entry point.  Call one of its section
@@ -20,7 +20,7 @@
 //!
 //!     // write to the info section
 //!     {
-//!         let mut info = row.info()?;
+//!         let mut info = row.info_mut()?;
 //!         info.set_opportunity_format(OpportunityFormat::Aggregate)?;
 //!         info.set_tree_size(42)?;
 //!     }
@@ -44,11 +44,10 @@ use serde_json::{json, Value};
 
 use crate::model::{
     bambam_field,
-    destination::{BinRangeConfig, DestinationPredicateConfig},
+    destination::{BinRangeConfig, DestinationPredicate},
     output_plugin::{
         isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
         opportunity::{OpportunityFormat, OpportunityOrientation},
-        BambamOutputConfig,
     },
 };
 
@@ -76,10 +75,20 @@ impl<'a> BambamOutputRow<'a> {
         Ok(RequestSection(section))
     }
 
+    /// Returns a read-only wrapper over the `info` subtree.
+    pub fn info_ref(&self) -> Result<InfoSectionRef<'_>, OutputPluginError> {
+        let section = self.0.get(bambam_field::INFO).ok_or_else(|| {
+            OutputPluginError::InternalError(
+                "expected 'info' section in bambam output row".to_string(),
+            )
+        })?;
+        Ok(InfoSectionRef(section))
+    }
+
     /// Opens (or creates) the `info` subtree and returns a typed wrapper.
-    pub fn info(&mut self) -> Result<InfoSection<'_>, OutputPluginError> {
+    pub fn info_mut(&mut self) -> Result<InfoSectionMut<'_>, OutputPluginError> {
         let section = ensure_object(self.0, bambam_field::INFO)?;
-        Ok(InfoSection(section))
+        Ok(InfoSectionMut(section))
     }
 
     /// Opens (or creates) the `aggregate_opportunities` subtree.
@@ -124,10 +133,59 @@ impl<'a> RequestSection<'a> {
 
 // ─── info section ─────────────────────────────────────────────────────────────
 
-/// Typed read/write view over the `info` subtree.
-pub struct InfoSection<'a>(&'a mut Value);
+/// Typed read-only view over the `info` subtree.
+pub struct InfoSectionRef<'a>(&'a Value);
 
-impl<'a> InfoSection<'a> {
+impl<'a> InfoSectionRef<'a> {
+    pub fn get_tree_size(&self) -> Result<usize, OutputPluginError> {
+        get_field(self.0, bambam_field::TREE_SIZE)
+    }
+
+    pub fn get_opportunity_runtime(&self) -> Result<Duration, OutputPluginError> {
+        get_field(self.0, bambam_field::OPPORTUNITY_PLUGIN_RUNTIME)
+    }
+
+    pub fn get_activity_types(&self) -> Result<Option<Vec<String>>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::ACTIVITY_TYPES)
+    }
+
+    pub fn get_bin_range(&self) -> Result<Option<BinRangeConfig>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::BIN_RANGE)
+    }
+
+    pub fn get_destination_filter(
+        &self,
+    ) -> Result<Option<Vec<DestinationPredicate>>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::DESTINATION_FILTER)
+    }
+
+    pub fn get_geometry_model(&self) -> Result<Option<GeometryModelConfig>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::GEOMETRY_MODEL)
+    }
+
+    pub fn get_isochrone_algorithm(&self) -> Result<Option<IsochroneAlgorithm>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::ISOCHRONE_ALGORITHM)
+    }
+
+    pub fn get_isochrone_format(&self) -> Result<Option<IsochroneOutputFormat>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::ISOCHRONE_FORMAT)
+    }
+
+    pub fn get_opportunity_format(&self) -> Result<Option<OpportunityFormat>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::OPPORTUNITY_FORMAT)
+    }
+
+    pub fn get_opportunity_orientation(
+        &self,
+    ) -> Result<Option<OpportunityOrientation>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::OPPORTUNITY_ORIENTATION)
+    }
+}
+
+/// Typed read/write view over the `info` subtree.
+pub struct InfoSectionMut<'a>(&'a mut Value);
+
+impl<'a> InfoSectionMut<'a> {
     pub fn get_tree_size(&self) -> Result<usize, OutputPluginError> {
         get_field(self.0, bambam_field::TREE_SIZE)
     }
@@ -149,13 +207,6 @@ impl<'a> InfoSection<'a> {
         set_field(self.0, bambam_field::ACTIVITY_TYPES, v)
     }
 
-    pub fn get_output_config(&self) -> Result<Option<BambamOutputConfig>, OutputPluginError> {
-        get_field_opt(self.0, bambam_field::OUTPUT_CONFIG)
-    }
-    pub fn set_output_config(&mut self, v: &BambamOutputConfig) -> Result<(), OutputPluginError> {
-        set_field(self.0, bambam_field::OUTPUT_CONFIG, v)
-    }
-
     pub fn get_bin_range(&self) -> Result<Option<BinRangeConfig>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::BIN_RANGE)
     }
@@ -165,12 +216,12 @@ impl<'a> InfoSection<'a> {
 
     pub fn get_destination_filter(
         &self,
-    ) -> Result<Option<Vec<DestinationPredicateConfig>>, OutputPluginError> {
+    ) -> Result<Option<Vec<DestinationPredicate>>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::DESTINATION_FILTER)
     }
     pub fn set_destination_filter(
         &mut self,
-        v: &[DestinationPredicateConfig],
+        v: &[DestinationPredicate],
     ) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::DESTINATION_FILTER, v)
     }

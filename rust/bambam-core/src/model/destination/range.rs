@@ -147,6 +147,10 @@ impl BinRangeConfig {
 }
 
 impl BinRange {
+    pub fn bin_key(&self) -> String {
+        todo!()
+    }
+
     /// determine whether a trip state is within some bin
     pub fn within_bin(
         &self,

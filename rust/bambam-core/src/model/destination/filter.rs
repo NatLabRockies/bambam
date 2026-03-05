@@ -6,11 +6,11 @@ use crate::model::destination::DestinationError;
 /// filter(s) to apply while collecting destinations. these are applied
 /// regardless of any binning configuration.
 #[derive(Clone, Debug)]
-pub struct DestinationFilter(Vec<DestinationPredicate>);
+pub struct DestinationFilter(pub Vec<DestinationPredicate>);
 
 /// additional modifiers to apply when collecting destinations for a bin.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum DestinationPredicateConfig {
+pub enum DestinationPredicate {
     /// only accept destinations where the provided feature, a boolean value,
     /// is true (or, if negate == true, where the feature is false).
     Boolean {
@@ -19,11 +19,6 @@ pub enum DestinationPredicateConfig {
         /// if true, invert the value stored at the feature    
         negate: bool,
     },
-}
-
-#[derive(Clone, Debug)]
-pub enum DestinationPredicate {
-    Boolean { feature: String, negate: bool },
 }
 
 impl DestinationFilter {
@@ -41,18 +36,6 @@ impl DestinationFilter {
             }
         }
         Ok(true)
-    }
-}
-
-impl TryFrom<DestinationPredicateConfig> for DestinationPredicate {
-    type Error = DestinationError;
-
-    fn try_from(value: DestinationPredicateConfig) -> Result<Self, Self::Error> {
-        match value {
-            DestinationPredicateConfig::Boolean { feature, negate } => {
-                Ok(DestinationPredicate::Boolean { feature, negate })
-            }
-        }
     }
 }
 

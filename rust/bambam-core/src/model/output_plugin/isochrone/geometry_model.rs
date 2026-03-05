@@ -1,5 +1,5 @@
 use geo::{line_measures::Densifiable, Haversine, LineString, MultiPoint, Point};
-use routee_compass::plugin::{output::OutputPluginError, PluginError};
+use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::{
     algorithm::search::SearchTreeNode,
     model::{label::Label, map::MapModel, network::EdgeId},
@@ -30,7 +30,7 @@ pub enum GeometryModel {
 }
 
 impl TryFrom<&GeometryModelConfig> for GeometryModel {
-    type Error = PluginError;
+    type Error = OutputPluginError;
 
     fn try_from(value: &GeometryModelConfig) -> Result<Self, Self::Error> {
         use GeometryModelConfig as Conf;

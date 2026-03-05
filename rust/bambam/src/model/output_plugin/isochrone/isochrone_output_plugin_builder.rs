@@ -20,7 +20,8 @@ impl OutputPluginBuilder for IsochroneOutputPluginBuilder {
             .map_err(|e| {
                 PluginError::BuildFailed(format!("failure reading isochrone configuration: {e}"))
             })?;
-        let generator = GeometryModel::try_from(&config.destination_point_generator)?;
+        let generator = GeometryModel::try_from(&config.destination_point_generator)
+            .map_err(|e| PluginError::OutputPluginFailed { source: e })?;
         let bins = config
             .time_bin
             .create_bins()

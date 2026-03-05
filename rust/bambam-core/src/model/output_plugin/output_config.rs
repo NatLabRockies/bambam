@@ -1,5 +1,5 @@
 use crate::model::{
-    destination::{BinRangeConfig, DestinationPredicateConfig},
+    destination::{BinRangeConfig, DestinationPredicate},
     output_plugin::isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
 };
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ pub enum BambamOutputConfig {
         binning: BinRangeConfig,
         /// any additional filters to apply when selecting destinations. optional for both
         /// opportunity_formats.
-        destination_filter: Option<Vec<DestinationPredicateConfig>>,
+        destination_filter: Option<Vec<DestinationPredicate>>,
         /// algorithm for assigning physical destination locations from a search tree branch.
         /// used in the isochrone drawing procedure.
         geometry_model: GeometryModelConfig,
@@ -25,6 +25,6 @@ pub enum BambamOutputConfig {
     Disaggregate {
         /// any additional filters to apply when selecting destinations. optional for both
         /// opportunity_formats.
-        destination_filter: Option<Vec<DestinationPredicateConfig>>,
+        destination_filter: Option<Vec<DestinationPredicate>>,
     },
 }
