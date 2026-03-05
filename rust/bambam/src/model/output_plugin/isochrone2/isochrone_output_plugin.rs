@@ -10,16 +10,11 @@ use bambam_core::model::{bambam_field as field, bambam_ops, bambam_typed, TimeBi
 use routee_compass::app::{compass::CompassAppError, search::SearchAppResult};
 use routee_compass::plugin::output::OutputPlugin;
 use routee_compass::plugin::output::OutputPluginError;
-use routee_compass_core::algorithm::search::SearchInstance;
+use routee_compass_core::algorithm::search::{SearchInstance, SearchResult};
 use serde_json::json;
 use serde_json::Value;
 
-pub struct IsochroneOutputPlugin {
-    time_bins: Vec<TimeBin>,
-    isochrone_algorithm: IsochroneAlgorithm,
-    isochrone_output_format: IsochroneOutputFormat,
-    destination_point_generator: GeometryModel,
-}
+pub struct IsochroneOutputPlugin {}
 
 impl OutputPlugin for IsochroneOutputPlugin {
     fn process(
@@ -31,58 +26,45 @@ impl OutputPlugin for IsochroneOutputPlugin {
             Ok(r) => r,
             Err(_) => return Ok(()),
         };
-
         let mut row = bambam_typed::BambamOutputRow::new(output);
-
-        // only run this plugin for rows requesting Aggregate opportunities
-        let info = row.info_ref()?;
-        let format = info.get_opportunity_format()?;
-        if matches!(format, Some(OpportunityFormat::Disaggregate) | None) {
-            return Ok(());
-        }
-
-        let req = GetIsochroneRequest::try_from(&row)?;
-        // let info = row.info_ref()?;
-        // let format = info.get_opportunity_format()?;
-        // let filter = info.get_destination_filter()?.map(DestinationFilter);
-        // let geometry_model_config = info.get_geometry_model()?.unwrap_or_default();
-        // let geometry_model = GeometryModel::try_from(&geometry_model_config)?;
-
-        // expect bin configuration if Aggregate
-        let bins = match info.get_bin_range()? {
-            Some(bc) => bc,
-            None => {
-                let msg = String::from("row with aggregate opportunities has no bin range config");
-                return Err(OutputPluginError::OutputPluginFailed(msg));
-            }
-        };
-
-        let mut results: HashMap<String, GetIsochroneResult> = HashMap::new();
-        for bin in bins.build_bins().into_iter() {
-            let result = req.run(&bin, sr, si)?;
-            results.insert(bin.bin_key(), result);
-        }
-
-        todo!("use result");
-
-        Ok(())
+        run_isochrone(row, sr, si)
     }
 }
 
-impl IsochroneOutputPlugin {
-    pub fn new(
-        time_bins: Vec<TimeBin>,
-        isochrone_algorithm: IsochroneAlgorithm,
-        isochrone_output_format: IsochroneOutputFormat,
-        destination_point_generator: GeometryModel,
-    ) -> Result<IsochroneOutputPlugin, OutputPluginError> {
-        Ok(IsochroneOutputPlugin {
-            time_bins,
-            isochrone_algorithm,
-            isochrone_output_format,
-            destination_point_generator,
-        })
+/// generate isochrones for this row of data.
+pub fn run_isochrone(
+    mut row: BambamOutputRow<'_>,
+    sr: &SearchAppResult,
+    si: &SearchInstance,
+) -> Result<(), OutputPluginError> {
+    // only run this plugin for rows requesting Aggregate opportunities
+    let info = row.info_ref()?;
+    let format = info.get_opportunity_format()?;
+    let requires_isochrones = matches!(format, Some(OpportunityFormat::Aggregate));
+    if !requires_isochrones {
+        return Ok(());
     }
+
+    let get_isochrone_request = GetIsochroneRequest::try_from(&row)?;
+
+    // expect bin configuration if Aggregate
+    let bins = match info.get_bin_range()? {
+        Some(bc) => bc,
+        None => {
+            let msg = String::from("row with aggregate opportunities has no bin range config");
+            return Err(OutputPluginError::OutputPluginFailed(msg));
+        }
+    };
+
+    let mut agg = row.aggregate()?;
+    for bin in bins.build_bins().into_iter() {
+        let bin_key = bin.bin_key();
+        let result = get_isochrone_request.run(&bin, sr, si)?;
+        agg.set_isochrone(&bin_key, result.isochrone_value);
+        agg.set_n_destinations(&bin_key, result.tree_size);
+    }
+
+    Ok(())
 }
 
 struct GetIsochroneRequest {

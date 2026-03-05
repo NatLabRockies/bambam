@@ -63,7 +63,7 @@ impl OutputPlugin for IsochroneOutputPlugin {
             field::insert_nested(
                 output,
                 &[field::TIME_BINS, &time_bin_key, field::INFO],
-                field::TREE_SIZE,
+                field::N_DESTINATIONS,
                 json!(tree_size),
                 true,
             )
