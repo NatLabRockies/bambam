@@ -18,6 +18,11 @@ pub enum BinRangeConfig {
         values: Vec<u64>,
         /// unit of values
         unit: DistanceUnit,
+        /// if true, injects a leading "0" for the bin values.
+        /// it is typical to describe bins by only their max values, which
+        /// results in omitting zero.
+        #[serde(default = "prepend_zero_default")]
+        prepend_zero: bool,
     },
     Time {
         /// state model feature name to test with
@@ -26,6 +31,11 @@ pub enum BinRangeConfig {
         values: Vec<u64>,
         /// unit of values
         unit: TimeUnit,
+        /// if true, injects a leading "0" for the bin values.
+        /// it is typical to describe bins by only their max values, which
+        /// results in omitting zero.
+        #[serde(default = "prepend_zero_default")]
+        prepend_zero: bool,
     },
     Energy {
         /// state model feature name to test with
@@ -34,6 +44,11 @@ pub enum BinRangeConfig {
         values: Vec<u64>,
         /// unit of values
         unit: EnergyUnit,
+        /// if true, injects a leading "0" for the bin values.
+        /// it is typical to describe bins by only their max values, which
+        /// results in omitting zero.
+        #[serde(default = "prepend_zero_default")]
+        prepend_zero: bool,
     },
     CustomRange {
         /// state model feature name to test with
@@ -42,7 +57,16 @@ pub enum BinRangeConfig {
         values: Vec<u64>,
         /// unit of values
         unit: CustomVariableType,
+        /// if true, injects a leading "0" for the bin values.
+        /// it is typical to describe bins by only their max values, which
+        /// results in omitting zero.
+        #[serde(default = "prepend_zero_default")]
+        prepend_zero: bool,
     },
+}
+
+fn prepend_zero_default() -> bool {
+    true
 }
 
 /// a single bin between for values in the range [min, max).
@@ -330,6 +354,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 20, 30],
             unit: TimeUnit::Minutes,
+            prepend_zero: true,
         };
         let bins = config.build_bins().unwrap();
         assert_eq!(bins.len(), 3);
@@ -342,6 +367,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 20, 30],
             unit: TimeUnit::Minutes,
+            prepend_zero: true,
         };
         let bins = config.build_bins().unwrap();
         let keys: Vec<String> = bins.iter().map(|b| b.bin_key()).collect();
@@ -354,6 +380,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![10],
             unit: TimeUnit::Minutes,
+            prepend_zero: true,
         };
         assert!(config.build_bins().is_err());
     }
@@ -364,6 +391,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![],
             unit: TimeUnit::Minutes,
+            prepend_zero: true,
         };
         assert!(config.build_bins().is_err());
     }
@@ -374,6 +402,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![30, 10, 20, 0],
             unit: TimeUnit::Minutes,
+            prepend_zero: false,
         };
         let bins = config.build_bins().unwrap();
         let keys: Vec<String> = bins.iter().map(|b| b.bin_key()).collect();
@@ -386,6 +415,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 10, 20],
             unit: TimeUnit::Minutes,
+            prepend_zero: false,
         };
         let bins = config.build_bins().unwrap();
         assert_eq!(bins.len(), 2); // [0,10), [10,20)
