@@ -38,7 +38,7 @@
 use std::collections::HashMap;
 
 use routee_compass::plugin::output::OutputPluginError;
-use routee_compass_core::model::{cost::TraversalCost, network::VertexId};
+use routee_compass_core::model::cost::TraversalCost;
 use serde_json::{json, Value};
 
 use crate::model::{
@@ -402,11 +402,16 @@ impl<'a> AggregateSection<'a> {
 pub struct DisaggregateSection<'a>(&'a mut Value);
 
 impl<'a> DisaggregateSection<'a> {
-    pub fn get_opportunities(&self) -> Result<Option<HashMap<VertexId, Value>>, OutputPluginError> {
+    pub fn get_opportunities(
+        &self,
+    ) -> Result<Option<DisaggregateOpportunityCounts>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::OPPORTUNITIES)
     }
 
-    pub fn set_opportunities(&mut self, v: &Value) -> Result<(), OutputPluginError> {
+    pub fn set_opportunities(
+        &mut self,
+        v: &DisaggregateOpportunityCounts,
+    ) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::OPPORTUNITIES, v)
     }
 
@@ -431,6 +436,7 @@ impl<'a> DisaggregateSection<'a> {
 
 /// Alias matching [`crate::model::bambam_json::OpportunityCounts`].
 pub type OpportunityCounts = HashMap<String, f64>;
+pub type DisaggregateOpportunityCounts = HashMap<String, OpportunityCounts>;
 
 // ─── private helpers ─────────────────────────────────────────────────────────
 

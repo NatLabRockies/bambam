@@ -4,7 +4,7 @@ use super::opportunity_model::OpportunityModel;
 use super::OpportunityPluginConfig;
 use bambam_core::model::bambam_typed::{self, BambamOutputRow};
 use bambam_core::model::destination::{self, DestinationFilter};
-use bambam_core::model::output_plugin::opportunity::OpportunityFormat;
+use bambam_core::model::output_plugin::opportunity::{opportunity_ops, OpportunityFormat};
 use routee_compass::app::{compass::CompassAppError, search::SearchAppResult};
 use routee_compass::plugin::output::OutputPlugin;
 use routee_compass::plugin::output::OutputPluginError;
@@ -39,6 +39,7 @@ impl OutputPlugin for OpportunityOutputPlugin {
             }
         };
 
+        // grab parameters for this run from the row
         let mut row = BambamOutputRow::new(output);
         let info = row.info_ref()?;
         let format = info.get_opportunity_format()?
@@ -48,6 +49,8 @@ impl OutputPlugin for OpportunityOutputPlugin {
             })?;
 
         let mut info = row.info_mut()?;
+
+        // set globals on row
         info.set_activity_types(&self.model.activity_types())?;
         row.set_opportunity_totals(&self.totals)?;
 
@@ -111,13 +114,13 @@ fn process_disaggregate_opportunities(
 ) -> Result<(), OutputPluginError> {
     let destinations_iter =
         destination::iter::new_destinations_iterator(result, None, filter, &instance.state_model);
-    let opps = plugin
+    let opportunities = plugin
         .model
         .collect_trip_opportunities(destinations_iter, instance)?;
-    let opportunities_json = OpportunityFormat::Disaggregate
-        .serialize_opportunities(&opps, &plugin.model.activity_types())?;
+    let opps =
+        opportunity_ops::collect_disaggregate(&opportunities, &plugin.model.activity_types())?;
     let mut dis = row.disaggregate()?;
-    dis.set_opportunities(&opportunities_json)?;
+    dis.set_opportunities(&opps)?;
     Ok(())
 }
 
@@ -149,21 +152,16 @@ fn process_aggregate_opportunities(
             filter,
             &instance.state_model,
         );
+
+        // collect aggregated opportunities and write to output
         let destination_opportunities = plugin
             .model
             .collect_trip_opportunities(destinations_iter, instance)?;
-
-        // serialize and store as aggregate opportunity counts
-        let opps_value = OpportunityFormat::Aggregate
-            .serialize_opportunities(&destination_opportunities, &plugin.model.activity_types())?;
-
-        // parse the serialized JSON back into the typed HashMap for the aggregate section
-        let opps_map: HashMap<String, f64> = serde_json::from_value(opps_value).map_err(|e| {
-            OutputPluginError::OutputPluginFailed(format!(
-                "failed to deserialize aggregate opportunities: {e}"
-            ))
-        })?;
-        agg.set_opportunities(&bin_key, &opps_map)?;
+        let opps = opportunity_ops::collect_aggregate(
+            &destination_opportunities,
+            &plugin.model.activity_types(),
+        )?;
+        agg.set_opportunities(&bin_key, &opps)?;
 
         // write bin-level runtime
         let runtime = Instant::now().duration_since(start_time);

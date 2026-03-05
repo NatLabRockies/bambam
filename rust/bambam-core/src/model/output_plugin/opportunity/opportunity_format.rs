@@ -1,5 +1,7 @@
 use crate::model::bambam_field;
-use crate::model::output_plugin::opportunity::{DestinationOpportunity, OpportunityRowId};
+use crate::model::output_plugin::opportunity::{
+    opportunity_ops, DestinationOpportunity, OpportunityRowId,
+};
 use routee_compass::plugin::output::OutputPluginError;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -45,37 +47,13 @@ impl OpportunityFormat {
         match self {
             OpportunityFormat::Aggregate => {
                 // accumulate activity count totals
-                let mut acc: Vec<f64> = vec![0.0; activity_types.len()];
-                for (_id, row) in opportunities {
-                    for (idx, row_value) in row.counts.iter().enumerate() {
-                        acc[idx] += *row_value;
-                    }
-                }
-                // create output mapping, a Map<ActivityType, ActivityCount>
-                let mut result = serde_json::Map::new();
-                for (cnt, act) in acc.iter().zip(activity_types) {
-                    result.insert(act.to_owned(), json![cnt]);
-                }
-                Ok(result.into())
+                let result = opportunity_ops::collect_aggregate(opportunities, activity_types)?;
+                Ok(json![result])
             }
             OpportunityFormat::Disaggregate => {
                 // serialize all rows as a mapping from id to opportunity counts object
-                let mut result = serde_json::Map::new();
-                for (id, row) in opportunities {
-                    let mut row_obj = serde_json::Map::new();
-                    for (idx, row_value) in row.counts.iter().enumerate() {
-                        let activity_type =
-                            activity_types
-                                .get(idx)
-                                .cloned()
-                                .ok_or_else(|| OutputPluginError::InternalError(format!(
-                                    "index {idx} invalid for opportunity vector {row_value:?}, should match cardinality of activity types dataset {activity_types:?}"
-                                )))?;
-                        row_obj.insert(activity_type, json!(row_value));
-                    }
-                    result.insert(id.to_string(), row_obj.into());
-                }
-                Ok(result.into())
+                let result = opportunity_ops::collect_disaggregate(opportunities, activity_types)?;
+                Ok(json![result])
             }
         }
     }
