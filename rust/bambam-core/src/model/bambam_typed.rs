@@ -301,9 +301,10 @@ impl<'a> AggregateSection<'a> {
     }
 
     /// Writes a raw isochrone blob for `bin_key`.
-    pub fn set_isochrone(&mut self, bin_key: &str, v: Value) {
-        self.ensure_bin(bin_key);
+    pub fn set_isochrone(&mut self, bin_key: &str, v: Value) -> Result<(), OutputPluginError> {
+        self.ensure_bin(bin_key)?;
         self.0[bin_key][bambam_field::ISOCHRONE] = v;
+        Ok(())
     }
 
     /// Returns the raw isochrone `Value` for `bin_key`, if present.
@@ -330,9 +331,10 @@ impl<'a> AggregateSection<'a> {
     }
 
     /// Writes a raw n_destinations blob for `bin_key`.
-    pub fn set_n_destinations(&mut self, bin_key: &str, v: usize) {
-        self.ensure_bin(bin_key);
+    pub fn set_n_destinations(&mut self, bin_key: &str, v: usize) -> Result<(), OutputPluginError> {
+        self.ensure_bin(bin_key)?;
         self.0[bin_key][bambam_field::N_DESTINATIONS] = json![v];
+        Ok(())
     }
     /// Returns typed opportunity counts for `bin_key`.
     pub fn get_opportunities(
@@ -357,7 +359,7 @@ impl<'a> AggregateSection<'a> {
         bin_key: &str,
         v: &HashMap<String, f64>,
     ) -> Result<(), OutputPluginError> {
-        self.ensure_bin(bin_key);
+        self.ensure_bin(bin_key)?;
         let serialized = serde_json::to_value(v).map_err(|e| {
             OutputPluginError::OutputPluginFailed(format!("cannot serialize opportunities: {e}"))
         })?;
@@ -381,7 +383,7 @@ impl<'a> AggregateSection<'a> {
 
     /// Writes a bin-level runtime string for `bin_key`.
     pub fn set_bin_runtime(&mut self, bin_key: &str, v: String) -> Result<(), OutputPluginError> {
-        self.ensure_bin(bin_key);
+        self.ensure_bin(bin_key)?;
         let serialized = serde_json::to_value(v).map_err(|e| {
             OutputPluginError::OutputPluginFailed(format!("cannot serialize bin runtime: {e}"))
         })?;
@@ -389,10 +391,16 @@ impl<'a> AggregateSection<'a> {
         Ok(())
     }
 
-    fn ensure_bin(&mut self, bin_key: &str) {
+    fn ensure_bin(&mut self, bin_key: &str) -> Result<(), OutputPluginError> {
+        if !self.0.is_object() {
+            return Err(OutputPluginError::OutputPluginFailed(
+                "aggregate_opportunities section is corrupted: not a JSON object".to_string(),
+            ));
+        }
         if self.0.get(bin_key).is_none() {
             self.0[bin_key] = json!({});
         }
+        Ok(())
     }
 }
 
@@ -480,6 +488,11 @@ fn set_field<T: serde::Serialize>(
 
 /// Ensures `key` exists as a JSON object inside `root`, creating it if absent.
 fn ensure_object<'a>(root: &'a mut Value, key: &str) -> Result<&'a mut Value, OutputPluginError> {
+    if !root.is_object() {
+        return Err(OutputPluginError::OutputPluginFailed(format!(
+            "output is corrupted: section not a JSON object, cannot hold {key}"
+        )));
+    }
     if root.get(key).is_none() {
         root[key] = json!({});
     }
