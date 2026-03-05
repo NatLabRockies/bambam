@@ -42,7 +42,7 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
                 distance_unit,
             } => {
                 if stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {stride} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {stride} {distance_unit}")))
                 } else {
                     Ok(Self::LinestringStride {
                         stride: distance_unit.to_uom(*stride),
@@ -55,9 +55,9 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
                 distance_unit,
             } => {
                 if buffer_radius <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("linestring buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("linestring buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {buffer_stride} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {buffer_stride} {distance_unit}")))
                 } else {
                     Ok(Self::BufferedLinestring {
                         buffer_stride: distance_unit.to_uom(*buffer_stride),
@@ -71,9 +71,9 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
                 distance_unit,
             } => {
                 if buffer_radius <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("destination point buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("destination point buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("destination point stride must be strictly positive, found {buffer_stride} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("destination point stride must be strictly positive, found {buffer_stride} {distance_unit}")))
                 } else {
                     Ok(Self::BufferedDestinationPoint {
                         buffer_stride: distance_unit.to_uom(*buffer_stride),
