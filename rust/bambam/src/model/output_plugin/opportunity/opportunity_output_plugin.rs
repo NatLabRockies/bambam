@@ -141,7 +141,10 @@ fn process_aggregate_opportunities(
     })?;
 
     let mut agg = row.aggregate()?;
-    for bin in bin_config.build_bins().into_iter() {
+    let bins = bin_config
+        .build_bins()
+        .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
+    for bin in bins.into_iter() {
         let start_time = Instant::now();
         let bin_key = bin.bin_key();
 

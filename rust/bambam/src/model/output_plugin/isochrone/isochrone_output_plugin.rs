@@ -48,7 +48,7 @@ pub fn run_isochrone(
     let get_isochrone_request = GetIsochroneRequest::try_from(&row)?;
 
     // expect bin configuration if Aggregate
-    let bins = match info.get_bin_range()? {
+    let bin_config = match info.get_bin_range()? {
         Some(bc) => bc,
         None => {
             let msg = String::from("row with aggregate opportunities has no bin range config");
@@ -57,7 +57,10 @@ pub fn run_isochrone(
     };
 
     let mut agg = row.aggregate()?;
-    for bin in bins.build_bins().into_iter() {
+    let bins = bin_config
+        .build_bins()
+        .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
+    for bin in bins.into_iter() {
         let bin_key = bin.bin_key();
         let result = get_isochrone_request.run(&bin, sr, si)?;
         agg.set_isochrone(&bin_key, result.isochrone_value);

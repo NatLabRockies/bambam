@@ -76,10 +76,42 @@ pub enum BinRange {
 }
 
 impl BinRangeConfig {
+    /// Accessor for the values slice, regardless of variant.
+    fn values(&self) -> &[u64] {
+        match self {
+            BinRangeConfig::Distance { values, .. }
+            | BinRangeConfig::Time { values, .. }
+            | BinRangeConfig::Energy { values, .. }
+            | BinRangeConfig::CustomRange { values, .. } => values,
+        }
+    }
+
     /// create the collection of bins from this configuration. each of these bins will capture
     /// a subset of the destinations.
-    pub fn build_bins(&self) -> Vec<BinRange> {
-        match self {
+    pub fn build_bins(&self) -> Result<Vec<BinRange>, DestinationError> {
+        let values = self.values();
+        if values.len() < 2 {
+            return Err(DestinationError::InvalidBinConfig {
+                reason: format!(
+                    "bin range config requires at least 2 values to form a bin, got {}",
+                    values.len()
+                ),
+            });
+        }
+
+        // Check for duplicates
+        for window in values.windows(2) {
+            if window[0] == window[1] {
+                return Err(DestinationError::InvalidBinConfig {
+                    reason: format!(
+                        "bin range config contains duplicate adjacent value: {}",
+                        window[0]
+                    ),
+                });
+            }
+        }
+
+        let bins = match self {
             BinRangeConfig::Distance {
                 feature,
                 values,
@@ -142,7 +174,8 @@ impl BinRangeConfig {
                     })
                     .collect_vec()
             }
-        }
+        };
+        Ok(bins)
     }
 }
 
@@ -307,4 +340,57 @@ where
     B: PartialOrd<A>,
 {
     min <= val && val < max
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BinRangeConfig;
+    use routee_compass_core::model::unit::TimeUnit;
+
+    /// BinRangeConfig with N values produces N-1 bins (sliding window).
+    #[test]
+    fn bin_range_config_produces_correct_bin_count() {
+        let config = BinRangeConfig::Time {
+            feature: "travel_time".to_string(),
+            values: vec![0, 10, 20, 30],
+            unit: TimeUnit::Minutes,
+        };
+        let bins = config.build_bins().unwrap();
+        assert_eq!(bins.len(), 3);
+    }
+
+    /// Each bin key matches the upper bound of that bin.
+    #[test]
+    fn bin_keys_match_upper_bounds() {
+        let config = BinRangeConfig::Time {
+            feature: "travel_time".to_string(),
+            values: vec![0, 10, 20, 30],
+            unit: TimeUnit::Minutes,
+        };
+        let bins = config.build_bins().unwrap();
+        let keys: Vec<String> = bins.iter().map(|b| b.bin_key()).collect();
+        assert_eq!(keys, vec!["10", "20", "30"]);
+    }
+
+    /// A config with fewer than 2 values produces zero bins.
+    #[test]
+    fn bin_range_config_single_value_produces_no_bins() {
+        let config = BinRangeConfig::Time {
+            feature: "travel_time".to_string(),
+            values: vec![10],
+            unit: TimeUnit::Minutes,
+        };
+        assert!(config.build_bins().unwrap().is_empty());
+    }
+
+    /// A config with zero values produces zero bins.
+    #[test]
+    fn bin_range_config_empty_values() {
+        let config = BinRangeConfig::Time {
+            feature: "travel_time".to_string(),
+            values: vec![],
+            unit: TimeUnit::Minutes,
+        };
+        assert!(config.build_bins().unwrap().is_empty());
+    }
 }

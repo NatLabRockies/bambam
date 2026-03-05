@@ -14,4 +14,6 @@ pub enum DestinationError {
         bin: BinRange,
         error: StateModelError,
     },
+    #[error("invalid bin configuration: {reason}")]
+    InvalidBinConfig { reason: String },
 }
