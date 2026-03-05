@@ -1,6 +1,9 @@
 use crate::model::{
     destination::{BinRangeConfig, DestinationPredicate},
-    output_plugin::isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
+    output_plugin::{
+        isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
+        opportunity::OpportunityOrientation,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -21,10 +24,18 @@ pub enum BambamOutputConfig {
         isochrone_algorithm: IsochroneAlgorithm,
         /// geometry format to use when writing isochrones.
         isochrone_format: IsochroneOutputFormat,
+        /// location along a roadway where the opportunity is map matched. by default,
+        /// assign opportunities at the destination vertex of an edge.
+        #[serde(default)]
+        opportunity_orientation: OpportunityOrientation,
     },
     Disaggregate {
         /// any additional filters to apply when selecting destinations. optional for both
         /// opportunity_formats.
         destination_filter: Option<Vec<DestinationPredicate>>,
+        /// location along a roadway where the opportunity is map matched. by default,
+        /// assign opportunities at the destination vertex of an edge.
+        #[serde(default)]
+        opportunity_orientation: OpportunityOrientation,
     },
 }
