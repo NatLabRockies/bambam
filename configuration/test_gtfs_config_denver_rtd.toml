@@ -95,11 +95,15 @@ tree = "geo_json"
 type = "summary"
 
 [[plugin.output_plugins]]
-type = "isochrone"
-time_bin = { type = "list", times = [10, 20, 30, 40] }
+type = "bambam"
+format = "aggregate"
+binning = { type = "time", feature = "trip_time", values = [10,20,30,40], unit = "minutes" }
+geometry_model = { type = "destination_point" }
 isochrone_algorithm = { type = "k_nearest_concave_hull", k = 3 }
-destination_point_generator = { type = "destination_point" }
-isochrone_output_format = "wkb"
+isochrone_format = "wkb"
+
+[[plugin.output_plugins]]
+type = "isochrone"
 
 ### MEP OPPORTUNITY DATA CONFIGURATION #################################
 # assigns opportunities to search results based on a file or api data source
@@ -108,7 +112,6 @@ isochrone_output_format = "wkb"
 # assigning activity types by NAICS sector id. 
 [[plugin.output_plugins]]
 type = "opportunity"
-collect_format = "aggregate"
 
 [plugin.output_plugins.model]
 type = "combined"

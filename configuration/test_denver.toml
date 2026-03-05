@@ -228,7 +228,6 @@ type = "summary"
 type = "bambam"
 format = "aggregate"
 binning = { type = "time", feature = "trip_time", values = [10,20,30,40], unit = "minutes" }
-# time_bin = { type = "list", times = [10, 20, 30, 40] }
 geometry_model = { type = "destination_point" }
 isochrone_algorithm = { type = "k_nearest_concave_hull", k = 3 }
 isochrone_format = "wkb"
@@ -243,7 +242,6 @@ type = "isochrone"
 # assigning activity types by NAICS sector id. 
 [[plugin.output_plugins]]
 type = "opportunity"
-# collect_format = "aggregate"
 
 [plugin.output_plugins.model]
 type = "combined"
