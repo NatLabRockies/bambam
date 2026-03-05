@@ -499,3 +499,210 @@ fn ensure_object<'a>(root: &'a mut Value, key: &str) -> Result<&'a mut Value, Ou
     root.get_mut(key)
         .ok_or_else(|| OutputPluginError::InternalError(format!("could not open section '{key}'")))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use routee_compass_core::model::unit::Cost;
+    use serde_json::json;
+    use std::collections::HashMap;
+
+    /// Round-trip: write fields to info, read them back.
+    #[test]
+    fn info_section_round_trip() {
+        let mut value = json!({"request": {"mode": "car"}});
+        let mut row = BambamOutputRow::new(&mut value);
+
+        // info section should be created on first access
+        {
+            let mut info = row.info_mut().unwrap();
+            info.set_tree_size(42).unwrap();
+            info.set_opportunity_runtime("00:00:01".to_string())
+                .unwrap();
+            info.set_activity_types(&["retail".to_string(), "food".to_string()])
+                .unwrap();
+        }
+
+        // read back with immutable accessor
+        let info = row.info_ref().unwrap();
+        assert_eq!(info.get_tree_size().unwrap(), 42);
+        assert_eq!(info.get_opportunity_runtime().unwrap(), "00:00:01");
+        assert_eq!(
+            info.get_activity_types().unwrap(),
+            Some(vec!["retail".to_string(), "food".to_string()])
+        );
+    }
+
+    /// Optional fields return None when absent.
+    #[test]
+    fn info_section_optional_fields_return_none() {
+        let mut value = json!({"info": {}});
+        let row = BambamOutputRow::new(&mut value);
+        let info = row.info_ref().unwrap();
+        assert!(info.get_activity_types().unwrap().is_none());
+        assert!(info.get_bin_range().unwrap().is_none());
+        assert!(info.get_destination_filter().unwrap().is_none());
+        assert!(info.get_opportunity_format().unwrap().is_none());
+        assert!(info.get_opportunity_orientation().unwrap().is_none());
+        assert!(info.get_geometry_model().unwrap().is_none());
+        assert!(info.get_isochrone_algorithm().unwrap().is_none());
+        assert!(info.get_isochrone_format().unwrap().is_none());
+    }
+
+    /// Request section: read mode field.
+    #[test]
+    fn request_section_get_mode() {
+        let mut value = json!({"request": {"mode": "transit"}});
+        let row = BambamOutputRow::new(&mut value);
+        assert_eq!(row.request().unwrap().get_mode().unwrap(), "transit");
+    }
+
+    /// Request section: missing request key returns error.
+    #[test]
+    fn request_section_missing_returns_error() {
+        let mut value = json!({});
+        let row = BambamOutputRow::new(&mut value);
+        assert!(row.request().is_err());
+    }
+
+    /// Aggregate section: write and read opportunities per bin.
+    #[test]
+    fn aggregate_section_opportunities_round_trip() {
+        let mut value = json!({});
+        let mut row = BambamOutputRow::new(&mut value);
+
+        let mut counts = HashMap::new();
+        counts.insert("retail".to_string(), 100.0);
+        counts.insert("food".to_string(), 50.5);
+
+        {
+            let mut agg = row.aggregate().unwrap();
+            agg.set_opportunities("10", &counts)
+                .expect("failed to set opportunities");
+            agg.set_n_destinations("10", 7)
+                .expect("failed to set n destinations");
+            agg.set_bin_runtime("10", "00:00:00.5".to_string()).unwrap();
+        }
+
+        {
+            let agg = row.aggregate().unwrap();
+            assert_eq!(agg.bin_keys(), vec!["10"]);
+            let read_back = agg.get_opportunities("10").unwrap().unwrap();
+            assert_eq!(read_back["retail"], 100.0);
+            assert_eq!(read_back["food"], 50.5);
+            assert_eq!(agg.get_n_destinations("10").unwrap(), Some(7));
+            assert_eq!(
+                agg.get_bin_runtime("10").unwrap(),
+                Some("00:00:00.5".to_string())
+            );
+        }
+    }
+
+    /// Aggregate section: multiple bins are independent.
+    #[test]
+    fn aggregate_section_multiple_bins() {
+        let mut value = json!({});
+        let mut row = BambamOutputRow::new(&mut value);
+
+        let mut c1 = HashMap::new();
+        c1.insert("retail".to_string(), 10.0);
+        let mut c2 = HashMap::new();
+        c2.insert("retail".to_string(), 20.0);
+
+        {
+            let mut agg = row.aggregate().unwrap();
+            agg.set_opportunities("10", &c1).unwrap();
+            agg.set_opportunities("20", &c2).unwrap();
+        }
+
+        {
+            let agg = row.aggregate().unwrap();
+            let mut keys = agg.bin_keys();
+            keys.sort();
+            assert_eq!(keys, vec!["10", "20"]);
+            assert_eq!(
+                agg.get_opportunities("10").unwrap().unwrap()["retail"],
+                10.0
+            );
+            assert_eq!(
+                agg.get_opportunities("20").unwrap().unwrap()["retail"],
+                20.0
+            );
+        }
+    }
+
+    /// Aggregate section: reading a nonexistent bin returns None.
+    #[test]
+    fn aggregate_section_missing_bin_returns_none() {
+        let mut value = json!({});
+        let mut row = BambamOutputRow::new(&mut value);
+        let agg = row.aggregate().unwrap();
+        assert!(agg.get_opportunities("999").unwrap().is_none());
+        assert!(agg.get_isochrone("999").is_none());
+        assert!(agg.get_n_destinations("999").unwrap().is_none());
+    }
+
+    /// Isochrone round-trip through aggregate section.
+    #[test]
+    fn aggregate_section_isochrone_round_trip() {
+        let mut value = json!({});
+        let mut row = BambamOutputRow::new(&mut value);
+        let geojson = json!({"type": "Polygon", "coordinates": [[[0,0],[1,0],[1,1],[0,0]]]});
+
+        {
+            let mut agg = row.aggregate().unwrap();
+            agg.set_isochrone("10", geojson.clone())
+                .expect("failed to set isochrone");
+        }
+
+        {
+            let agg = row.aggregate().unwrap();
+            assert_eq!(agg.get_isochrone("10").unwrap(), &geojson);
+        }
+    }
+
+    /// Opportunity totals round-trip at top level.
+    #[test]
+    fn opportunity_totals_round_trip() {
+        let mut value = json!({});
+        let mut row = BambamOutputRow::new(&mut value);
+
+        let mut totals = HashMap::new();
+        totals.insert("retail".to_string(), 5000.0);
+        row.set_opportunity_totals(&totals).unwrap();
+
+        let read = row.get_opportunity_totals().unwrap().unwrap();
+        assert_eq!(read["retail"], 5000.0);
+    }
+
+    /// Opportunity totals return None when absent.
+    #[test]
+    fn opportunity_totals_absent() {
+        let mut value = json!({});
+        let row = BambamOutputRow::new(&mut value);
+        assert!(row.get_opportunity_totals().unwrap().is_none());
+    }
+
+    /// Disaggregate section: set and get cost field.
+    #[test]
+    fn disaggregate_section_cost_round_trip() {
+        use routee_compass_core::model::cost::TraversalCost;
+        let mut value = json!({});
+        let mut row = BambamOutputRow::new(&mut value);
+        let cost = TraversalCost {
+            objective_cost: Cost::new(42.0),
+            total_cost: Cost::new(42.0),
+        };
+        {
+            let mut dis = row.disaggregate().unwrap();
+            dis.set_cost(cost.clone()).unwrap();
+        }
+
+        {
+            let dis = row.disaggregate().unwrap();
+            let result = dis.get_cost().unwrap();
+            assert_eq!(&result.objective_cost, &cost.objective_cost);
+            assert_eq!(&result.total_cost, &cost.total_cost);
+        }
+    }
+}
