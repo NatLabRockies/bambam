@@ -1,6 +1,6 @@
 use super::opportunity_spatial_row::OpportunitySpatialRow;
 use bambam_core::model::{
-    bambam_ops::DestinationsIter,
+    destination::iter::DestinationsIter,
     output_plugin::opportunity::{
         DestinationOpportunity, OpportunityOrientation, OpportunityRowId,
     },

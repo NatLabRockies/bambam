@@ -37,7 +37,6 @@
 
 use std::collections::HashMap;
 
-use chrono::Duration;
 use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::model::{cost::TraversalCost, network::VertexId};
 use serde_json::{json, Value};
@@ -106,14 +105,14 @@ impl<'a> BambamOutputRow<'a> {
     /// Returns the root-level `opportunity_totals` map.
     pub fn get_opportunity_totals(
         &self,
-    ) -> Result<Option<HashMap<String, usize>>, OutputPluginError> {
+    ) -> Result<Option<HashMap<String, f64>>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::OPPORTUNITY_TOTALS)
     }
 
     /// Writes the root-level `opportunity_totals` map.
     pub fn set_opportunity_totals(
         &mut self,
-        totals: &HashMap<String, usize>,
+        totals: &HashMap<String, f64>,
     ) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::OPPORTUNITY_TOTALS, totals)
     }
@@ -138,10 +137,10 @@ pub struct InfoSectionRef<'a>(&'a Value);
 
 impl<'a> InfoSectionRef<'a> {
     pub fn get_tree_size(&self) -> Result<usize, OutputPluginError> {
-        get_field(self.0, bambam_field::TREE_SIZE)
+        get_field(self.0, bambam_field::N_DESTINATIONS)
     }
 
-    pub fn get_opportunity_runtime(&self) -> Result<Duration, OutputPluginError> {
+    pub fn get_opportunity_runtime(&self) -> Result<String, OutputPluginError> {
         get_field(self.0, bambam_field::OPPORTUNITY_PLUGIN_RUNTIME)
     }
 
@@ -187,16 +186,16 @@ pub struct InfoSectionMut<'a>(&'a mut Value);
 
 impl<'a> InfoSectionMut<'a> {
     pub fn get_tree_size(&self) -> Result<usize, OutputPluginError> {
-        get_field(self.0, bambam_field::TREE_SIZE)
+        get_field(self.0, bambam_field::N_DESTINATIONS)
     }
     pub fn set_tree_size(&mut self, v: usize) -> Result<(), OutputPluginError> {
-        set_field(self.0, bambam_field::TREE_SIZE, v)
+        set_field(self.0, bambam_field::N_DESTINATIONS, v)
     }
 
-    pub fn get_opportunity_runtime(&self) -> Result<Duration, OutputPluginError> {
+    pub fn get_opportunity_runtime(&self) -> Result<String, OutputPluginError> {
         get_field(self.0, bambam_field::OPPORTUNITY_PLUGIN_RUNTIME)
     }
-    pub fn set_opportunity_runtime(&mut self, v: &Duration) -> Result<(), OutputPluginError> {
+    pub fn set_opportunity_runtime(&mut self, v: String) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::OPPORTUNITY_PLUGIN_RUNTIME, v)
     }
 
@@ -307,16 +306,44 @@ impl<'a> AggregateSection<'a> {
         self.0[bin_key][bambam_field::ISOCHRONE] = v;
     }
 
+    /// Returns the raw isochrone `Value` for `bin_key`, if present.
+    /// The blob is intentionally left as `Value` to avoid re-parsing geometry.
+    pub fn get_n_destinations(&self, bin_key: &str) -> Result<Option<usize>, OutputPluginError> {
+        let value = self
+            .0
+            .get(bin_key)
+            .and_then(|b| b.get(bambam_field::N_DESTINATIONS));
+        let n = match value {
+            Some(v) => v.as_u64(),
+            None => return Ok(None),
+        };
+        match n {
+            Some(number) => Ok(Some(number as usize)),
+            None => {
+                let msg = format!(
+                    "value stored at aggregate.{bin_key}.{} is not an unsigned integer",
+                    bambam_field::N_DESTINATIONS
+                );
+                Err(OutputPluginError::OutputPluginFailed(msg))
+            }
+        }
+    }
+
+    /// Writes a raw n_destinations blob for `bin_key`.
+    pub fn set_n_destinations(&mut self, bin_key: &str, v: usize) {
+        self.ensure_bin(bin_key);
+        self.0[bin_key][bambam_field::N_DESTINATIONS] = json![v];
+    }
     /// Returns typed opportunity counts for `bin_key`.
     pub fn get_opportunities(
         &self,
         bin_key: &str,
     ) -> Result<Option<HashMap<String, f64>>, OutputPluginError> {
-        match self
+        let value = self
             .0
             .get(bin_key)
-            .and_then(|b| b.get(bambam_field::OPPORTUNITIES))
-        {
+            .and_then(|b| b.get(bambam_field::OPPORTUNITIES));
+        match value {
             None => Ok(None),
             Some(v) => serde_json::from_value(v.clone())
                 .map(Some)
@@ -338,6 +365,30 @@ impl<'a> AggregateSection<'a> {
         Ok(())
     }
 
+    /// Returns the bin-level runtime string for `bin_key`, if present.
+    pub fn get_bin_runtime(&self, bin_key: &str) -> Result<Option<String>, OutputPluginError> {
+        let value = self
+            .0
+            .get(bin_key)
+            .and_then(|b| b.get(bambam_field::OPPORTUNITY_BIN_RUNTIME));
+        match value {
+            None => Ok(None),
+            Some(v) => serde_json::from_value(v.clone())
+                .map(Some)
+                .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string())),
+        }
+    }
+
+    /// Writes a bin-level runtime string for `bin_key`.
+    pub fn set_bin_runtime(&mut self, bin_key: &str, v: String) -> Result<(), OutputPluginError> {
+        self.ensure_bin(bin_key);
+        let serialized = serde_json::to_value(v).map_err(|e| {
+            OutputPluginError::OutputPluginFailed(format!("cannot serialize bin runtime: {e}"))
+        })?;
+        self.0[bin_key][bambam_field::OPPORTUNITY_BIN_RUNTIME] = serialized;
+        Ok(())
+    }
+
     fn ensure_bin(&mut self, bin_key: &str) {
         if self.0.get(bin_key).is_none() {
             self.0[bin_key] = json!({});
@@ -351,16 +402,11 @@ impl<'a> AggregateSection<'a> {
 pub struct DisaggregateSection<'a>(&'a mut Value);
 
 impl<'a> DisaggregateSection<'a> {
-    pub fn get_opportunities(
-        &self,
-    ) -> Result<Option<HashMap<VertexId, OpportunityCounts>>, OutputPluginError> {
+    pub fn get_opportunities(&self) -> Result<Option<HashMap<VertexId, Value>>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::OPPORTUNITIES)
     }
 
-    pub fn set_opportunities(
-        &mut self,
-        v: &HashMap<VertexId, OpportunityCounts>,
-    ) -> Result<(), OutputPluginError> {
+    pub fn set_opportunities(&mut self, v: &Value) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::OPPORTUNITIES, v)
     }
 

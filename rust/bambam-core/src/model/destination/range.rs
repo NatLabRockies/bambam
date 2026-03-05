@@ -147,8 +147,25 @@ impl BinRangeConfig {
 }
 
 impl BinRange {
+    /// Returns a stable string key for this bin derived from its upper bound in
+    /// the configured unit, rounded to the nearest integer.  For a `Time` bin
+    /// with max = 10 minutes this returns `"10"`, matching the previous
+    /// `TimeBin::key()` convention.
     pub fn bin_key(&self) -> String {
-        todo!()
+        match self {
+            BinRange::Time { max, unit, .. } => {
+                format!("{}", unit.from_uom(*max).round() as u64)
+            }
+            BinRange::Distance { max, unit, .. } => {
+                format!("{}", unit.from_uom(*max).round() as u64)
+            }
+            BinRange::Energy { max, unit, .. } => {
+                format!("{}", unit.from_uom(*max).round() as u64)
+            }
+            BinRange::CustomRange { max, .. } => {
+                format!("{}", max.round() as u64)
+            }
+        }
     }
 
     /// determine whether a trip state is within some bin
