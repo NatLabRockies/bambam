@@ -21,12 +21,6 @@ impl OutputPlugin for BambamOutputPlugin {
         let mut row = bambam_typed::BambamOutputRow::new(output);
         let mut info = row.info_mut()?;
 
-        // TODO: oh, this would require either
-        // - untyped nested keys (info.output_config.isochrone_format)
-        // - wholly deserializing info.output_config to access inner fields
-        // is this ok? desirable?
-        // info.set_output_config(&self.0)?;
-
         match &self.0 {
             BambamOutputConfig::Aggregate {
                 binning,
