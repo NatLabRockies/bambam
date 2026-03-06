@@ -68,7 +68,7 @@ impl DestinationPredicate {
                         error: e,
                     }
                 })?;
-                Ok(variable ^ !negate) // XOR, aka F&F || T&T
+                Ok(variable != *negate) // if negate=false, variable should be true, and vice versa
             }
         }
     }
