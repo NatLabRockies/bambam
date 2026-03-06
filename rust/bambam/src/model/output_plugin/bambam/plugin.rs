@@ -16,7 +16,7 @@ impl OutputPlugin for BambamOutputPlugin {
     fn process(
         &self,
         output: &mut serde_json::Value,
-        result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
+        _result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
     ) -> Result<(), OutputPluginError> {
         let mut row = bambam_typed::BambamOutputRow::new(output);
         let mut info = row.info_mut()?;
