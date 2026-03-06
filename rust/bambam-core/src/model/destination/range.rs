@@ -367,7 +367,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 20, 30],
             unit: TimeUnit::Minutes,
-            prepend_zero: true,
+            prepend_zero: false,
         };
         let bins = config.build_bins().unwrap();
         assert_eq!(bins.len(), 3);
@@ -380,7 +380,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 20, 30],
             unit: TimeUnit::Minutes,
-            prepend_zero: true,
+            prepend_zero: false,
         };
         let bins = config.build_bins().unwrap();
         let keys: Vec<String> = bins.iter().map(|b| b.bin_key()).collect();
