@@ -1,10 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 /// An enumeration representing how activities are tagged to the graph.
-#[derive(Deserialize, Serialize, Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, Copy, Debug, Hash, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OpportunityOrientation {
     OriginVertexOriented,
+    #[default]
     DestinationVertexOriented,
     EdgeOriented,
 }

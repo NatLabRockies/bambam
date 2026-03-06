@@ -1,122 +1,148 @@
-use super::destination_point_generator::DestinationPointGenerator;
-use super::isochrone_algorithm::IsochroneAlgorithm;
-use bambam_core::model::output_plugin::isochrone::IsochroneOutputFormat;
-use bambam_core::model::{bambam_field as field, bambam_ops, TimeBin};
+use std::collections::HashMap;
+
+use bambam_core::model::bambam_typed::BambamOutputRow;
+use bambam_core::model::destination::{self, BinRange, DestinationFilter, DestinationPredicate};
+use bambam_core::model::output_plugin::isochrone::{
+    GeometryModel, IsochroneAlgorithm, IsochroneOutputFormat,
+};
+use bambam_core::model::output_plugin::opportunity::OpportunityFormat;
+use bambam_core::model::{bambam_field as field, bambam_ops, bambam_typed, TimeBin};
 use routee_compass::app::{compass::CompassAppError, search::SearchAppResult};
 use routee_compass::plugin::output::OutputPlugin;
 use routee_compass::plugin::output::OutputPluginError;
-use routee_compass_core::algorithm::search::SearchInstance;
+use routee_compass_core::algorithm::search::{SearchInstance, SearchResult};
 use serde_json::json;
 use serde_json::Value;
 
-pub struct IsochroneOutputPlugin {
-    time_bins: Vec<TimeBin>,
-    isochrone_algorithm: IsochroneAlgorithm,
-    isochrone_output_format: IsochroneOutputFormat,
-    destination_point_generator: DestinationPointGenerator,
-}
+pub struct IsochroneOutputPlugin {}
 
 impl OutputPlugin for IsochroneOutputPlugin {
-    /// generates isochrones from this search result.
-    /// appends the following structure to the output (assuming bins==(10,20,30,40)):
-    ///
-    /// {
-    ///   "bin": {
-    ///     "10": {
-    ///       "info": { "time_bin": { .. } },
-    ///       "isochrone": {},
-    ///     },
-    ///     "20": { ... },
-    ///     "30": { ... },
-    ///     "40": { ... }
-    ///   }
-    /// }
     fn process(
         &self,
         output: &mut serde_json::Value,
         result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
     ) -> Result<(), OutputPluginError> {
-        output[field::ISOCHRONE_FORMAT] = json![self.isochrone_output_format];
-        for time_bin in &self.time_bins {
-            // set up this time bin JSON object
-            field::scaffold_time_bin(output, time_bin)
-                .map_err(OutputPluginError::OutputPluginFailed)?;
-
-            let (isochrone, tree_size) = match result {
-                Err(_) => {
-                    let empty = self.isochrone_output_format.empty_geometry()?;
-                    (json![empty], 0)
-                }
-                Ok((search_result, si)) => get_isochrone(time_bin, search_result, si, self)?,
-            };
-
-            // write result to row
-            let time_bin_key = time_bin.key();
-            field::insert_nested(
-                output,
-                &[field::TIME_BINS, &time_bin_key],
-                field::ISOCHRONE,
-                json!(isochrone),
-                true,
-            )
-            .map_err(OutputPluginError::OutputPluginFailed)?;
-            field::insert_nested(
-                output,
-                &[field::TIME_BINS, &time_bin_key, field::INFO],
-                field::TREE_SIZE,
-                json!(tree_size),
-                true,
-            )
-            .map_err(OutputPluginError::OutputPluginFailed)?;
-        }
-        Ok(())
+        let (sr, si) = match result {
+            Ok(r) => r,
+            Err(_) => return Ok(()),
+        };
+        let mut row = bambam_typed::BambamOutputRow::new(output);
+        run_isochrone(row, sr, si)
     }
 }
 
-impl IsochroneOutputPlugin {
-    pub fn new(
-        time_bins: Vec<TimeBin>,
-        isochrone_algorithm: IsochroneAlgorithm,
-        isochrone_output_format: IsochroneOutputFormat,
-        destination_point_generator: DestinationPointGenerator,
-    ) -> Result<IsochroneOutputPlugin, OutputPluginError> {
-        Ok(IsochroneOutputPlugin {
-            time_bins,
+/// generate isochrones for this row of data.
+pub fn run_isochrone(
+    mut row: BambamOutputRow<'_>,
+    sr: &SearchAppResult,
+    si: &SearchInstance,
+) -> Result<(), OutputPluginError> {
+    // only run this plugin for rows requesting Aggregate opportunities
+    let info = row.info_ref()?;
+    let format = info.get_opportunity_format()?;
+    let requires_isochrones = matches!(format, Some(OpportunityFormat::Aggregate));
+    if !requires_isochrones {
+        return Ok(());
+    }
+
+    let get_isochrone_request = GetIsochroneRequest::try_from(&row)?;
+
+    // expect bin configuration if Aggregate
+    let bin_config = match info.get_bin_range()? {
+        Some(bc) => bc,
+        None => {
+            let msg = String::from("row with aggregate opportunities has no bin range config");
+            return Err(OutputPluginError::OutputPluginFailed(msg));
+        }
+    };
+
+    let mut agg = row.aggregate()?;
+    let bins = bin_config
+        .build_bins()
+        .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
+    for bin in bins.into_iter() {
+        let bin_key = bin.bin_key();
+        let result = get_isochrone_request.run(&bin, sr, si)?;
+        agg.set_isochrone(&bin_key, result.isochrone_value);
+        agg.set_n_destinations(&bin_key, result.tree_size);
+    }
+
+    Ok(())
+}
+
+struct GetIsochroneRequest {
+    filter: Option<DestinationFilter>,
+    geometry_model: GeometryModel,
+    isochrone_algorithm: IsochroneAlgorithm,
+    isochrone_format: IsochroneOutputFormat,
+}
+
+impl<'a> TryFrom<&'a BambamOutputRow<'a>> for GetIsochroneRequest {
+    type Error = OutputPluginError;
+
+    fn try_from(value: &'a BambamOutputRow<'a>) -> Result<Self, Self::Error> {
+        let info = value.info_ref()?;
+        let format = info.get_opportunity_format()?;
+        let filter = info.get_destination_filter()?.map(DestinationFilter);
+        let geometry_model_config = info
+            .get_geometry_model()?
+            .ok_or_else(|| missing_expected("info.geometry_model"))?;
+        let geometry_model = GeometryModel::try_from(&geometry_model_config)?;
+        let isochrone_algorithm = info
+            .get_isochrone_algorithm()?
+            .ok_or_else(|| missing_expected("info.isochrone_algorithm"))?;
+        let isochrone_format = info
+            .get_isochrone_format()?
+            .ok_or_else(|| missing_expected("info.isochrone_format"))?;
+        Ok(Self {
+            filter,
+            geometry_model,
             isochrone_algorithm,
-            isochrone_output_format,
-            destination_point_generator,
+            isochrone_format,
         })
     }
 }
 
-/// collect destinations for this time bin but starting from zero
-fn get_isochrone(
-    time_bin: &TimeBin,
-    search_result: &SearchAppResult,
-    si: &SearchInstance,
-    plugin: &IsochroneOutputPlugin,
-) -> Result<(Value, usize), OutputPluginError> {
-    let isochrone_time_bin = TimeBin {
-        min_time: 0,
-        max_time: time_bin.max_time,
-    };
-    let tree_destinations: Vec<_> =
-        bambam_ops::collect_destinations(search_result, Some(&isochrone_time_bin), &si.state_model)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| {
-                OutputPluginError::OutputPluginFailed(format!(
-                    "failure collecting destinations: {e}"
-                ))
-            })?;
-    let tree_size = tree_destinations.len();
+impl GetIsochroneRequest {
+    pub fn run(
+        &self,
+        bin: &BinRange,
+        search_result: &SearchAppResult,
+        si: &SearchInstance,
+    ) -> Result<GetIsochroneResult, OutputPluginError> {
+        let tree_destinations: Vec<_> = destination::iter::new_destinations_iterator(
+            search_result,
+            Some(bin),
+            self.filter.as_ref(),
+            &si.state_model,
+        )
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| {
+            OutputPluginError::OutputPluginFailed(format!("failure collecting destinations: {e}"))
+        })?;
+        let tree_size = tree_destinations.len();
 
-    // draw isochrone and serialize result
-    let tree_mp = plugin
-        .destination_point_generator
-        .generate_destination_points(&tree_destinations, si.map_model.clone())?;
-    let geometry = plugin.isochrone_algorithm.run(tree_mp)?;
-    let isochrone = plugin
-        .isochrone_output_format
-        .serialize_geometry(&geometry)?;
-    Ok((json![isochrone], tree_size))
+        // draw isochrone and serialize result
+        let tree_mp = self
+            .geometry_model
+            .generate_destination_points(&tree_destinations, si.map_model.clone())?;
+        let geometry = self.isochrone_algorithm.run(tree_mp)?;
+        let isochrone = self.isochrone_format.serialize_geometry(&geometry)?;
+        let result = GetIsochroneResult {
+            isochrone_value: json![isochrone],
+            tree_size,
+        };
+        Ok(result)
+    }
+}
+
+struct GetIsochroneResult {
+    isochrone_value: Value,
+    tree_size: usize,
+}
+
+/// helper for building a missing field error
+fn missing_expected(field: &str) -> OutputPluginError {
+    let msg = format!("output row missing expected field '{field}'");
+    OutputPluginError::OutputPluginFailed(msg)
 }
