@@ -73,3 +73,146 @@ impl DestinationPredicate {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+    use routee_compass_core::model::state::{CustomVariableConfig, StateVariableConfig};
+
+    use super::*;
+
+    fn mock(state_variables: &[(&str, bool)]) -> (StateModel, Vec<StateVariable>) {
+        let features = state_variables
+            .iter()
+            .map(|(name, val)| {
+                (
+                    name.to_string(),
+                    StateVariableConfig::Custom {
+                        custom_type: "bool".to_string(),
+                        value: CustomVariableConfig::Boolean { initial: *val },
+                        accumulator: false,
+                    },
+                )
+            })
+            .collect_vec();
+        let model = StateModel::new(features);
+        let initial = model.initial_state(None).expect("test invariant failed");
+        (model, initial)
+    }
+
+    #[test]
+    fn test_valid_destination_boolean_true_negate_false() {
+        // When feature is true and negate is false, should return true
+        let predicate = DestinationPredicate::Boolean {
+            feature: "is_available".to_string(),
+            negate: false,
+        };
+
+        let (state_model, state) = mock(&[("is_available", true)]);
+        let result = predicate
+            .valid_destination(&state, &state_model)
+            .expect("test invariant failed");
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn test_valid_destination_boolean_true_negate_true() {
+        // When feature is true and negate is true, should return false
+        let predicate = DestinationPredicate::Boolean {
+            feature: "is_available".to_string(),
+            negate: true,
+        };
+
+        let (state_model, state) = mock(&[("is_available", true)]);
+        let result = predicate
+            .valid_destination(&state, &state_model)
+            .expect("test invariant failed");
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn test_valid_destination_boolean_false_negate_false() {
+        // When feature is false and negate is false, should return false
+        let predicate = DestinationPredicate::Boolean {
+            feature: "is_available".to_string(),
+            negate: false,
+        };
+
+        let (state_model, state) = mock(&[("is_available", false)]);
+        let result = predicate
+            .valid_destination(&state, &state_model)
+            .expect("test invariant failed");
+        assert_eq!(result, false);
+    }
+
+    #[test]
+    fn test_valid_destination_boolean_false_negate_true() {
+        // When feature is false and negate is true, should return true
+        let predicate = DestinationPredicate::Boolean {
+            feature: "is_available".to_string(),
+            negate: true,
+        };
+
+        let (state_model, state) = mock(&[("is_available", false)]);
+        let result = predicate
+            .valid_destination(&state, &state_model)
+            .expect("test invariant failed");
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn test_filter_checks_only_specified_variable() {
+        // Filter should only check the specified feature and ignore other variables
+        let predicate = DestinationPredicate::Boolean {
+            feature: "is_available".to_string(),
+            negate: false,
+        };
+        let filter = DestinationFilter(vec![predicate]);
+
+        let (state_model, state) = mock(&[("is_available", true), ("is_active", true)]);
+        let result = filter
+            .valid_destination(&state, &state_model)
+            .expect("test invariant failed");
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn test_multiple_filters_all_must_pass() {
+        // Multiple predicates in a filter should all pass for the filter to return true
+        let pred1 = DestinationPredicate::Boolean {
+            feature: "is_available".to_string(),
+            negate: false,
+        };
+        let pred2 = DestinationPredicate::Boolean {
+            feature: "is_active".to_string(),
+            negate: false,
+        };
+        let filter = DestinationFilter(vec![pred1, pred2]);
+
+        let (state_model, state) = mock(&[("is_available", true), ("is_active", true)]);
+        let result = filter
+            .valid_destination(&state, &state_model)
+            .expect("test invariant failed");
+        assert_eq!(result, true);
+    }
+
+    #[test]
+    fn test_multiple_filters_one_fails() {
+        // If one predicate fails, the entire filter should fail
+        let pred1 = DestinationPredicate::Boolean {
+            feature: "is_available".to_string(),
+            negate: false,
+        };
+        let pred2 = DestinationPredicate::Boolean {
+            feature: "is_active".to_string(),
+            negate: false,
+        };
+        let filter = DestinationFilter(vec![pred1, pred2]);
+
+        let (state_model, state) = mock(&[("is_available", true), ("is_active", false)]);
+        let result = filter
+            .valid_destination(&state, &state_model)
+            .expect("test invariant failed");
+        assert_eq!(result, false);
+    }
+}
