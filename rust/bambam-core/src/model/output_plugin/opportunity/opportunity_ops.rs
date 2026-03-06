@@ -5,8 +5,8 @@ use routee_compass::plugin::output::OutputPluginError;
 
 /// collects the opportunities into an aggregated count by activity type.
 pub fn collect_aggregate(
-    opportunities: &Vec<(OpportunityRowId, DestinationOpportunity)>,
-    activity_types: &Vec<String>,
+    opportunities: &[(OpportunityRowId, DestinationOpportunity)],
+    activity_types: &[String],
 ) -> Result<HashMap<String, f64>, OutputPluginError> {
     // accumulate activity count totals
     let mut acc: Vec<f64> = vec![0.0; activity_types.len()];
@@ -26,8 +26,8 @@ pub fn collect_aggregate(
 /// collects the opportunities into counts by activity type for each
 /// opportunity row identifier.
 pub fn collect_disaggregate(
-    opportunities: &Vec<(OpportunityRowId, DestinationOpportunity)>,
-    activity_types: &Vec<String>,
+    opportunities: &[(OpportunityRowId, DestinationOpportunity)],
+    activity_types: &[String],
 ) -> Result<HashMap<String, HashMap<String, f64>>, OutputPluginError> {
     // serialize all rows as a mapping from id to opportunity counts object
     let mut result = HashMap::new();
