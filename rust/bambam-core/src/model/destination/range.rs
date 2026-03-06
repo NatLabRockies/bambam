@@ -114,10 +114,20 @@ impl BinRangeConfig {
         values
     }
 
+    /// true if the configured binning values should have a zero value prepended.
+    fn prepend_zero(&self) -> bool {
+        match self {
+            BinRangeConfig::Distance { prepend_zero, .. }
+            | BinRangeConfig::Time { prepend_zero, .. }
+            | BinRangeConfig::Energy { prepend_zero, .. }
+            | BinRangeConfig::CustomRange { prepend_zero, .. } => *prepend_zero,
+        }
+    }
+
     /// create the collection of bins from this configuration. each of these bins will capture
     /// a subset of the destinations.
     pub fn build_bins(&self) -> Result<Vec<BinRange>, DestinationError> {
-        let values = self.values_ascending();
+        let mut values = self.values_ascending();
         if values.len() < 2 {
             return Err(DestinationError::InvalidBinConfig {
                 reason: format!(
@@ -125,6 +135,9 @@ impl BinRangeConfig {
                     values.len()
                 ),
             });
+        }
+        if self.prepend_zero() {
+            values.insert(0, 0);
         }
 
         let bins = match self {
