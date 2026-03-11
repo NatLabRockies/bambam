@@ -2,12 +2,12 @@
 resolver = "2"
 members = [
     "bambam",
+    "bambam-core",
     "bambam-gbfs",
     "bambam-gtfs",
     "bambam-omf",
     "bambam-osm",
     "bambam-py",
-    "bambam-core"
 ]
 
 [workspace.dependencies]

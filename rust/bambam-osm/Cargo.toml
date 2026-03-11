@@ -8,13 +8,7 @@ readme = "README.md"
 repository = "https://github.com/NatLabRockies/bambam"
 documentation = "https://docs.rs/bambam-osm"
 description = "OpenStreetMaps support for The Behavior and Advanced Mobility Big Access Model"
-keywords = [
-    "nlr",
-    "access-model",
-    "accessibility",
-    "multimodal",
-    "transit",
-]
+keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
