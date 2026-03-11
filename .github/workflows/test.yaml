@@ -21,10 +21,19 @@ jobs:
         with:
           cache: false
 
+      - name: Install cargo-sort
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-sort
+
       - name: Formatting
         run: |
           rustup component add rustfmt
           cargo fmt --all --manifest-path rust/Cargo.toml -- --check
+
+      - name: Run cargo sort --check
+        working-directory: ./rust
+        run: cargo sort --check --workspace
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
