@@ -1,5 +1,5 @@
 use crate::model::{
-    bambam_field, bambam_state, destination::BinRange,
+    bambam_field, bambam_state, destination::BinInterval,
     output_plugin::opportunity::OpportunityOrientation,
 };
 use routee_compass::plugin::output::OutputPluginError;
@@ -21,7 +21,7 @@ pub enum OpportunityRecord {
         activity_type: String,
         geometry: geo::Geometry<f32>,
         /// the bin (range + unit + feature) from which this record was produced
-        bin: BinRange,
+        bin: BinInterval,
         count: f64,
     },
     Disaggregate {
@@ -61,7 +61,7 @@ impl OpportunityRecord {
             }
             Self::Aggregate { bin, .. } => match bin {
                 // time comes from the upper bound of the time bin
-                BinRange::Time { max, .. } => Ok(*max),
+                BinInterval::Time { max, .. } => Ok(*max),
                 _ => Err(OutputPluginError::OutputPluginFailed(
                     "get_time() called on a non-time BinRange aggregate record".to_string(),
                 )),

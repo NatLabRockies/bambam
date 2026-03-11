@@ -1,5 +1,5 @@
 use crate::model::{
-    destination::{BinRangeConfig, DestinationPredicate},
+    destination::{BinningConfig, DestinationPredicate},
     output_plugin::{
         isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
         opportunity::OpportunityOrientation,
@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub enum BambamOutputConfig {
     Aggregate {
         /// the method for binning the output. required when opportunity_format == Aggregate.
-        binning: BinRangeConfig,
+        binning: BinningConfig,
         /// any additional filters to apply when selecting destinations. optional for both
         /// opportunity_formats.
         destination_filter: Option<Vec<DestinationPredicate>>,

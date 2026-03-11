@@ -7,10 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::destination::DestinationError;
 
-/// type, unit and feature name of the state variable used for binning
+/// configures a bambam run to produce aggregated opportunity insights
+/// in bins at some interval.
+///
+/// a set of bins is built based on a feature in the state vector, which is expected
+/// to match one of Distance, Time, Energy, or Custom di
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", tag = "type")]
-pub enum BinRangeConfig {
+pub enum BinningConfig {
     Distance {
         /// state model feature name to test with
         feature: String,
@@ -72,7 +76,7 @@ fn prepend_zero_default() -> bool {
 /// a single bin between for values in the range [min, max).
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case", tag = "type")]
-pub enum BinRange {
+pub enum BinInterval {
     Distance {
         feature: String,
         min: uom::si::f64::Length,
@@ -99,15 +103,15 @@ pub enum BinRange {
     },
 }
 
-impl BinRangeConfig {
+impl BinningConfig {
     /// Accessor for the values slice, regardless of variant, as an always-ascending
     /// list of numbers with no duplicates.
     fn values_ascending(&self) -> Vec<u64> {
         let mut values = match self {
-            BinRangeConfig::Distance { values, .. }
-            | BinRangeConfig::Time { values, .. }
-            | BinRangeConfig::Energy { values, .. }
-            | BinRangeConfig::CustomRange { values, .. } => values.clone(),
+            BinningConfig::Distance { values, .. }
+            | BinningConfig::Time { values, .. }
+            | BinningConfig::Energy { values, .. }
+            | BinningConfig::CustomRange { values, .. } => values.clone(),
         };
         values.sort();
         values.dedup();
@@ -117,16 +121,16 @@ impl BinRangeConfig {
     /// true if the configured binning values should have a zero value prepended.
     fn prepend_zero(&self) -> bool {
         match self {
-            BinRangeConfig::Distance { prepend_zero, .. }
-            | BinRangeConfig::Time { prepend_zero, .. }
-            | BinRangeConfig::Energy { prepend_zero, .. }
-            | BinRangeConfig::CustomRange { prepend_zero, .. } => *prepend_zero,
+            BinningConfig::Distance { prepend_zero, .. }
+            | BinningConfig::Time { prepend_zero, .. }
+            | BinningConfig::Energy { prepend_zero, .. }
+            | BinningConfig::CustomRange { prepend_zero, .. } => *prepend_zero,
         }
     }
 
     /// create the collection of bins from this configuration. each of these bins will capture
     /// a subset of the destinations.
-    pub fn build_bins(&self) -> Result<Vec<BinRange>, DestinationError> {
+    pub fn build_bins(&self) -> Result<Vec<BinInterval>, DestinationError> {
         let mut values = self.values_ascending();
         if values.len() < 2 {
             return Err(DestinationError::InvalidBinConfig {
@@ -141,37 +145,37 @@ impl BinRangeConfig {
         }
 
         let bins = match self {
-            BinRangeConfig::Distance { feature, unit, .. } => values
+            BinningConfig::Distance { feature, unit, .. } => values
                 .iter()
                 .tuple_windows()
-                .map(|(min, max)| BinRange::Distance {
+                .map(|(min, max)| BinInterval::Distance {
                     feature: feature.to_string(),
                     min: unit.to_uom(*min as f64),
                     max: unit.to_uom(*max as f64),
                     unit: *unit,
                 })
                 .collect_vec(),
-            BinRangeConfig::Time { feature, unit, .. } => values
+            BinningConfig::Time { feature, unit, .. } => values
                 .iter()
                 .tuple_windows()
-                .map(|(min, max)| BinRange::Time {
+                .map(|(min, max)| BinInterval::Time {
                     feature: feature.to_string(),
                     min: unit.to_uom(*min as f64),
                     max: unit.to_uom(*max as f64),
                     unit: *unit,
                 })
                 .collect_vec(),
-            BinRangeConfig::Energy { feature, unit, .. } => values
+            BinningConfig::Energy { feature, unit, .. } => values
                 .iter()
                 .tuple_windows()
-                .map(|(min, max)| BinRange::Energy {
+                .map(|(min, max)| BinInterval::Energy {
                     feature: feature.to_string(),
                     min: unit.to_uom(*min as f64),
                     max: unit.to_uom(*max as f64),
                     unit: *unit,
                 })
                 .collect_vec(),
-            BinRangeConfig::CustomRange { feature, unit, .. } => {
+            BinningConfig::CustomRange { feature, unit, .. } => {
                 if matches!(unit, CustomVariableType::Boolean) {
                     let msg = format!("ranged bin for feature '{feature}' is a boolean, but boolean cardinality is 2, which is not large enough to support bins. this may produce undefined behavior.");
                     log::warn!("{}", msg);
@@ -179,7 +183,7 @@ impl BinRangeConfig {
                 values
                     .iter()
                     .tuple_windows()
-                    .map(|(min, max)| BinRange::CustomRange {
+                    .map(|(min, max)| BinInterval::CustomRange {
                         min: *min as f64,
                         max: *max as f64,
                         feature: feature.to_string(),
@@ -192,23 +196,23 @@ impl BinRangeConfig {
     }
 }
 
-impl BinRange {
+impl BinInterval {
     /// Returns a stable string key for this bin derived from its upper bound in
     /// the configured unit, rounded to the nearest integer.  For a `Time` bin
     /// with max = 10 minutes this returns `"10"`, matching the previous
     /// `TimeBin::key()` convention.
     pub fn bin_key(&self) -> String {
         match self {
-            BinRange::Time { max, unit, .. } => {
+            BinInterval::Time { max, unit, .. } => {
                 format!("{}", unit.from_uom(*max).round() as u64)
             }
-            BinRange::Distance { max, unit, .. } => {
+            BinInterval::Distance { max, unit, .. } => {
                 format!("{}", unit.from_uom(*max).round() as u64)
             }
-            BinRange::Energy { max, unit, .. } => {
+            BinInterval::Energy { max, unit, .. } => {
                 format!("{}", unit.from_uom(*max).round() as u64)
             }
-            BinRange::CustomRange { max, .. } => {
+            BinInterval::CustomRange { max, .. } => {
                 format!("{}", max.round() as u64)
             }
         }
@@ -221,7 +225,7 @@ impl BinRange {
         state_model: &StateModel,
     ) -> Result<bool, DestinationError> {
         match self {
-            BinRange::Distance {
+            BinInterval::Distance {
                 feature, min, max, ..
             } => {
                 let value = state_model.get_distance(state, feature).map_err(|e| {
@@ -233,7 +237,7 @@ impl BinRange {
                 let result = within_bin(min, &value, max);
                 Ok(result)
             }
-            BinRange::Time {
+            BinInterval::Time {
                 feature, min, max, ..
             } => {
                 let value = state_model.get_time(state, feature).map_err(|e| {
@@ -245,7 +249,7 @@ impl BinRange {
                 let result = within_bin(min, &value, max);
                 Ok(result)
             }
-            BinRange::Energy {
+            BinInterval::Energy {
                 feature, min, max, ..
             } => {
                 let value = state_model.get_energy(state, feature).map_err(|e| {
@@ -257,7 +261,7 @@ impl BinRange {
                 let result = within_bin(min, &value, max);
                 Ok(result)
             }
-            BinRange::CustomRange {
+            BinInterval::CustomRange {
                 feature,
                 unit,
                 min,
@@ -304,10 +308,10 @@ impl BinRange {
     }
 }
 
-impl std::fmt::Display for BinRange {
+impl std::fmt::Display for BinInterval {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            BinRange::Distance {
+            BinInterval::Distance {
                 feature,
                 min,
                 max,
@@ -316,7 +320,7 @@ impl std::fmt::Display for BinRange {
                 let (min_v, max_v) = (unit.from_uom(*min), unit.from_uom(*max));
                 format!("{feature} in [{min_v}, {max_v}) {unit}")
             }
-            BinRange::Time {
+            BinInterval::Time {
                 feature,
                 min,
                 max,
@@ -325,7 +329,7 @@ impl std::fmt::Display for BinRange {
                 let (min_v, max_v) = (unit.from_uom(*min), unit.from_uom(*max));
                 format!("{feature} in [{min_v}, {max_v}) {unit}")
             }
-            BinRange::Energy {
+            BinInterval::Energy {
                 feature,
                 min,
                 max,
@@ -334,7 +338,7 @@ impl std::fmt::Display for BinRange {
                 let (min_v, max_v) = (unit.from_uom(*min), unit.from_uom(*max));
                 format!("{feature} in [{min_v}, {max_v}) {unit}")
             }
-            BinRange::CustomRange {
+            BinInterval::CustomRange {
                 feature,
                 unit,
                 min,
@@ -357,13 +361,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::BinRangeConfig;
+    use super::BinningConfig;
     use routee_compass_core::model::unit::TimeUnit;
 
     /// BinRangeConfig with N values produces N-1 bins (sliding window).
     #[test]
     fn bin_range_config_produces_correct_bin_count() {
-        let config = BinRangeConfig::Time {
+        let config = BinningConfig::Time {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 20, 30],
             unit: TimeUnit::Minutes,
@@ -376,7 +380,7 @@ mod tests {
     /// Each bin key matches the upper bound of that bin.
     #[test]
     fn bin_keys_match_upper_bounds() {
-        let config = BinRangeConfig::Time {
+        let config = BinningConfig::Time {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 20, 30],
             unit: TimeUnit::Minutes,
@@ -389,7 +393,7 @@ mod tests {
 
     #[test]
     fn build_bins_rejects_single_value() {
-        let config = BinRangeConfig::Time {
+        let config = BinningConfig::Time {
             feature: "travel_time".to_string(),
             values: vec![10],
             unit: TimeUnit::Minutes,
@@ -400,7 +404,7 @@ mod tests {
 
     #[test]
     fn build_bins_rejects_empty_values() {
-        let config = BinRangeConfig::Time {
+        let config = BinningConfig::Time {
             feature: "travel_time".to_string(),
             values: vec![],
             unit: TimeUnit::Minutes,
@@ -411,7 +415,7 @@ mod tests {
 
     #[test]
     fn descending_values_are_normalized() {
-        let config = BinRangeConfig::Time {
+        let config = BinningConfig::Time {
             feature: "travel_time".to_string(),
             values: vec![30, 10, 20, 0],
             unit: TimeUnit::Minutes,
@@ -424,7 +428,7 @@ mod tests {
 
     #[test]
     fn duplicate_values_are_deduped() {
-        let config = BinRangeConfig::Time {
+        let config = BinningConfig::Time {
             feature: "travel_time".to_string(),
             values: vec![0, 10, 10, 20],
             unit: TimeUnit::Minutes,

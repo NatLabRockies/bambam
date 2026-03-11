@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use bambam_core::model::bambam_typed::BambamOutputRow;
-use bambam_core::model::destination::{self, BinRange, DestinationFilter, DestinationPredicate};
+use bambam_core::model::destination::{self, BinInterval, DestinationFilter, DestinationPredicate};
 use bambam_core::model::output_plugin::isochrone::{
     GeometryModel, IsochroneAlgorithm, IsochroneOutputFormat,
 };
@@ -106,7 +106,7 @@ impl<'a> TryFrom<&'a BambamOutputRow<'a>> for GetIsochroneRequest {
 impl GetIsochroneRequest {
     pub fn run(
         &self,
-        bin: &BinRange,
+        bin: &BinInterval,
         search_result: &SearchAppResult,
         si: &SearchInstance,
     ) -> Result<GetIsochroneResult, OutputPluginError> {

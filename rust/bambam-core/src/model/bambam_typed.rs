@@ -43,7 +43,7 @@ use serde_json::{json, Value};
 
 use crate::model::{
     bambam_field,
-    destination::{BinRangeConfig, DestinationPredicate},
+    destination::{BinningConfig, DestinationPredicate},
     output_plugin::{
         isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
         opportunity::{OpportunityFormat, OpportunityOrientation},
@@ -148,7 +148,7 @@ impl<'a> InfoSectionRef<'a> {
         get_field_opt(self.0, bambam_field::ACTIVITY_TYPES)
     }
 
-    pub fn get_bin_range(&self) -> Result<Option<BinRangeConfig>, OutputPluginError> {
+    pub fn get_bin_range(&self) -> Result<Option<BinningConfig>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::BIN_RANGE)
     }
 
@@ -206,10 +206,10 @@ impl<'a> InfoSectionMut<'a> {
         set_field(self.0, bambam_field::ACTIVITY_TYPES, v)
     }
 
-    pub fn get_bin_range(&self) -> Result<Option<BinRangeConfig>, OutputPluginError> {
+    pub fn get_bin_range(&self) -> Result<Option<BinningConfig>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::BIN_RANGE)
     }
-    pub fn set_bin_range(&mut self, v: &BinRangeConfig) -> Result<(), OutputPluginError> {
+    pub fn set_bin_range(&mut self, v: &BinningConfig) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::BIN_RANGE, v)
     }
 

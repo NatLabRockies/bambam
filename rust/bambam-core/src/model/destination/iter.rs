@@ -1,4 +1,4 @@
-use crate::model::destination::{BinRange, DestinationError, DestinationFilter};
+use crate::model::destination::{BinInterval, DestinationError, DestinationFilter};
 
 use routee_compass::app::search::SearchAppResult;
 use routee_compass_core::{
@@ -20,7 +20,7 @@ pub type DestinationsIter<'a> =
 /// assumes exactly ONE tree in our search result.
 pub fn new_destinations_iterator<'a>(
     search_result: &'a SearchAppResult,
-    bin_range: Option<&'a BinRange>,
+    bin_range: Option<&'a BinInterval>,
     destination_filter: Option<&'a DestinationFilter>,
     state_model: &'a StateModel,
 ) -> DestinationsIter<'a> {
@@ -44,7 +44,7 @@ pub fn new_destinations_iterator<'a>(
 fn filter_map_branch<'a>(
     label: &Label,
     branch: &'a SearchTreeNode,
-    bin_range: Option<&'a BinRange>,
+    bin_range: Option<&'a BinInterval>,
     destination_filter: Option<&'a DestinationFilter>,
     state_model: &'a StateModel,
 ) -> Option<Result<(Label, &'a SearchTreeNode), DestinationError>> {
@@ -68,7 +68,7 @@ fn filter_map_branch<'a>(
 fn test_state_destination<'a>(
     state: &[StateVariable],
     state_model: &'a StateModel,
-    bin_range: Option<&'a BinRange>,
+    bin_range: Option<&'a BinInterval>,
     destination_filter: Option<&'a DestinationFilter>,
 ) -> Result<bool, DestinationError> {
     // test for filter compatibility
