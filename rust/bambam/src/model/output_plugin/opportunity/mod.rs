@@ -2,7 +2,7 @@
 //!
 //! The modules below provide modeling for activities and processing
 //! search destinations into opportunities.
-pub mod opportunity_iterator;
+// pub mod opportunity_iterator;
 mod opportunity_model;
 mod opportunity_model_config;
 mod opportunity_output_plugin;
@@ -14,7 +14,6 @@ mod opportunity_spatial_row;
 mod study_region;
 
 pub mod source;
-pub use opportunity_iterator::OpportunityIterator;
 pub use opportunity_model::OpportunityModel;
 pub use opportunity_model_config::OpportunityModelConfig;
 pub use opportunity_output_plugin::OpportunityOutputPlugin;

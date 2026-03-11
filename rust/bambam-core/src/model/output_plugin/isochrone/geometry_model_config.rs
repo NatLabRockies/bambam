@@ -1,10 +1,11 @@
 use routee_compass_core::model::unit::DistanceUnit;
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
-pub enum DestinationPointGeneratorConfig {
+pub enum GeometryModelConfig {
+    #[default]
     DestinationPoint,
     LinestringCoordinates,
     LinestringStride {
