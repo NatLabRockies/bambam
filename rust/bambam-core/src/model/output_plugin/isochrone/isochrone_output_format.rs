@@ -1,6 +1,7 @@
 use geo::{Geometry, MapCoords, TryConvert};
-use geo_traits::to_geo::ToGeoGeometry;
-use geozero::{geojson::GeoJsonString, wkt::Wkt as WktReader, CoordDimensions, ToGeo, ToJson, ToWkb, ToWkt};
+use geozero::{
+    geojson::GeoJsonString, wkt::Wkt as WktReader, CoordDimensions, ToGeo, ToJson, ToWkb, ToWkt,
+};
 use routee_compass::plugin::output::OutputPluginError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -60,9 +61,24 @@ impl IsochroneOutputFormat {
                         "expected string for geometry deserialization, found: {value:?}"
                     ))
                 })?;
-                let geometry_f64 = GeoJsonString(geojson_str.to_string()).to_geo().map_err(|e| {
+                // Parse the JSON and extract geometry, handling both raw geometry and Feature format
+                let parsed: serde_json::Value = serde_json::from_str(geojson_str).map_err(|e| {
                     OutputPluginError::OutputPluginFailed(format!(
-                        "failure parsing GeoJSON from geometry string due to: {e}, found: {value:?}"
+                        "failure parsing GeoJSON string: {e}, found: {value:?}"
+                    ))
+                })?;
+                let geom_json = if parsed["type"] == "Feature" {
+                    serde_json::to_string(&parsed["geometry"]).map_err(|e| {
+                        OutputPluginError::OutputPluginFailed(format!(
+                            "failure extracting geometry from GeoJSON Feature: {e}"
+                        ))
+                    })?
+                } else {
+                    geojson_str.to_string()
+                };
+                let geometry_f64 = GeoJsonString(geom_json).to_geo().map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "failure parsing GeoJSON geometry due to: {e}, found: {value:?}"
                     ))
                 })?;
                 try_convert_f32(&geometry_f64)
@@ -146,4 +162,95 @@ fn try_convert_f32(g: &Geometry<f64>) -> Result<Geometry<f32>, OutputPluginError
             Ok(geo::Coord { x: x32, y: y32 })
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use geo::polygon;
+    use serde_json::json;
+
+    fn sample_polygon_f32() -> Geometry<f32> {
+        Geometry::Polygon(polygon![
+            (x: 0.0f32, y: 0.0f32),
+            (x: 1.0f32, y: 0.0f32),
+            (x: 1.0f32, y: 1.0f32),
+            (x: 0.0f32, y: 1.0f32),
+            (x: 0.0f32, y: 0.0f32),
+        ])
+    }
+
+    #[test]
+    fn test_serialize_wkt_roundtrip() {
+        let fmt = IsochroneOutputFormat::Wkt;
+        let geom = sample_polygon_f32();
+        let serialized = fmt
+            .serialize_geometry(&geom)
+            .expect("wkt serialization failed");
+        assert!(
+            serialized.starts_with("POLYGON"),
+            "expected WKT POLYGON, got: {serialized}"
+        );
+        let deserialized = fmt
+            .deserialize_geometry(&json!(serialized))
+            .expect("wkt deserialization failed");
+        // verify the geometry type is preserved
+        assert!(matches!(deserialized, Geometry::Polygon(_)));
+    }
+
+    #[test]
+    fn test_serialize_wkb_roundtrip() {
+        let fmt = IsochroneOutputFormat::Wkb;
+        let geom = sample_polygon_f32();
+        let serialized = fmt
+            .serialize_geometry(&geom)
+            .expect("wkb serialization failed");
+        // WKB is hex-encoded
+        assert!(serialized.len() > 0, "expected non-empty WKB hex string");
+        let deserialized = fmt
+            .deserialize_geometry(&json!(serialized))
+            .expect("wkb deserialization failed");
+        assert!(matches!(deserialized, Geometry::Polygon(_)));
+    }
+
+    #[test]
+    fn test_serialize_geojson_roundtrip() {
+        let fmt = IsochroneOutputFormat::GeoJson;
+        let geom = sample_polygon_f32();
+        let serialized = fmt
+            .serialize_geometry(&geom)
+            .expect("geojson serialization failed");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&serialized).expect("result should be valid json");
+        assert_eq!(parsed["type"], "Feature");
+        assert_eq!(parsed["geometry"]["type"], "Polygon");
+        let deserialized = fmt
+            .deserialize_geometry(&json!(serialized))
+            .expect("geojson deserialization failed");
+        assert!(matches!(deserialized, Geometry::Polygon(_)));
+    }
+
+    #[test]
+    fn test_empty_geometry_wkt() {
+        let fmt = IsochroneOutputFormat::Wkt;
+        let result = fmt.empty_geometry().expect("empty geometry wkt failed");
+        assert!(
+            result.contains("POLYGON"),
+            "expected WKT POLYGON, got: {result}"
+        );
+    }
+
+    #[test]
+    fn test_deserialize_wkt_invalid_input() {
+        let fmt = IsochroneOutputFormat::Wkt;
+        let result = fmt.deserialize_geometry(&json!("NOT VALID WKT!!"));
+        assert!(result.is_err(), "expected error for invalid WKT");
+    }
+
+    #[test]
+    fn test_deserialize_wkb_invalid_hex() {
+        let fmt = IsochroneOutputFormat::Wkb;
+        let result = fmt.deserialize_geometry(&json!("ZZZNOTVALIDHEX"));
+        assert!(result.is_err(), "expected error for invalid WKB hex");
+    }
 }

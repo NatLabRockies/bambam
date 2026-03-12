@@ -5,6 +5,7 @@ use geo::{
     triangulate_delaunay::DelaunayTriangulationConfig, Area, BoundingRect, Contains, Convert,
     TriangulateDelaunay,
 };
+use geozero::ToWkt;
 use itertools::Itertools;
 use kdam::{term, tqdm, Bar, BarExt};
 use rand;
@@ -24,7 +25,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use geozero::ToWkt;
 
 /// reads in opportunity data from some long-formatted opportunity dataset and aggregates
 /// it to some vertex dataset
@@ -303,15 +303,18 @@ fn downsample_polygon(
         geo::Geometry::MultiPolygon(g) => g
             .unconstrained_triangulation()
             .map_err(|e| format!("failure triangulating polygon: {e}")),
-        _ => Err(format!(
-            "cannot triangulate non-polygonal geometry: {}",
-            { let geom_f64: geo::Geometry<f64> = polygon.convert(); geom_f64.to_wkt().unwrap_or_default() }
-        )),
+        _ => Err(format!("cannot triangulate non-polygonal geometry: {}", {
+            let geom_f64: geo::Geometry<f64> = polygon.convert();
+            geom_f64.to_wkt().unwrap_or_default()
+        })),
     }?;
     if triangles.is_empty() {
         return Err(format!(
             "triangulation of polygon produced no triangles: {}",
-            { let geom_f64: geo::Geometry<f64> = polygon.convert(); geom_f64.to_wkt().unwrap_or_default() }
+            {
+                let geom_f64: geo::Geometry<f64> = polygon.convert();
+                geom_f64.to_wkt().unwrap_or_default()
+            }
         ));
     }
     let weighted_triangles = triangles

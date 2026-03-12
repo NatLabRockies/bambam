@@ -2,9 +2,10 @@ use std::{fs::File, path::Path};
 
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
+use geo::Convert;
+use geozero::ToWkt;
 use kdam::tqdm;
 use routee_compass_core::model::network::{EdgeConfig, EdgeId};
-use wkt::ToWkt;
 
 use crate::model::osm::{
     graph::{
@@ -157,7 +158,10 @@ impl CompassWriter for OsmGraphVectorized {
             // GEOMETRY
             if let Some(ref mut writer) = geometries_writer {
                 writer
-                    .serialize(row.linestring.to_wkt().to_string())
+                    .serialize({
+                        let ls_f64: geo::LineString<f64> = row.linestring.convert();
+                        geo::Geometry::from(ls_f64).to_wkt().unwrap_or_default()
+                    })
                     .map_err(|e| {
                         OsmError::CsvWriteError(String::from(filenames::GEOMETRIES_ENUMERATED), e)
                     })?;

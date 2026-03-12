@@ -61,8 +61,8 @@ impl BoundaryGeometryFormat {
             }
             BoundaryGeometryFormat::GeoJson => {
                 let geom_json_str = geom.to_json().map_err(|e| e.to_string())?;
-                let geom_json: Value = serde_json::from_str(&geom_json_str)
-                    .map_err(|e| e.to_string())?;
+                let geom_json: Value =
+                    serde_json::from_str(&geom_json_str).map_err(|e| e.to_string())?;
                 let result = json!({
                     "type": "Feature",
                     "bbox": null,

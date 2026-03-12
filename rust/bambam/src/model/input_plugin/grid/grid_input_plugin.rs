@@ -4,6 +4,7 @@ use crate::{
     util::polygonal_rtree::PolygonalRTree,
 };
 use geo::{Area, Geometry};
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 use kdam::{Bar, BarExt};
 use rayon::prelude::*;
 use routee_compass::{
@@ -16,7 +17,6 @@ use std::{
     collections::LinkedList,
     sync::{Arc, Mutex},
 };
-use geozero::{wkt::Wkt as WktReader, ToGeo};
 
 pub struct GridInputPlugin {
     pub population_source: Option<PopulationSource>,

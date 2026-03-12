@@ -63,18 +63,18 @@ impl<'de> de::Deserialize<'de> for TimeDelayRecord {
                                         ))
                                     })?;
                                 let row_geometry: Geometry<f32> = match geo_f64 {
-                                    Geometry::Polygon(p) => Geometry::Polygon(
-                                        p.map_coords(|c| geo::Coord {
+                                    Geometry::Polygon(p) => {
+                                        Geometry::Polygon(p.map_coords(|c| geo::Coord {
                                             x: c.x as f32,
                                             y: c.y as f32,
-                                        }),
-                                    ),
-                                    Geometry::MultiPolygon(mp) => Geometry::MultiPolygon(
-                                        mp.map_coords(|c| geo::Coord {
+                                        }))
+                                    }
+                                    Geometry::MultiPolygon(mp) => {
+                                        Geometry::MultiPolygon(mp.map_coords(|c| geo::Coord {
                                             x: c.x as f32,
                                             y: c.y as f32,
-                                        }),
-                                    ),
+                                        }))
+                                    }
                                     _ => {
                                         return Err(de::Error::custom(format!(
                                             "expected Polygon or MultiPolygon geometry, found unexpected type in '{}'",

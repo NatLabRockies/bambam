@@ -10,8 +10,9 @@ use crate::{
     },
 };
 use geo::Geometry;
+use geo::MapCoords;
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 use serde::{Deserialize, Serialize};
-use wkt::TryFromWkt;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum OsmSource {
@@ -159,9 +160,13 @@ fn read_extent_wkt(extent_filter_filepath: &str) -> Result<Geometry<f32>, OsmErr
 
 /// Try to deserialize a string into geometry and validate if said geometry is useful as a extent (Polygon or Multipolygon)
 fn deserialize_validate_extent_str(wkt_str: &str) -> Result<Geometry<f32>, OsmError> {
-    let geometry: Geometry<f32> = Geometry::try_from_wkt_str(wkt_str).map_err(|e| {
+    let geometry_f64 = WktReader(wkt_str).to_geo().map_err(|e| {
         OsmError::InvalidWKT(format!("unable to deserialize WKT in {wkt_str}: {e}"))
     })?;
+    let geometry: Geometry<f32> = geometry_f64.map_coords(|geo::Coord { x, y }| geo::Coord {
+        x: x as f32,
+        y: y as f32,
+    });
 
     match geometry {
         Geometry::Polygon(..) | Geometry::MultiPolygon(..) => Ok(geometry),

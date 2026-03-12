@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use geo::{Centroid, Convert};
+use geozero::ToWkt;
 use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::{
     algorithm::search::{SearchInstance, SearchTreeNode},
@@ -12,7 +13,6 @@ use routee_compass_core::{
 };
 use rstar::{RTreeObject, AABB};
 use serde::Serialize;
-use geozero::ToWkt;
 
 use crate::model::output_plugin::opportunity::opportunity_orientation::OpportunityOrientation;
 
@@ -139,7 +139,9 @@ impl OpportunityRowId {
                 let centroid = linestring.centroid().ok_or_else(|| {
                     OutputPluginError::OutputPluginFailed(format!(
                         "could not get centroid of LINESTRING {}",
-                        geo::Geometry::from(linestring.clone()).to_wkt().unwrap_or_default()
+                        geo::Geometry::from(linestring.clone())
+                            .to_wkt()
+                            .unwrap_or_default()
                     ))
                 })?;
                 Ok(centroid)

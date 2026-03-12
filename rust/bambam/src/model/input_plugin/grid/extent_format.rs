@@ -35,3 +35,37 @@ impl ExtentFormat {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_extent_format_wkt_polygon() {
+        let fmt = ExtentFormat::Wkt;
+        let mut input = json!({ "extent": "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))" });
+        let result = fmt
+            .get_extent(&mut input)
+            .expect("should parse WKT polygon");
+        assert!(matches!(result, Geometry::Polygon(_)));
+    }
+
+    #[test]
+    fn test_extent_format_wkt_multipolygon() {
+        let fmt = ExtentFormat::Wkt;
+        let mut input = json!({ "extent": "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))" });
+        let result = fmt
+            .get_extent(&mut input)
+            .expect("should parse WKT multipolygon");
+        assert!(matches!(result, Geometry::MultiPolygon(_)));
+    }
+
+    #[test]
+    fn test_extent_format_wkt_invalid() {
+        let fmt = ExtentFormat::Wkt;
+        let mut input = json!({ "extent": "NOT VALID WKT" });
+        let result = fmt.get_extent(&mut input);
+        assert!(result.is_err(), "expected error for invalid WKT");
+    }
+}

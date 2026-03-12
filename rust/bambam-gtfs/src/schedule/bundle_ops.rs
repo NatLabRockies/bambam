@@ -2,6 +2,7 @@ use chrono::{Duration, NaiveDate, NaiveDateTime};
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use geo::{Geometry, Intersects, LineString, Point};
+use geozero::ToWkt;
 use gtfs_structures::{Gtfs, Stop, StopTime};
 use itertools::Itertools;
 use kdam::{Bar, BarBuilder, BarExt};
@@ -18,7 +19,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use uom::si::f64::Length;
-use wkt::ToWkt;
 
 use super::{GtfsBundle, GtfsEdge};
 use crate::schedule::{
@@ -405,7 +405,11 @@ pub fn write_bundle(
 
         if let Some(ref mut writer) = geometries_writer {
             writer
-                .serialize(geometry.to_wkt().to_string())
+                .serialize(
+                    geo::Geometry::from(geometry.clone())
+                        .to_wkt()
+                        .unwrap_or_default(),
+                )
                 .map_err(|e| {
                     ScheduleError::GtfsApp(format!(
                         "Failed to write to geometry file {}: {}",
@@ -657,7 +661,7 @@ fn match_closest_graph_id(
         NearestSearchResult::NearestVertex(vertex_id) => Ok(vertex_id),
         _ => Err(ScheduleError::GtfsApp(format!(
             "could not find matching vertex for point {} in spatial index. consider expanding the distance tolerance or allowing for stop filtering.",
-            point.to_wkt()
+            geo::Geometry::from(*point).to_wkt().unwrap_or_default()
         ))),
     }
 }

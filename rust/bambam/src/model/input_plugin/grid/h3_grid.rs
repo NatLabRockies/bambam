@@ -27,7 +27,9 @@ pub fn from_polygon_extent(
             let centroid = polygon.centroid().ok_or_else(|| {
                 format!(
                     "unable to retrieve centroid of polygon: {}",
-                    geo::Geometry::from(polygon.clone()).to_wkt().unwrap_or_default()
+                    geo::Geometry::from(polygon.clone())
+                        .to_wkt()
+                        .unwrap_or_default()
                 )
             })?;
             let row = grid_ops::create_grid_row(

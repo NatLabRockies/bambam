@@ -4,6 +4,7 @@ use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
 use csv::{ReaderBuilder, StringRecord};
 use flate2::read::GzDecoder;
 use geo::{Centroid, Convert, Point};
+use geozero::ToWkt;
 use itertools::Itertools;
 use kdam::{tqdm, Bar, BarExt};
 use routee_compass::plugin::output::OutputPluginError;
@@ -14,8 +15,6 @@ use rstar::RTree;
 use serde::de;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs::File, io::BufReader};
-use geo::Convert;
-use geozero::ToWkt;
 
 /// Configuration object for building an [`OpportunityModel`] called by it's
 /// [`routee_compass::plugin::output::OutputPluginBuilder`]. See [`OpportunityModel`]
@@ -140,19 +139,28 @@ impl OpportunityModelConfig {
                             Some(centroid) => Ok(GeomWithData::new(centroid, index)),
                             None => Err(OutputPluginError::OutputPluginFailed(format!(
                                 "opportunity source geometries must have centroids, failed with {}",
-                                { let g: geo::Geometry<f64> = p.convert().into(); g.to_wkt().unwrap_or_default() }
+                                {
+                                    let g: geo::Geometry<f64> = p.convert().into();
+                                    g.to_wkt().unwrap_or_default()
+                                }
                             ))),
                         },
                         geo::Geometry::MultiPolygon(p) => match p.centroid() {
                             Some(centroid) => Ok(GeomWithData::new(centroid, index)),
                             None => Err(OutputPluginError::OutputPluginFailed(format!(
                                 "opportunity source geometries must have centroids, failed with {}",
-                                { let g: geo::Geometry<f64> = p.convert().into(); g.to_wkt().unwrap_or_default() }
+                                {
+                                    let g: geo::Geometry<f64> = p.convert().into();
+                                    g.to_wkt().unwrap_or_default()
+                                }
                             ))),
                         },
                         _ => Err(OutputPluginError::OutputPluginFailed(format!(
                             "unsupported geometry, must be point, polygon, or multipolygon: {}",
-                            { let g_f64: geo::Geometry<f64> = g.convert(); g_f64.to_wkt().unwrap_or_default() }
+                            {
+                                let g_f64: geo::Geometry<f64> = g.convert();
+                                g_f64.to_wkt().unwrap_or_default()
+                            }
                         ))),
                     })
                     .collect::<Result<Vec<_>, _>>()?;

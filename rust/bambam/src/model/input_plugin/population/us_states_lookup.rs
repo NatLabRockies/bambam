@@ -34,16 +34,45 @@ pub fn load() -> Result<PolygonalRTree<Geoid>, String> {
         let geoid: Geoid = geoid_str
             .try_into()
             .map_err(|e| format!("failure decoding GEOID in feature: {e}"))?;
-        let geometry_json = serde_json::to_string(&feature["geometry"]).map_err(|e| {
-            format!("failure serializing geometry for GEOID {geoid}: {e}")
-        })?;
+        let geometry_json = serde_json::to_string(&feature["geometry"])
+            .map_err(|e| format!("failure serializing geometry for GEOID {geoid}: {e}"))?;
         let geometry: Geometry = GeoJsonString(geometry_json).to_geo().map_err(|e| {
-            format!(
-                "failure decoding GeoJson geometry to geo-types for GEOID {geoid}: {e}"
-            )
+            format!("failure decoding GeoJson geometry to geo-types for GEOID {geoid}: {e}")
         })?;
         tree_nodes.push((geometry, geoid));
     }
     let tree = PolygonalRTree::new(tree_nodes)?;
     Ok(tree)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test that the embedded GeoJSON state file loads successfully
+    /// and produces a non-empty RTree with valid Polygon/MultiPolygon geometries.
+    #[test]
+    fn test_load_returns_non_empty_tree() {
+        let tree = load().expect("load() should succeed");
+        // The embedded state file has at least one state: test a known intersection
+        // with a point in the continental US (Kansas City area)
+        let point = geo::Geometry::Point(geo::Point::new(-94.5786, 39.0997));
+        let intersecting = tree
+            .intersection(&point)
+            .expect("intersection should succeed");
+        assert!(
+            intersecting.count() > 0,
+            "expected at least one state to contain a Kansas City area point"
+        );
+    }
+
+    /// Test that GeoJsonString can parse a simple GeoJSON geometry via geozero
+    #[test]
+    fn test_geojson_string_to_geo() {
+        let geojson = GeoJsonString(
+            r#"{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,1],[0,0]]]}"#.to_string(),
+        );
+        let geom = geojson.to_geo().expect("should parse GeoJSON polygon");
+        assert!(matches!(geom, geo::Geometry::Polygon(_)));
+    }
 }
