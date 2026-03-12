@@ -151,9 +151,7 @@ pub fn csv_string_to_linestring(v: &str) -> Result<LineString<f32>, String> {
             x: c.x as f32,
             y: c.y as f32,
         }),
-        _ => {
-            return Err("expected a LINESTRING, got a different geometry type".to_string())
-        }
+        _ => return Err("expected a LINESTRING, got a different geometry type".to_string()),
     };
     Ok(linestring)
 }
