@@ -29,10 +29,10 @@ pub fn create_grid_row(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use geo::polygon;
 
     #[test]
     fn test_create_grid_row_polygon() {
-        use geo::{coord, polygon};
         let template = serde_json::json!({ "origin_weight": 1.0 });
         let poly = polygon![
             (x: 0.0f64, y: 0.0f64),
@@ -54,13 +54,10 @@ mod tests {
         assert_eq!(result["origin_x"], serde_json::json!(0.5));
         assert_eq!(result["origin_y"], serde_json::json!(0.5));
         assert_eq!(result["grid_id"], serde_json::json!("h3-cell-1"));
-        // suppress unused import warnings in non-test builds
-        let _ = coord! { x: 0.0, y: 0.0 };
     }
 
     #[test]
     fn test_create_grid_row_invalid_template() {
-        use geo::polygon;
         let template = serde_json::json!("not-an-object");
         let geom = geo::Geometry::Polygon(polygon![
             (x: 0.0f64, y: 0.0f64),
