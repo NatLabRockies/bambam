@@ -10,6 +10,21 @@ use uom::si::f64::{Energy, Length, Time};
 /// Defines various constraint options that can be applied to route searches,
 /// including mode restrictions, trip leg constraints, and resource limits, which
 /// can be combined into multiple constraints describing a traversal behavior.
+///
+/// # Examples
+///
+/// ## Drive mode trips should not be shorter than 5 minutes
+///
+/// ```json
+/// {
+///     "mode_leg_time_limit": {
+///         "drive": {
+///             "leg": "all",
+///             "constraint": { "limit": 5.0, "unit": "minutes" }
+///         }
+///     }
+/// }
+/// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum ConstraintConfig {
@@ -72,10 +87,6 @@ pub struct ModeLegEnergyConstraint {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitOperation {
-    /// value is greater than or equal to the limit
-    MinInclusive,
-    /// value is greater than the limit
-    MinExclusive,
     /// value is less than or equal to the limit
     #[default]
     MaxInclusive,
@@ -127,14 +138,14 @@ pub enum TripLegConstraint {
     Arrival {
         destination_predicate: DestinationPredicate,
     },
+    /// all legs must meet this criteria independently
+    Any,
 }
 
 impl LimitOperation {
     /// tests if a given value is within some limit
     pub fn test(&self, value: f64, limit: f64) -> bool {
         match self {
-            LimitOperation::MinInclusive => value >= limit,
-            LimitOperation::MinExclusive => value > limit,
             LimitOperation::MaxInclusive => value <= limit,
             LimitOperation::MaxExclusive => value < limit,
         }
