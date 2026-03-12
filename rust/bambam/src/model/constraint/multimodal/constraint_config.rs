@@ -35,16 +35,37 @@ pub enum ConstraintConfig {
     },
     /// Set distance limits for specific modes on specific trip legs.
     ModeLegDistanceLimit {
-        mode_leg_distance_limit: HashMap<String, (TripLegConstraint, DistanceConstraint)>,
+        mode_leg_distance_limit: HashMap<String, ModeLegDistanceConstraint>,
     },
     /// Set time limits for specific modes on specific trip legs.
     ModeLegTimeLimit {
-        mode_leg_distance_limit: HashMap<String, (TripLegConstraint, TimeConstraint)>,
+        mode_leg_distance_limit: HashMap<String, ModeLegTimeConstraint>,
     },
     /// Set energy limits for specific modes on specific trip legs.
     ModeLegEnergyLimit {
-        mode_leg_distance_limit: HashMap<String, (TripLegConstraint, EnergyConstraint)>,
+        mode_leg_distance_limit: HashMap<String, ModeLegEnergyConstraint>,
     },
+}
+
+/// Pairs a trip leg constraint with a distance constraint.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ModeLegDistanceConstraint {
+    pub leg: TripLegConstraint,
+    pub constraint: DistanceConstraint,
+}
+
+/// Pairs a trip leg constraint with a time constraint.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ModeLegTimeConstraint {
+    pub leg: TripLegConstraint,
+    pub constraint: TimeConstraint,
+}
+
+/// Pairs a trip leg constraint with an energy constraint.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ModeLegEnergyConstraint {
+    pub leg: TripLegConstraint,
+    pub constraint: EnergyConstraint,
 }
 
 /// operation to use when testing a constraint
