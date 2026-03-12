@@ -1,6 +1,6 @@
 use geo::{Area, BooleanOps, BoundingRect, Geometry, Intersects, Polygon};
+use geozero::ToWkt;
 use rstar::{primitives::Rectangle, RTree, RTreeObject, AABB};
-use wkt::ToWkt;
 
 pub struct Node<D> {
     pub geometry: Geometry,
@@ -95,7 +95,7 @@ fn rect_from_geometry(g: &Geometry) -> Result<Rectangle<(f64, f64)>, String> {
     let bbox_vec = g.bounding_rect().ok_or_else(|| {
         format!(
             "internal error: cannot get bounds of geometry: '{}'",
-            g.to_wkt()
+            g.to_wkt().unwrap_or_default()
         )
     })?;
 

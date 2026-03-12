@@ -1,7 +1,7 @@
 use crate::model::bambam_state;
 
 use super::{bambam_field, TimeBin};
-use geo::{line_measures::LengthMeasurable, Haversine, InterpolatableLine, LineString, Point};
+use geo::{line_measures::LengthMeasurable, Convert, Haversine, InterpolatableLine, LineString, Point};
 use routee_compass::{app::search::SearchAppResult, plugin::PluginError};
 use routee_compass_core::{
     algorithm::search::SearchTreeNode,
@@ -16,7 +16,7 @@ use uom::{
     si::f64::{Length, Time},
     ConstZero,
 };
-use wkt::ToWkt;
+use geozero::ToWkt;
 
 pub type DestinationsIter<'a> =
     Box<dyn Iterator<Item = Result<(Label, &'a SearchTreeNode), StateModelError>> + 'a>;
@@ -102,7 +102,7 @@ pub fn points_along_linestring(
                             distance_to_point,
                             (fraction * 10000.0).trunc() / 100.0,
                             length_meters,
-                            linestring.to_wkt()
+                            { let ls_f64: geo::LineString<f64> = linestring.convert(); geo::Geometry::from(ls_f64).to_wkt().unwrap_or_default() }
                         )
                     })?;
                 Ok(point)

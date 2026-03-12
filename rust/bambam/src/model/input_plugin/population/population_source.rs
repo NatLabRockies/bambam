@@ -5,9 +5,8 @@ use bamcensus_core::model::identifier::{Geoid, GeoidType};
 use geo::Geometry;
 use itertools::Itertools;
 use kdam::{tqdm, Bar, BarExt};
-use routee_compass_core::config::ConfigJsonExtensions;
 use std::collections::HashSet;
-use wkt::TryFromWkt;
+use routee_compass_core::config::ConfigJsonExtensions;
 
 pub enum PopulationSource {
     UsCensusAcs {

@@ -1,8 +1,8 @@
 use super::grid_ops;
 use geo::Centroid;
+use geozero::ToWkt;
 use h3o::geom::{ContainmentMode, SolventBuilder, TilerBuilder};
 use itertools::Itertools;
-use wkt::ToWkt;
 
 pub fn from_polygon_extent(
     extent: &geo::Polygon,
@@ -27,7 +27,7 @@ pub fn from_polygon_extent(
             let centroid = polygon.centroid().ok_or_else(|| {
                 format!(
                     "unable to retrieve centroid of polygon: {}",
-                    polygon.to_wkt()
+                    geo::Geometry::from(polygon.clone()).to_wkt().unwrap_or_default()
                 )
             })?;
             let row = grid_ops::create_grid_row(

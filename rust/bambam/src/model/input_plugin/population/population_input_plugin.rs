@@ -1,12 +1,12 @@
 use crate::model::input_plugin::grid;
 use geo::Geometry;
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 use routee_compass::{
     app::search::SearchApp,
     plugin::input::{InputPlugin, InputPluginError},
 };
 use routee_compass_core::config::ConfigJsonExtensions;
 use std::sync::Arc;
-use wkt::TryFromWkt;
 
 pub struct PopulationInputPlugin {}
 
@@ -21,7 +21,7 @@ impl InputPlugin for PopulationInputPlugin {
                 "failure reading `geometry` from grid row: {e}"
             ))
         })?;
-        let geometry: Geometry = Geometry::try_from_wkt_str(&geom_wkt).map_err(|e| {
+        let _geometry: Geometry = WktReader(geom_wkt.as_str()).to_geo().map_err(|e| {
             InputPluginError::InputPluginFailed(format!(
                 "failure reading `geometry` from grid row: {e}"
             ))

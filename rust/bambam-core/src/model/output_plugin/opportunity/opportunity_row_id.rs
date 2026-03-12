@@ -12,7 +12,7 @@ use routee_compass_core::{
 };
 use rstar::{RTreeObject, AABB};
 use serde::Serialize;
-use wkt::ToWkt;
+use geozero::ToWkt;
 
 use crate::model::output_plugin::opportunity::opportunity_orientation::OpportunityOrientation;
 
@@ -139,7 +139,7 @@ impl OpportunityRowId {
                 let centroid = linestring.centroid().ok_or_else(|| {
                     OutputPluginError::OutputPluginFailed(format!(
                         "could not get centroid of LINESTRING {}",
-                        linestring.to_wkt()
+                        geo::Geometry::from(linestring.clone()).to_wkt().unwrap_or_default()
                     ))
                 })?;
                 Ok(centroid)

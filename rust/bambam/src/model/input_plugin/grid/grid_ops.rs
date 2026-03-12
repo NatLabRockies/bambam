@@ -1,5 +1,5 @@
 use serde_json::json;
-use wkt::ToWkt;
+use geozero::ToWkt;
 
 /// creates a JSON value to return as part of the "grid", which is
 /// really just a RouteE Compass query.
@@ -19,7 +19,7 @@ pub fn create_grid_row(
     output_map.insert(super::ORIGIN_Y.to_string(), json![y]);
     output_map.insert(
         super::GEOMETRY.to_string(),
-        json![geometry.to_wkt().to_string()],
+        json![geometry.to_wkt().map_err(|e| format!("failure serializing geometry as WKT: {e}"))?],
     );
     Ok(output_value)
 }

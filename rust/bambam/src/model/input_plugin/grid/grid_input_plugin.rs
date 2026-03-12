@@ -16,7 +16,7 @@ use std::{
     collections::LinkedList,
     sync::{Arc, Mutex},
 };
-use wkt::TryFromWkt;
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 
 pub struct GridInputPlugin {
     pub population_source: Option<PopulationSource>,
@@ -250,7 +250,8 @@ fn get_query_population_proportion(
             e
         )
     })?;
-    let geometry = Geometry::try_from_wkt_str(&wkt_string)
+    let geometry = WktReader(wkt_string.as_str())
+        .to_geo()
         .map_err(|e| format!("internal error, expected {} is WKT: {}", super::GEOMETRY, e))?;
     let intersecting = population.intersection_with_overlap_area(&geometry)?;
 

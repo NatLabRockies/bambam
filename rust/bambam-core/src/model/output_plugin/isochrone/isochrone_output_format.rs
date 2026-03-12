@@ -1,11 +1,9 @@
 use geo::{Geometry, MapCoords, TryConvert};
 use geo_traits::to_geo::ToGeoGeometry;
-use geojson;
+use geozero::{geojson::GeoJsonString, wkt::Wkt as WktReader, CoordDimensions, ToGeo, ToJson, ToWkb, ToWkt};
 use routee_compass::plugin::output::OutputPluginError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use wkb;
-use wkt::{ToWkt, TryFromWkt};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
@@ -29,8 +27,12 @@ impl IsochroneOutputFormat {
                         "expected WKT string for geometry deserialization, found: {value:?}"
                     ))
                 })?;
-                let g = Geometry::try_from_wkt_str(wkt).map_err(|e| OutputPluginError::OutputPluginFailed(format!("failure deserializing WKT geometry from output row due to: {e} - WKT string: \"{wkt}\"")))?;
-                Ok(g)
+                let geometry_f64 = WktReader(wkt).to_geo().map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "failure deserializing WKT geometry from output row due to: {e} - WKT string: \"{wkt}\""
+                    ))
+                })?;
+                try_convert_f32(&geometry_f64)
             }
             IsochroneOutputFormat::Wkb => {
                 let wkb_str = value.as_str().ok_or_else(|| {
@@ -44,13 +46,13 @@ impl IsochroneOutputFormat {
                         "failed to decode WKB hex string: {e} - WKB string: \"{wkb_str}\""
                     ))
                 })?;
-                // Read geometry as f64, then convert to f32
-                let geom_trait = wkb::reader::read_wkb(&wkb_bytes).map_err(|e| OutputPluginError::OutputPluginFailed(format!(
-                    "failure deserializing WKB geometry from output row due to: {e} - WKB string: \"{wkb_str}\""
-                )))?;
-                let geometry_f64 = geom_trait.to_geometry();
-                let geometry_f32 = try_convert_f32(&geometry_f64)?;
-                Ok(geometry_f32)
+                // Read geometry as f64 via geozero, then convert to f32
+                let geometry_f64 = geozero::wkb::Wkb(wkb_bytes).to_geo().map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "failure deserializing WKB geometry from output row due to: {e} - WKB string: \"{wkb_str}\""
+                    ))
+                })?;
+                try_convert_f32(&geometry_f64)
             }
             IsochroneOutputFormat::GeoJson => {
                 let geojson_str = value.as_str().ok_or_else(|| {
@@ -58,17 +60,12 @@ impl IsochroneOutputFormat {
                         "expected string for geometry deserialization, found: {value:?}"
                     ))
                 })?;
-                let geojson_obj = geojson_str.parse::<geojson::GeoJson>().map_err(|e| {
+                let geometry_f64 = GeoJsonString(geojson_str.to_string()).to_geo().map_err(|e| {
                     OutputPluginError::OutputPluginFailed(format!(
                         "failure parsing GeoJSON from geometry string due to: {e}, found: {value:?}"
                     ))
                 })?;
-                let geometry = geo_types::Geometry::<f32>::try_from(geojson_obj).map_err(|e| {
-                    OutputPluginError::OutputPluginFailed(format!(
-                        "failure converting GeoJSON to Geometry due to: {e}"
-                    ))
-                })?;
-                Ok(geometry)
+                try_convert_f32(&geometry_f64)
             }
         }
     }
@@ -78,25 +75,29 @@ impl IsochroneOutputFormat {
         geometry: &Geometry<f32>,
     ) -> Result<String, OutputPluginError> {
         match self {
-            IsochroneOutputFormat::Wkt => Ok(geometry.wkt_string()),
-            IsochroneOutputFormat::Wkb => {
-                let mut out_bytes = vec![];
+            IsochroneOutputFormat::Wkt => {
                 let geom: Geometry<f64> = geometry.try_convert().map_err(|e| {
                     OutputPluginError::OutputPluginFailed(format!(
                         "unable to convert geometry from f32 to f64: {e}"
                     ))
                 })?;
-                let write_options = wkb::writer::WriteOptions {
-                    endianness: wkb::Endianness::BigEndian,
-                };
-                wkb::writer::write_geometry(&mut out_bytes, &geom, &write_options).map_err(
-                    |e| {
-                        OutputPluginError::OutputPluginFailed(format!(
-                            "failed to write geometry as WKB: {e}"
-                        ))
-                    },
-                )?;
-
+                geom.to_wkt().map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "failed to write geometry as WKT: {e}"
+                    ))
+                })
+            }
+            IsochroneOutputFormat::Wkb => {
+                let geom: Geometry<f64> = geometry.try_convert().map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "unable to convert geometry from f32 to f64: {e}"
+                    ))
+                })?;
+                let out_bytes = geom.to_wkb(CoordDimensions::xy()).map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "failed to write geometry as WKB: {e}"
+                    ))
+                })?;
                 Ok(out_bytes
                     .iter()
                     .map(|b| format!("{b:02X?}"))
@@ -104,16 +105,25 @@ impl IsochroneOutputFormat {
                     .join(""))
             }
             IsochroneOutputFormat::GeoJson => {
-                let geometry = geojson::Geometry::from(geometry);
-                let feature = geojson::Feature {
-                    bbox: None,
-                    geometry: Some(geometry),
-                    id: None,
-                    properties: None,
-                    foreign_members: None,
-                };
-                let result = serde_json::to_value(feature)?;
-                Ok(result.to_string())
+                let geom: Geometry<f64> = geometry.try_convert().map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "unable to convert geometry from f32 to f64: {e}"
+                    ))
+                })?;
+                let geom_json_str = geom.to_json().map_err(|e| {
+                    OutputPluginError::OutputPluginFailed(format!(
+                        "failed to serialize geometry as GeoJSON: {e}"
+                    ))
+                })?;
+                let geom_json: serde_json::Value = serde_json::from_str(&geom_json_str)?;
+                let feature = serde_json::json!({
+                    "type": "Feature",
+                    "bbox": null,
+                    "geometry": geom_json,
+                    "id": null,
+                    "properties": null
+                });
+                Ok(feature.to_string())
             }
         }
     }
