@@ -1,7 +1,6 @@
 use bambam_core::model::{
     destination::DestinationPredicate, state::multimodal_state_ops as state_ops,
 };
-use geo::Within;
 use routee_compass_core::model::{
     constraint::ConstraintModelError,
     state::{StateModel, StateVariable},
@@ -236,12 +235,15 @@ impl TripLegConstraint {
         &self,
         state: &[StateVariable],
         state_model: &StateModel,
-        max_leg_idx: usize,
+        max_trip_legs: u64,
     ) -> Result<bool, ConstraintModelError> {
         match self {
             TripLegConstraint::First => matches_leg(state, state_model, 0),
-            TripLegConstraint::LegIndex { index } => matches_leg(state, state_model, *index),
-            TripLegConstraint::Last => matches_leg(state, state_model, max_leg_idx),
+            TripLegConstraint::LegIndex { index } => matches_leg(state, state_model, *index as u64),
+            TripLegConstraint::Last => {
+                let max_trip_idx = max_trip_legs - 1;
+                matches_leg(state, state_model, max_trip_idx)
+            }
             TripLegConstraint::Arrival {
                 destination_predicate,
             } => destination_predicate
@@ -259,11 +261,11 @@ impl TripLegConstraint {
 fn matches_leg(
     state: &[StateVariable],
     state_model: &StateModel,
-    leg_idx: usize,
+    leg_idx: u64,
 ) -> Result<bool, ConstraintModelError> {
     match state_ops::get_active_leg_idx(state, state_model) {
         Ok(None) => Ok(false),
-        Ok(Some(idx)) => Ok(idx == 0),
+        Ok(Some(idx)) => Ok(idx == leg_idx),
         Err(e) => {
             let msg = format!("while checking trip leg constraint: {e}");
             Err(ConstraintModelError::ConstraintModelError(msg))

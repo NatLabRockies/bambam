@@ -144,7 +144,14 @@ impl Constraint {
             ),
             MFC::ModeLegEnergyLimit {
                 mode_leg_energy_limit,
-            } => todo!(),
+            } => validate_mode_leg_energy(
+                state,
+                state_model,
+                mode_leg_energy_limit,
+                max_trip_legs,
+                mode_to_state,
+                edge_mode,
+            ),
         }
     }
 }
@@ -202,9 +209,9 @@ impl TryFrom<&ConstraintConfig> for Constraint {
                 mode_leg_time_limit: mode_leg_time_limit.clone(),
             }),
             MFCC::ModeLegEnergyLimit {
-                mode_leg_energy_limit: mode_leg_distance_limit,
+                mode_leg_energy_limit,
             } => Ok(Self::ModeLegEnergyLimit {
-                mode_leg_energy_limit: mode_leg_distance_limit.clone(),
+                mode_leg_energy_limit: mode_leg_energy_limit.clone(),
             }),
         }
     }
@@ -357,11 +364,14 @@ fn validate_mode_leg_distance(
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
         Some(ModeLegDistanceConstraint { leg, constraint }) => {
-            let matches = leg.matches(state, state_model, max_trip_legs as usize)?;
+            let matches = leg.matches(state, state_model, max_trip_legs)?;
             if !matches {
                 return Ok(true);
             }
-            let value: Length = get_distance(bambam_state::TRIP_DISTANCE, state, state_model)?;
+            let value: Length = match get_active_leg_distance(state, state_model)? {
+                Some(v) => v,
+                None => return Ok(true), // trip hasn't begun yet
+            };
             let ending_leg =
                 check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
             let valid = constraint.test(value, ending_leg);
@@ -382,11 +392,14 @@ fn validate_mode_leg_time(
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
         Some(ModeLegTimeConstraint { leg, constraint }) => {
-            let matches = leg.matches(state, state_model, max_trip_legs as usize)?;
+            let matches = leg.matches(state, state_model, max_trip_legs)?;
             if !matches {
                 return Ok(true);
             }
-            let value: Time = get_time(bambam_state::TRIP_TIME, state, state_model)?;
+            let value: Time = match get_active_leg_time(state, state_model)? {
+                Some(v) => v,
+                None => return Ok(true), // trip hasn't begun yet
+            };
             let ending_leg =
                 check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
             let valid = constraint.test(value, ending_leg);
@@ -407,11 +420,14 @@ fn validate_mode_leg_energy(
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
         Some(ModeLegEnergyConstraint { leg, constraint }) => {
-            let matches = leg.matches(state, state_model, max_trip_legs as usize)?;
+            let matches = leg.matches(state, state_model, max_trip_legs)?;
             if !matches {
                 return Ok(true);
             }
-            let value: Energy = get_total_energy(&constraint.variable, state, state_model)?;
+            let value: Energy = match get_active_leg_energy(state, state_model)? {
+                Some(v) => v,
+                None => return Ok(true), // trip hasn't begun yet
+            };
             let mode_switch =
                 check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
             let valid = constraint.test(value, mode_switch);
@@ -496,6 +512,62 @@ fn check_mode_switch(
     match active_leg {
         None => Ok(false),
         Some(leg) => Ok(leg != edge_mode),
-        _ => Ok(false),
     }
+}
+
+fn get_active_leg_distance(
+    state: &[StateVariable],
+    state_model: &StateModel,
+) -> Result<Option<Length>, ConstraintModelError> {
+    let leg_idx_opt = state_ops::get_active_leg_idx(state, state_model).map_err(|e| {
+        let msg = format!("while validating mode leg distance, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    let leg_idx = match leg_idx_opt {
+        None => return Ok(None), // we haven't started the trip yet
+        Some(idx) => idx,
+    };
+    let value: Length = state_ops::get_leg_distance(state, leg_idx, state_model).map_err(|e| {
+        let msg = format!("while validating mode leg distance, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    Ok(Some(value))
+}
+
+fn get_active_leg_time(
+    state: &[StateVariable],
+    state_model: &StateModel,
+) -> Result<Option<Time>, ConstraintModelError> {
+    let leg_idx_opt = state_ops::get_active_leg_idx(state, state_model).map_err(|e| {
+        let msg = format!("while validating mode leg time, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    let leg_idx = match leg_idx_opt {
+        None => return Ok(None), // we haven't started the trip yet
+        Some(idx) => idx,
+    };
+    let value: Time = state_ops::get_leg_time(state, leg_idx, state_model).map_err(|e| {
+        let msg = format!("while validating mode leg time, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    Ok(Some(value))
+}
+
+fn get_active_leg_energy(
+    state: &[StateVariable],
+    state_model: &StateModel,
+) -> Result<Option<Energy>, ConstraintModelError> {
+    let leg_idx_opt = state_ops::get_active_leg_idx(state, state_model).map_err(|e| {
+        let msg = format!("while validating mode leg energy, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    let leg_idx = match leg_idx_opt {
+        None => return Ok(None), // we haven't started the trip yet
+        Some(idx) => idx,
+    };
+    let value: Energy = state_ops::get_leg_energy(state, leg_idx, state_model).map_err(|e| {
+        let msg = format!("while validating mode leg energy, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    Ok(Some(value))
 }

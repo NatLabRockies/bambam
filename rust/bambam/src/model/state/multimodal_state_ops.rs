@@ -3,7 +3,7 @@ use std::f64::consts::PI;
 use crate::model::state::{LegIdx, MultimodalMapping, MultimodalStateMapping};
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
-use uom::si::f64::{Length, Time};
+use uom::si::f64::{Energy, Length, Time};
 
 use super::fieldname;
 
@@ -133,6 +133,15 @@ pub fn get_leg_time(
 ) -> Result<Time, StateModelError> {
     let name = fieldname::leg_time_fieldname(leg_idx);
     state_model.get_time(state, &name)
+}
+
+pub fn get_leg_energy(
+    state: &[StateVariable],
+    leg_idx: LegIdx,
+    state_model: &StateModel,
+) -> Result<Energy, StateModelError> {
+    let name = fieldname::leg_energy_fieldname(leg_idx);
+    state_model.get_energy(state, &name)
 }
 
 pub fn get_leg_route_id<'a>(
