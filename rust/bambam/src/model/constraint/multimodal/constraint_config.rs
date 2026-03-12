@@ -40,6 +40,15 @@ use uom::si::f64::{Energy, Length, Time};
 /// [[constraints]]
 /// mode_time_limit.walk = { limit = 20.0, unit = "minutes" }
 /// ```
+///
+/// ### Drive mode legs should never be shorter than 5 minutes or 0.33 miles
+///
+/// ```toml
+/// [[constraints]]
+/// mode_time_limit.drive = { limit = 5.0, unit = "minutes", op = "min_exclusive" }
+/// [[constraints]]
+/// mode_distance_limit.drive = { limit = 0.33, unit = "miles", op = "min_exclusive" }
+/// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum ConstraintConfig {
@@ -102,6 +111,10 @@ pub struct ModeLegEnergyConstraint {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitOperation {
+    /// value is greater than or equal to the limit
+    MinInclusive,
+    /// value is greater than the limit
+    MinExclusive,
     /// value is less than or equal to the limit
     #[default]
     MaxInclusive,
@@ -170,11 +183,20 @@ pub enum TripLegConstraint {
 }
 
 impl LimitOperation {
-    /// tests if a given value is within some limit
+    /// tests if a given value is within some limit. if it is a min comparison,
+    ///
+    /// ### mode_switch
+    ///
+    /// a min* comparison must reserve rejecting edges until it is clear that the trip leg
+    /// is ending due to a mode switch. if we have been in leg 0 with mode A, and entering
+    /// this edge would move us to leg 1 and mode B, then `mode_switch == true`. at this
+    /// point, we can run the limit comparison and decide if such a mode transition is valid
+    /// for this trip leg constraint's min limit operation.
     pub fn test<D, U, V>(
         &self,
         value: uom::si::Quantity<D, U, V>,
         limit: uom::si::Quantity<D, U, V>,
+        mode_switch: bool,
     ) -> bool
     where
         D: uom::si::Dimension + ?Sized,
@@ -182,6 +204,8 @@ impl LimitOperation {
         V: uom::num_traits::Num + uom::Conversion<V> + PartialOrd,
     {
         match self {
+            LimitOperation::MinInclusive => !mode_switch || value >= limit,
+            LimitOperation::MinExclusive => !mode_switch || value > limit,
             LimitOperation::MaxInclusive => value <= limit,
             LimitOperation::MaxExclusive => value < limit,
         }
@@ -189,20 +213,20 @@ impl LimitOperation {
 }
 
 impl DistanceConstraint {
-    pub fn test(&self, value: Length) -> bool {
-        self.op.test(value, self.limit)
+    pub fn test(&self, value: Length, mode_switch: bool) -> bool {
+        self.op.test(value, self.limit, mode_switch)
     }
 }
 
 impl TimeConstraint {
-    pub fn test(&self, value: Time) -> bool {
-        self.op.test(value, self.limit)
+    pub fn test(&self, value: Time, mode_switch: bool) -> bool {
+        self.op.test(value, self.limit, mode_switch)
     }
 }
 
 impl EnergyConstraint {
-    pub fn test(&self, value: Energy) -> bool {
-        self.op.test(value, self.limit)
+    pub fn test(&self, value: Energy, mode_switch: bool) -> bool {
+        self.op.test(value, self.limit, mode_switch)
     }
 }
 

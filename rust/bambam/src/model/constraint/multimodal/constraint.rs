@@ -286,7 +286,9 @@ fn validate_mode_distance(
     match limits.get(edge_mode) {
         Some(constraint) => {
             let value: Length = get_distance(bambam_state::TRIP_DISTANCE, state, state_model)?;
-            let valid = constraint.test(value);
+            let ending_leg =
+                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
+            let valid = constraint.test(value, ending_leg);
             Ok(valid)
         }
         None => Ok(true),
@@ -313,7 +315,9 @@ fn validate_mode_time(
                     );
                     ConstraintModelError::ConstraintModelError(msg)
                 })?;
-            let valid = constraint.test(value);
+            let ending_leg =
+                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
+            let valid = constraint.test(value, ending_leg);
             Ok(valid)
         }
         None => Ok(true),
@@ -333,7 +337,9 @@ fn validate_mode_energy(
     match limits.get(edge_mode) {
         Some(constraint) => {
             let value: Energy = get_total_energy(&constraint.variable, state, state_model)?;
-            let valid = constraint.test(value);
+            let ending_leg =
+                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
+            let valid = constraint.test(value, ending_leg);
             Ok(valid)
         }
         None => Ok(true),
@@ -356,7 +362,9 @@ fn validate_mode_leg_distance(
                 return Ok(true);
             }
             let value: Length = get_distance(bambam_state::TRIP_DISTANCE, state, state_model)?;
-            let valid = constraint.test(value);
+            let ending_leg =
+                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
+            let valid = constraint.test(value, ending_leg);
             Ok(valid)
         }
         None => Ok(true),
@@ -379,7 +387,9 @@ fn validate_mode_leg_time(
                 return Ok(true);
             }
             let value: Time = get_time(bambam_state::TRIP_TIME, state, state_model)?;
-            let valid = constraint.test(value);
+            let ending_leg =
+                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
+            let valid = constraint.test(value, ending_leg);
             Ok(valid)
         }
         None => Ok(true),
@@ -402,7 +412,9 @@ fn validate_mode_leg_energy(
                 return Ok(true);
             }
             let value: Energy = get_total_energy(&constraint.variable, state, state_model)?;
-            let valid = constraint.test(value);
+            let mode_switch =
+                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
+            let valid = constraint.test(value, mode_switch);
             Ok(valid)
         }
         None => Ok(true),
@@ -462,4 +474,28 @@ fn get_energy(
         let msg = format!("while retrieving {} from state: {e}", fieldname);
         ConstraintModelError::ConstraintModelError(msg)
     })
+}
+
+/// inspect the active trip mode and this edge's travel mode. if they do not match,
+/// then we are ending a leg by making this transition.
+fn check_mode_switch(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    max_trip_legs: u64,
+    mode_to_state: &MultimodalMapping<String, i64>,
+    edge_mode: &str,
+) -> Result<bool, ConstraintModelError> {
+    let active_leg =
+        state_ops::get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state).map_err(
+            |e| {
+                ConstraintModelError::ConstraintModelError(format!(
+                    "while applying mode count frontier model constraint, {e}"
+                ))
+            },
+        )?;
+    match active_leg {
+        None => Ok(false),
+        Some(leg) => Ok(leg != edge_mode),
+        _ => Ok(false),
+    }
 }
