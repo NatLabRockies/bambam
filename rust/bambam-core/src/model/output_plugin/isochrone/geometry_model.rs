@@ -1,27 +1,19 @@
-use geo::{line_measures::Densifiable, Densify, Haversine, LineString, MultiPoint, Point};
-use routee_compass::{
-    app::compass::CompassComponentError,
-    plugin::{output::OutputPluginError, PluginError},
-};
+use geo::{line_measures::Densifiable, Haversine, LineString, MultiPoint, Point};
+use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::{
     algorithm::search::SearchTreeNode,
-    model::{
-        label::Label,
-        map::MapModel,
-        network::{EdgeId, VertexId},
-        unit::{AsF64, DistanceUnit},
-    },
+    model::{label::Label, map::MapModel, network::EdgeId},
 };
 use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 use uom::si::f64::Length;
 
-use crate::model::output_plugin::isochrone::DestinationPointGeneratorConfig;
+use crate::model::output_plugin::isochrone::GeometryModelConfig;
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
-pub enum DestinationPointGenerator {
+pub enum GeometryModel {
     DestinationPoint,
     LinestringCoordinates,
     LinestringStride {
@@ -37,11 +29,11 @@ pub enum DestinationPointGenerator {
     },
 }
 
-impl TryFrom<&DestinationPointGeneratorConfig> for DestinationPointGenerator {
-    type Error = PluginError;
+impl TryFrom<&GeometryModelConfig> for GeometryModel {
+    type Error = OutputPluginError;
 
-    fn try_from(value: &DestinationPointGeneratorConfig) -> Result<Self, Self::Error> {
-        use DestinationPointGeneratorConfig as Conf;
+    fn try_from(value: &GeometryModelConfig) -> Result<Self, Self::Error> {
+        use GeometryModelConfig as Conf;
         match value {
             Conf::DestinationPoint => Ok(Self::DestinationPoint),
             Conf::LinestringCoordinates => Ok(Self::LinestringCoordinates),
@@ -50,7 +42,7 @@ impl TryFrom<&DestinationPointGeneratorConfig> for DestinationPointGenerator {
                 distance_unit,
             } => {
                 if stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {stride} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {stride} {distance_unit}")))
                 } else {
                     Ok(Self::LinestringStride {
                         stride: distance_unit.to_uom(*stride),
@@ -63,9 +55,9 @@ impl TryFrom<&DestinationPointGeneratorConfig> for DestinationPointGenerator {
                 distance_unit,
             } => {
                 if buffer_radius <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("linestring buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("linestring buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {buffer_stride} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {buffer_stride} {distance_unit}")))
                 } else {
                     Ok(Self::BufferedLinestring {
                         buffer_stride: distance_unit.to_uom(*buffer_stride),
@@ -79,9 +71,9 @@ impl TryFrom<&DestinationPointGeneratorConfig> for DestinationPointGenerator {
                 distance_unit,
             } => {
                 if buffer_radius <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("destination point buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("destination point buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("destination point stride must be strictly positive, found {buffer_stride} {distance_unit}")).into())
+                    Err(OutputPluginError::BuildFailed(format!("destination point stride must be strictly positive, found {buffer_stride} {distance_unit}")))
                 } else {
                     Ok(Self::BufferedDestinationPoint {
                         buffer_stride: distance_unit.to_uom(*buffer_stride),
@@ -93,7 +85,7 @@ impl TryFrom<&DestinationPointGeneratorConfig> for DestinationPointGenerator {
     }
 }
 
-impl DestinationPointGenerator {
+impl GeometryModel {
     pub fn generate_destination_points(
         &self,
         destinations: &[(Label, &SearchTreeNode)],
@@ -124,7 +116,7 @@ impl DestinationPointGenerator {
         linestring: &LineString<f32>,
     ) -> Result<Vec<Point<f32>>, OutputPluginError> {
         match self {
-            DestinationPointGenerator::DestinationPoint => {
+            GeometryModel::DestinationPoint => {
                 let last_point = linestring.points().next_back().ok_or_else(|| {
                     OutputPluginError::OutputPluginFailed(format!(
                         "geometry for edge_id {edge_id} has no points",
@@ -132,19 +124,19 @@ impl DestinationPointGenerator {
                 })?;
                 Ok(vec![last_point])
             }
-            DestinationPointGenerator::LinestringCoordinates => Ok(linestring.points().collect()),
-            DestinationPointGenerator::LinestringStride { stride } => {
+            GeometryModel::LinestringCoordinates => Ok(linestring.points().collect()),
+            GeometryModel::LinestringStride { stride } => {
                 let meters = stride.get::<uom::si::length::meter>() as f32;
                 let dense_linestring = linestring.densify(&Haversine, meters);
                 Ok(dense_linestring.into_points())
             }
-            DestinationPointGenerator::BufferedLinestring {
+            GeometryModel::BufferedLinestring {
                 buffer_radius: _,
                 buffer_stride: _,
             } => {
                 todo!("geo rust does not currently support geometry buffering")
             }
-            DestinationPointGenerator::BufferedDestinationPoint {
+            GeometryModel::BufferedDestinationPoint {
                 buffer_radius: _,
                 buffer_stride: _,
             } => todo!("geo rust does not currently support geometry buffering"),

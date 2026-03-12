@@ -1,9 +1,4 @@
-use crate::model::output_plugin::opportunity::OpportunityPluginConfig;
-
-use super::{
-    opportunity_model_config::OpportunityModelConfig,
-    opportunity_output_plugin::OpportunityOutputPlugin,
-};
+use super::{OpportunityModelConfig, OpportunityOutputPlugin, OpportunityPluginConfig};
 use routee_compass::{
     app::compass::CompassComponentError,
     plugin::{
