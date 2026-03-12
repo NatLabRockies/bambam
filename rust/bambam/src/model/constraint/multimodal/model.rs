@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
 use crate::model::state::{MultimodalMapping, MultimodalStateMapping};
 use crate::model::{constraint::multimodal::Constraint, state::multimodal_state_ops as state_ops};
+use bambam_core::model::state::LegIdx;
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
     network::Edge,
@@ -80,6 +81,19 @@ impl ConstraintModel for MultimodalConstraintModel {
         state: &[StateVariable],
         state_model: &StateModel,
     ) -> Result<bool, ConstraintModelError> {
+        // if adding this edge would exceed max_trip_legs, we can skip running the constraints
+        // and directly reject this edge.
+        let valid_leg_count = valid_trip_leg_count(
+            state,
+            state_model,
+            &self.engine.mode,
+            self.engine.max_trip_legs,
+            &self.engine.mode_to_state,
+        )?;
+        if !valid_leg_count {
+            return Ok(false);
+        }
+
         for constraint in self.engine.constraints.iter() {
             let valid = constraint.valid_frontier(
                 &self.engine.mode,
@@ -109,6 +123,35 @@ impl ConstraintModel for MultimodalConstraintModel {
     }
 }
 
+/// helper to check if adding this edge to the trip would exceed the maximum number of trip legs.
+fn valid_trip_leg_count(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    edge_mode: &str,
+    max_legs: u64,
+    mode_to_state: &MultimodalMapping<String, i64>,
+) -> Result<bool, ConstraintModelError> {
+    let max_legs_usize = max_legs as usize;
+    // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
+    let active_mode = state_ops::get_active_leg_mode(state, state_model, max_legs, mode_to_state)
+        .map_err(|e| {
+        ConstraintModelError::ConstraintModelError(format!(
+            "while applying mode count frontier model constraint, {e}"
+        ))
+    })?;
+    let n_existing_legs = state_ops::get_n_legs(state, state_model).map_err(|e| {
+        ConstraintModelError::ConstraintModelError(
+            (format!("while getting number of trip legs for this trip: {e}")),
+        )
+    })?;
+    let n_legs = match active_mode {
+        Some(active_mode) if active_mode != edge_mode => n_existing_legs + 1,
+        _ => n_existing_legs,
+    };
+    let is_valid = n_legs <= max_legs_usize;
+    Ok(is_valid)
+}
+
 #[cfg(test)]
 mod test {
     use std::collections::{HashMap, HashSet};
@@ -134,13 +177,8 @@ mod test {
     fn test_valid_max_trip_legs_empty_state() {
         // testing validitity of an initial state using constraint "max trip legs = 1"
         let max_trip_legs = 1;
-        let (mam, mfm, state_model, state) = test_setup(
-            vec![Constraint::MaxTripLegs(1)],
-            "walk",
-            &["walk", "bike"],
-            &[],
-            max_trip_legs,
-        );
+        let (mam, mfm, state_model, state) =
+            test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
 
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
 
@@ -155,13 +193,8 @@ mod test {
     fn test_valid_n_legs() {
         // testing validitity of a state with one leg using constraint "max trip legs = 2"
         let max_trip_legs = 2;
-        let (mam, mfm, state_model, mut state) = test_setup(
-            vec![Constraint::MaxTripLegs(1)],
-            "walk",
-            &["walk", "bike"],
-            &[],
-            max_trip_legs,
-        );
+        let (mam, mfm, state_model, mut state) =
+            test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
 
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
 
@@ -182,13 +215,8 @@ mod test {
     fn test_invalid_n_legs() {
         // testing validitity of a state with two legs using constraint "max trip legs = 1"
         let max_trip_legs = 2;
-        let (mam, mfm, state_model, mut state) = test_setup(
-            vec![Constraint::MaxTripLegs(1)],
-            "walk",
-            &["walk", "bike"],
-            &[],
-            max_trip_legs,
-        );
+        let (mam, mfm, state_model, mut state) =
+            test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
 
         // assign one leg to walk mode
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
@@ -514,13 +542,8 @@ mod test {
     fn test_max_trip_legs_zero() {
         // Test with max_trip_legs = 0 - empty state should be valid since it has 0 legs
         let max_trip_legs = 1;
-        let (mam, mfm, state_model, state) = test_setup(
-            vec![Constraint::MaxTripLegs(0)],
-            "walk",
-            &["walk"],
-            &[],
-            max_trip_legs,
-        );
+        let (mam, mfm, state_model, state) =
+            test_setup(vec![], "walk", &["walk"], &[], max_trip_legs);
 
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
         let is_valid = mfm
@@ -748,7 +771,6 @@ mod test {
         // Test with multiple constraints where all should pass
         let max_trip_legs = 3;
         let constraints = vec![
-            Constraint::MaxTripLegs(2),
             Constraint::AllowedModes(HashSet::from(["walk".to_string(), "bike".to_string()])),
             Constraint::ModeCounts(HashMap::from([
                 ("walk".to_string(), 2),
@@ -777,11 +799,13 @@ mod test {
     fn test_multiple_constraints_one_fails() {
         // Test with multiple constraints where one should fail
         let max_trip_legs = 3;
+        let mut trie = SubSequenceTrie::new();
+        trie.insert_sequence(vec!["walk".to_string(), "bike".to_string()]);
         let constraints = vec![
-            Constraint::MaxTripLegs(2),
             Constraint::AllowedModes(HashSet::from([
                 "walk".to_string(), // bike not allowed
             ])),
+            Constraint::ExactSequences(trie),
         ];
         let (bike_mtm, bike_mfm, state_model, mut state) =
             test_setup(constraints, "bike", &["walk", "bike"], &[], max_trip_legs);
@@ -841,13 +865,8 @@ mod test {
     fn test_max_trip_legs_would_exceed_limit() {
         // Test transition from valid state to invalid state when adding a new mode
         let max_trip_legs = 1;
-        let (bike_mtm, bike_mfm, state_model, mut state) = test_setup(
-            vec![Constraint::MaxTripLegs(1)],
-            "bike",
-            &["walk", "bike"],
-            &[],
-            max_trip_legs,
-        );
+        let (bike_mtm, bike_mfm, state_model, mut state) =
+            test_setup(vec![], "bike", &["walk", "bike"], &[], max_trip_legs);
 
         // Set up state with exactly 1 leg (at the limit)
         inject_trip_legs(
@@ -864,43 +883,5 @@ mod test {
             .valid_frontier(&bike_edge, None, &state, &state_model)
             .expect("test failed");
         assert!(!is_valid); // Should be invalid as this would create a second leg
-    }
-
-    #[test]
-    fn test_max_trip_legs_same_mode_continuation_at_limit() {
-        // Test that continuing with the same mode when at the limit is still invalid
-        // This tests the bug fix where same-mode continuation was always returning 0 legs
-
-        // max_trip_legs is the state buffer size, constraint is the actual limit
-        let max_trip_legs = 2; // State buffer can hold 2 legs
-        let constraint_limit = 1; // But we only allow 1 leg
-
-        let (bike_mtm, bike_mfm, state_model, mut state) = test_setup(
-            vec![Constraint::MaxTripLegs(constraint_limit)],
-            "bike", // ConstraintModel for bike edges
-            &["walk", "bike"],
-            &[],
-            max_trip_legs,
-        );
-
-        // Set up state with 2 legs: walk then bike (exceeds constraint_limit of 1)
-        inject_trip_legs(
-            &["walk", "bike"],
-            &mut state,
-            &state_model,
-            &bike_mtm.mode_to_state,
-            max_trip_legs,
-        );
-
-        // Test continuing with bike-mode edge (same as active mode)
-        // edge.edge_list_id doesn't matter since we're just checking constraints, not traversal
-        // The important thing is that bike_mfm has mode="bike" which matches active_mode="bike"
-        // Before the fix, this would incorrectly return n_legs=0 and be valid
-        // After the fix, this should correctly use n_existing_legs=2 and be invalid
-        let bike_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = bike_mfm
-            .valid_frontier(&bike_edge, None, &state, &state_model)
-            .expect("test failed");
-        assert!(!is_valid); // Should be invalid as we already have 2 legs, which exceeds constraint_limit of 1
     }
 }

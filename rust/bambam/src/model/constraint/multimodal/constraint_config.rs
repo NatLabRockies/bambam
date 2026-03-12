@@ -1,5 +1,12 @@
-use bambam_core::model::destination::DestinationPredicate;
-use routee_compass_core::model::unit::*;
+use bambam_core::model::{
+    destination::DestinationPredicate, state::multimodal_state_ops as state_ops,
+};
+use geo::Within;
+use routee_compass_core::model::{
+    constraint::ConstraintModelError,
+    state::{StateModel, StateVariable},
+    unit::*,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::num::NonZeroU64;
@@ -13,17 +20,25 @@ use uom::si::f64::{Energy, Length, Time};
 ///
 /// # Examples
 ///
-/// ## Drive mode trips should not be shorter than 5 minutes
+/// ## Walk mode should not be used for more than a half of a mile, total
 ///
-/// ```json
-/// {
-///     "mode_leg_time_limit": {
-///         "drive": {
-///             "leg": "all",
-///             "constraint": { "limit": 5.0, "unit": "minutes" }
-///         }
-///     }
-/// }
+/// ```toml
+/// mode_distance_limit.walk = { limit = 0.5, unit = "miles" }
+/// ```
+///
+/// ## Walk mode can only be used at the beginning and end of a trip
+///
+/// ```toml
+/// mode_sequences = [["walk", "bike", "walk"], ["walk", "drive", "walk"]]
+/// ```
+///
+/// ### Walk mode should not exceed 5m on first leg of trip and 20m total
+///
+/// ```toml
+/// [[constraints]]
+/// mode_leg_time_limit.walk = { leg = "first", constraint = { limit = 5.0, unit = "minutes" } }
+/// [[constraints]]
+/// mode_time_limit.walk = { limit = 20.0, unit = "minutes" }
 /// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
@@ -54,11 +69,11 @@ pub enum ConstraintConfig {
     },
     /// Set time limits for specific modes on specific trip legs.
     ModeLegTimeLimit {
-        mode_leg_distance_limit: HashMap<String, ModeLegTimeConstraint>,
+        mode_leg_time_limit: HashMap<String, ModeLegTimeConstraint>,
     },
     /// Set energy limits for specific modes on specific trip legs.
     ModeLegEnergyLimit {
-        mode_leg_distance_limit: HashMap<String, ModeLegEnergyConstraint>,
+        mode_leg_energy_limit: HashMap<String, ModeLegEnergyConstraint>,
     },
 }
 
@@ -97,28 +112,40 @@ pub enum LimitOperation {
 /// Distance constraint value with associated unit.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DistanceConstraint {
-    limit: f64,
+    pub limit: Length,
+    pub unit: DistanceUnit,
     #[serde(default)]
-    op: LimitOperation,
-    unit: DistanceUnit,
+    pub op: LimitOperation,
 }
 
 /// Time constraint value with associated unit.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TimeConstraint {
-    limit: f64,
+    pub limit: Time,
+    pub unit: TimeUnit,
     #[serde(default)]
-    op: LimitOperation,
-    unit: TimeUnit,
+    pub op: LimitOperation,
 }
 
 /// Energy constraint value with associated unit.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct EnergyConstraint {
-    limit: f64,
+    pub limit: Energy,
+    pub unit: EnergyUnit,
+    pub variable: EnergyStateVariable,
     #[serde(default)]
-    op: LimitOperation,
-    unit: EnergyUnit,
+    pub op: LimitOperation,
+}
+
+/// where to grab energy values when comparing against this constraint
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum EnergyStateVariable {
+    /// use the RouteE Compass fieldname for liquid energy types
+    Liquid,
+    /// use the RouteE Compass fieldname for electric energy types
+    Electric,
+    /// use both liquid and energy fields and sum the result
+    Both,
 }
 
 /// Identifies a specific trip leg for constraint application.
@@ -133,8 +160,8 @@ pub enum TripLegConstraint {
     LegIndex { index: usize },
     /// the last possible trip leg index as configured for this search
     Last,
-    /// any arrival trip leg, when the provided destination
-    /// predicate is true.
+    /// accepts the current trip leg, when the provided destination
+    /// predicate is true for this leg/edge combination.
     Arrival {
         destination_predicate: DestinationPredicate,
     },
@@ -144,7 +171,16 @@ pub enum TripLegConstraint {
 
 impl LimitOperation {
     /// tests if a given value is within some limit
-    pub fn test(&self, value: f64, limit: f64) -> bool {
+    pub fn test<D, U, V>(
+        &self,
+        value: uom::si::Quantity<D, U, V>,
+        limit: uom::si::Quantity<D, U, V>,
+    ) -> bool
+    where
+        D: uom::si::Dimension + ?Sized,
+        U: uom::si::Units<V> + ?Sized,
+        V: uom::num_traits::Num + uom::Conversion<V> + PartialOrd,
+    {
         match self {
             LimitOperation::MaxInclusive => value <= limit,
             LimitOperation::MaxExclusive => value < limit,
@@ -154,21 +190,59 @@ impl LimitOperation {
 
 impl DistanceConstraint {
     pub fn test(&self, value: Length) -> bool {
-        let value_f64 = self.unit.from_uom(value);
-        self.op.test(value_f64, self.limit)
+        self.op.test(value, self.limit)
     }
 }
 
 impl TimeConstraint {
     pub fn test(&self, value: Time) -> bool {
-        let value_f64 = self.unit.from_uom(value);
-        self.op.test(value_f64, self.limit)
+        self.op.test(value, self.limit)
     }
 }
 
 impl EnergyConstraint {
     pub fn test(&self, value: Energy) -> bool {
-        let value_f64 = self.unit.from_uom(value);
-        self.op.test(value_f64, self.limit)
+        self.op.test(value, self.limit)
+    }
+}
+
+impl TripLegConstraint {
+    /// true if the given state vector is a match to the configuration of this TripLegConstraint.
+    pub fn matches(
+        &self,
+        state: &[StateVariable],
+        state_model: &StateModel,
+        max_leg_idx: usize,
+    ) -> Result<bool, ConstraintModelError> {
+        match self {
+            TripLegConstraint::First => matches_leg(state, state_model, 0),
+            TripLegConstraint::LegIndex { index } => matches_leg(state, state_model, *index),
+            TripLegConstraint::Last => matches_leg(state, state_model, max_leg_idx),
+            TripLegConstraint::Arrival {
+                destination_predicate,
+            } => destination_predicate
+                .valid_destination(state, state_model)
+                .map_err(|e| {
+                    let msg = format!("while checking trip leg constraint: {e}");
+                    ConstraintModelError::ConstraintModelError(msg)
+                }),
+            TripLegConstraint::Any => Ok(true),
+        }
+    }
+}
+
+/// helper function to test matching of leg index
+fn matches_leg(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    leg_idx: usize,
+) -> Result<bool, ConstraintModelError> {
+    match state_ops::get_active_leg_idx(state, state_model) {
+        Ok(None) => Ok(false),
+        Ok(Some(idx)) => Ok(idx == 0),
+        Err(e) => {
+            let msg = format!("while checking trip leg constraint: {e}");
+            Err(ConstraintModelError::ConstraintModelError(msg))
+        }
     }
 }
