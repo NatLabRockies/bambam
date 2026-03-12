@@ -1,8 +1,5 @@
 use super::{extent_format::ExtentFormat, grid_type::GridType};
-use crate::{
-    model::input_plugin::population::population_source::PopulationSource,
-    util::polygonal_rtree::PolygonalRTree,
-};
+use crate::model::input_plugin::population::population_source::PopulationSource;
 use geo::{Area, Geometry};
 use kdam::{Bar, BarExt};
 use rayon::prelude::*;
@@ -10,7 +7,10 @@ use routee_compass::{
     app::search::SearchApp,
     plugin::input::{InputPlugin, InputPluginError},
 };
-use routee_compass_core::config::{CompassConfigurationError, ConfigJsonExtensions};
+use routee_compass_core::{
+    config::{CompassConfigurationError, ConfigJsonExtensions},
+    util::geo::PolygonalRTree,
+};
 use serde_json::json;
 use std::{
     collections::LinkedList,
@@ -241,7 +241,7 @@ fn add_population_source(
 /// perform a uniform (dis) aggregation from the source data.
 fn get_query_population_proportion(
     row: &serde_json::Value,
-    population: &PolygonalRTree<f64>,
+    population: &PolygonalRTree<f64, f64>,
 ) -> Result<f64, String> {
     let wkt_string = row.get_config_string(&super::GEOMETRY, &"").map_err(|e| {
         format!(
