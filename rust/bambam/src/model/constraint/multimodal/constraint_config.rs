@@ -74,10 +74,10 @@ pub enum ConstraintConfig {
     ModeTimeLimit {
         mode_time_limit: HashMap<String, TimeConstraint>,
     },
-    /// Set maximum energy limits for each transportation mode.
-    ModeEnergyLimit {
-        mode_energy_limit: HashMap<String, EnergyConstraint>,
-    },
+    // /// Set maximum energy limits for each transportation mode.
+    // ModeEnergyLimit {
+    //     mode_energy_limit: HashMap<String, EnergyConstraint>,
+    // },
     /// Set distance limits for specific modes on specific trip legs.
     ModeLegDistanceLimit {
         mode_leg_distance_limit: HashMap<String, ModeLegDistanceConstraint>,
@@ -86,10 +86,10 @@ pub enum ConstraintConfig {
     ModeLegTimeLimit {
         mode_leg_time_limit: HashMap<String, ModeLegTimeConstraint>,
     },
-    /// Set energy limits for specific modes on specific trip legs.
-    ModeLegEnergyLimit {
-        mode_leg_energy_limit: HashMap<String, ModeLegEnergyConstraint>,
-    },
+    // /// Set energy limits for specific modes on specific trip legs.
+    // ModeLegEnergyLimit {
+    //     mode_leg_energy_limit: HashMap<String, ModeLegEnergyConstraint>,
+    // },
 }
 
 /// Pairs a trip leg constraint with a distance constraint.

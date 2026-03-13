@@ -196,9 +196,9 @@ impl TryFrom<&ConstraintConfig> for Constraint {
             MFCC::ModeTimeLimit { mode_time_limit } => Ok(Self::ModeTimeLimit {
                 mode_time_limit: mode_time_limit.clone(),
             }),
-            MFCC::ModeEnergyLimit { mode_energy_limit } => Ok(Self::ModeEnergyLimit {
-                mode_energy_limit: mode_energy_limit.clone(),
-            }),
+            // MFCC::ModeEnergyLimit { mode_energy_limit } => Ok(Self::ModeEnergyLimit {
+            //     mode_energy_limit: mode_energy_limit.clone(),
+            // }),
             MFCC::ModeLegDistanceLimit {
                 mode_leg_distance_limit,
             } => Ok(Self::ModeLegDistanceLimit {
@@ -209,11 +209,11 @@ impl TryFrom<&ConstraintConfig> for Constraint {
             } => Ok(Self::ModeLegTimeLimit {
                 mode_leg_time_limit: mode_leg_time_limit.clone(),
             }),
-            MFCC::ModeLegEnergyLimit {
-                mode_leg_energy_limit,
-            } => Ok(Self::ModeLegEnergyLimit {
-                mode_leg_energy_limit: mode_leg_energy_limit.clone(),
-            }),
+            // MFCC::ModeLegEnergyLimit {
+            //     mode_leg_energy_limit,
+            // } => Ok(Self::ModeLegEnergyLimit {
+            //     mode_leg_energy_limit: mode_leg_energy_limit.clone(),
+            // }),
         }
     }
 }
