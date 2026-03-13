@@ -333,7 +333,6 @@ fn validate_mode_energy(
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
-    use bambam_state::{TRIP_ENERGY_ELECTRIC, TRIP_ENERGY_LIQUID};
     match limits.get(edge_mode) {
         Some(constraint) => {
             let value: Energy = get_mode_energy(&constraint.variable, state, state_model)?;
