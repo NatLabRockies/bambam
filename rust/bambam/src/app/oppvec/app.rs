@@ -1,10 +1,10 @@
 use super::SourceFormat;
-use crate::util::polygonal_rtree::PolygonalRTree;
 use csv::Reader;
 use geo::{
-    triangulate_delaunay::DelaunayTriangulationConfig, Area, BoundingRect, Contains,
+    triangulate_delaunay::DelaunayTriangulationConfig, Area, BoundingRect, Contains, Convert,
     TriangulateDelaunay,
 };
+use geozero::ToWkt;
 use itertools::Itertools;
 use kdam::{term, tqdm, Bar, BarExt};
 use rand;
@@ -24,7 +24,6 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use wkt::{self, ToWkt};
 
 /// reads in opportunity data from some long-formatted opportunity dataset and aggregates
 /// it to some vertex dataset
@@ -251,7 +250,10 @@ pub fn read_opportunity_rows_v2(
                     downsample_polygon(&geo::Geometry::MultiPolygon(mp), &counts_by_category)
                         .expect("failed to downsample multipolygon")
                 }
-                Some(other) => panic!("unsupported geometry type: {}", other.to_wkt()),
+                Some(other) => panic!("unsupported geometry type: {}", {
+                    let geom_f64: geo::Geometry<f64> = other.convert();
+                    geom_f64.to_wkt().unwrap_or_default()
+                }),
             }
         })
         .collect_vec_list()
@@ -300,15 +302,18 @@ fn downsample_polygon(
         geo::Geometry::MultiPolygon(g) => g
             .unconstrained_triangulation()
             .map_err(|e| format!("failure triangulating polygon: {e}")),
-        _ => Err(format!(
-            "cannot triangulate non-polygonal geometry: {}",
-            polygon.to_wkt()
-        )),
+        _ => Err(format!("cannot triangulate non-polygonal geometry: {}", {
+            let geom_f64: geo::Geometry<f64> = polygon.convert();
+            geom_f64.to_wkt().unwrap_or_default()
+        })),
     }?;
     if triangles.is_empty() {
         return Err(format!(
             "triangulation of polygon produced no triangles: {}",
-            polygon.to_wkt()
+            {
+                let geom_f64: geo::Geometry<f64> = polygon.convert();
+                geom_f64.to_wkt().unwrap_or_default()
+            }
         ));
     }
     let weighted_triangles = triangles

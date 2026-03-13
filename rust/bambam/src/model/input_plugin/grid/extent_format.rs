@@ -1,8 +1,8 @@
 use clap::ValueEnum;
 use geo::Geometry;
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 use routee_compass_core::config::ConfigJsonExtensions;
 use serde::{Deserialize, Serialize};
-use wkt;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default, ValueEnum)]
 #[serde(rename_all = "snake_case")]
@@ -20,27 +20,52 @@ impl ExtentFormat {
     /// Currently only implements WKT format
     pub fn get_extent(&self, input: &mut serde_json::Value) -> Result<Geometry, String> {
         match self {
-            ExtentFormat::Wkt => geo::Geometry::try_from(
-                input
-                    .get_config_serde::<wkt::Wkt<f64>>(&super::EXTENT, &"<root>")
+            ExtentFormat::Wkt => {
+                let wkt_str = input
+                    .get_config_serde::<String>(&super::EXTENT, &"<root>")
                     .map_err(|e| {
                         format!(
                             "failure reading extent, are you sure you submitted a valid WKT?: {e}"
                         )
-                    })?,
-            )
-            .map_err(|e| format!("failure converting wkt to geo: {e}")), // todo:
-                                                                         //   this fails with an explicit panic: thread 'main' panicked at /Users/rfitzger/.cargo/registry/src/index.crates.io-6f17d22bba15001f/wkb-0.7.1/src/lib.rs:338:14
-                                                                         //   which is a peek method checking for big vs little endianness
-                                                                         //   but we are somehow getting a value that isn't 1 or 2
-                                                                         // ExtentFormat::Wkb => {
-                                                                         //     let extent_string = input
-                                                                         //         .get_config_string(&super::EXTENT, &"")
-                                                                         //         .map_err(|e| format!("expected extent WKB: {}", e))?;
-                                                                         //     let mut c = extent_string.as_bytes();
-                                                                         // wkb::wkb_to_geom(&mut c)
-                                                                         //         .map_err(|e| format!("failure converting wkb to geo: {:?}", e))
-                                                                         // }
+                    })?;
+                WktReader(wkt_str.as_str())
+                    .to_geo()
+                    .map_err(|e| format!("failure converting wkt to geo: {e}"))
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_extent_format_wkt_polygon() {
+        let fmt = ExtentFormat::Wkt;
+        let mut input = json!({ "extent": "POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))" });
+        let result = fmt
+            .get_extent(&mut input)
+            .expect("should parse WKT polygon");
+        assert!(matches!(result, Geometry::Polygon(_)));
+    }
+
+    #[test]
+    fn test_extent_format_wkt_multipolygon() {
+        let fmt = ExtentFormat::Wkt;
+        let mut input = json!({ "extent": "MULTIPOLYGON(((0 0, 1 0, 1 1, 0 1, 0 0)))" });
+        let result = fmt
+            .get_extent(&mut input)
+            .expect("should parse WKT multipolygon");
+        assert!(matches!(result, Geometry::MultiPolygon(_)));
+    }
+
+    #[test]
+    fn test_extent_format_wkt_invalid() {
+        let fmt = ExtentFormat::Wkt;
+        let mut input = json!({ "extent": "NOT VALID WKT" });
+        let result = fmt.get_extent(&mut input);
+        assert!(result.is_err(), "expected error for invalid WKT");
     }
 }
