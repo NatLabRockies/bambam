@@ -293,7 +293,7 @@ fn validate_mode_distance(
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
         Some(constraint) => {
-            let value: Length = get_distance(bambam_state::TRIP_DISTANCE, state, state_model)?;
+            let value: Length = get_mode_distance(edge_mode, state, state_model)?;
             let ending_leg =
                 check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
             let valid = constraint.test(value, ending_leg);
@@ -314,15 +314,7 @@ fn validate_mode_time(
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
         Some(constraint) => {
-            let value = state_model
-                .get_time(state, bambam_state::TRIP_TIME)
-                .map_err(|e| {
-                    let msg = format!(
-                        "while retrieving {} from state: {e}",
-                        bambam_state::TRIP_TIME
-                    );
-                    ConstraintModelError::ConstraintModelError(msg)
-                })?;
+            let value: Time = get_mode_time(edge_mode, state, state_model)?;
             let ending_leg =
                 check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
             let valid = constraint.test(value, ending_leg);
@@ -344,7 +336,7 @@ fn validate_mode_energy(
     use bambam_state::{TRIP_ENERGY_ELECTRIC, TRIP_ENERGY_LIQUID};
     match limits.get(edge_mode) {
         Some(constraint) => {
-            let value: Energy = get_total_energy(&constraint.variable, state, state_model)?;
+            let value: Energy = get_mode_energy(&constraint.variable, state, state_model)?;
             let ending_leg =
                 check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
             let valid = constraint.test(value, ending_leg);
@@ -439,46 +431,37 @@ fn validate_mode_leg_energy(
 }
 
 /// helper for retrieving distance values from the state vector.
-fn get_distance(
-    fieldname: &str,
+fn get_mode_distance(
+    edge_mode: &str,
     state: &[StateVariable],
     state_model: &StateModel,
 ) -> Result<Length, ConstraintModelError> {
-    state_model.get_distance(state, fieldname).map_err(|e| {
-        let msg = format!("while retrieving {} from state: {e}", fieldname);
+    state_ops::get_mode_distance(state, edge_mode, state_model).map_err(|e| {
+        let msg = format!("while retrieving '{edge_mode}' mode distance from state: {e}");
         ConstraintModelError::ConstraintModelError(msg)
     })
 }
 
 /// helper for retrieving time values from the state vector.
-fn get_time(
-    fieldname: &str,
+fn get_mode_time(
+    edge_mode: &str,
     state: &[StateVariable],
     state_model: &StateModel,
 ) -> Result<Time, ConstraintModelError> {
-    state_model.get_time(state, fieldname).map_err(|e| {
-        let msg = format!("while retrieving {} from state: {e}", fieldname);
+    state_ops::get_mode_time(state, edge_mode, state_model).map_err(|e| {
+        let msg = format!("while retrieving '{edge_mode}' mode time from state: {e}");
         ConstraintModelError::ConstraintModelError(msg)
     })
 }
 
 /// helper for retrieving all energy values from the state vector based on the constraint's
 /// expected energy fieldnames.
-fn get_total_energy(
+fn get_mode_energy(
     variable: &EnergyStateVariable,
     state: &[StateVariable],
     state_model: &StateModel,
 ) -> Result<Energy, ConstraintModelError> {
-    use bambam_state::{TRIP_ENERGY_ELECTRIC, TRIP_ENERGY_LIQUID};
-    match variable {
-        EnergyStateVariable::Liquid => get_energy(TRIP_ENERGY_LIQUID, state, state_model),
-        EnergyStateVariable::Electric => get_energy(TRIP_ENERGY_ELECTRIC, state, state_model),
-        EnergyStateVariable::Both => {
-            let liq: Energy = get_energy(TRIP_ENERGY_LIQUID, state, state_model)?;
-            let ele: Energy = get_energy(TRIP_ENERGY_ELECTRIC, state, state_model)?;
-            Ok(liq + ele)
-        }
-    }
+    todo!("add a state_ops::get_mode_energy + update multimodal traversal model accounting for energy")
 }
 
 /// helper for retrieving energy values from the state vector.
