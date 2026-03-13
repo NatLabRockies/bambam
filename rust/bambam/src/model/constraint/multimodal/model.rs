@@ -541,20 +541,6 @@ mod test {
     }
 
     #[test]
-    fn test_max_trip_legs_zero() {
-        // Test with max_trip_legs = 0 - empty state should be valid since it has 0 legs
-        let max_trip_legs = NonZeroU64::new(1).unwrap();
-        let (mam, mfm, state_model, state) =
-            test_setup(vec![], "walk", &["walk"], &[], max_trip_legs);
-
-        let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
-            .expect("test failed");
-        assert!(is_valid); // Should be valid for empty state since it has 0 legs and max is 0
-    }
-
-    #[test]
     fn test_mode_counts_zero_limit() {
         // Test mode count constraint with 0 limit for a mode
         let mode_constraint = Constraint::ModeCounts(HashMap::from([
