@@ -47,6 +47,13 @@ use uom::si::f64::{Energy, Length, Time};
 /// mode_time_limit.drive = { limit = 5.0, unit = "minutes", op = "min_exclusive" }
 /// [[constraints]]
 /// mode_distance_limit.drive = { limit = 0.33, unit = "miles", op = "min_exclusive" }
+///
+/// ### Drive mode should not exceed 2 gallons of gas
+///
+/// ```toml
+/// [[constraints]]
+/// mode_energy_limit.drive = { limit = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
+/// ``````
 /// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
