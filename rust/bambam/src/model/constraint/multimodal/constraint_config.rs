@@ -35,7 +35,7 @@ use uom::si::f64::{Energy, Length, Time};
 ///
 /// ```toml
 /// [[constraints]]
-/// mode_leg_time_limit.walk = { leg = "first", constraint = { limit = 5.0, unit = "minutes" } }
+/// mode_leg_time_limit.walk = { leg.type = "first", constraint = { limit = 5.0, unit = "minutes" } }
 /// [[constraints]]
 /// mode_time_limit.walk = { limit = 20.0, unit = "minutes" }
 /// ```
