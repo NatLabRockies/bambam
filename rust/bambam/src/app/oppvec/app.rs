@@ -1,5 +1,4 @@
 use super::SourceFormat;
-use crate::util::polygonal_rtree::PolygonalRTree;
 use csv::Reader;
 use geo::{
     triangulate_delaunay::DelaunayTriangulationConfig, Area, BoundingRect, Contains, Convert,

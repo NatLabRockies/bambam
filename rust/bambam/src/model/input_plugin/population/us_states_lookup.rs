@@ -1,11 +1,11 @@
-use crate::util::polygonal_rtree::PolygonalRTree;
 use bamcensus_core::model::identifier::Geoid;
 use flate2::read::GzDecoder;
 use geo::Geometry;
 use geozero::{geojson::GeoJsonString, ToGeo};
+use routee_compass_core::util::geo::PolygonalRTree;
 use std::io::Read;
 
-pub fn load() -> Result<PolygonalRTree<Geoid>, String> {
+pub fn load() -> Result<PolygonalRTree<f64, Geoid>, String> {
     // source: https://www2.census.gov/geo/tiger/TIGER2023/STATE/tl_2023_us_state.zip
     // shapefile loaded in GeoPandas, written to file using df.to_json() method. removed
     // any entries with FIPS Geoids that do not occur in the Tiger/LINES datasets,
@@ -47,6 +47,8 @@ pub fn load() -> Result<PolygonalRTree<Geoid>, String> {
 
 #[cfg(test)]
 mod tests {
+    use geozero::ToGeo;
+
     use super::*;
 
     /// Test that the embedded GeoJSON state file loads successfully
