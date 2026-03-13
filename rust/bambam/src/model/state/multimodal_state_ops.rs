@@ -1,4 +1,4 @@
-use std::f64::consts::PI;
+use std::{f64::consts::PI, num::NonZeroU64};
 
 use crate::model::state::{LegIdx, MultimodalMapping, MultimodalStateMapping};
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
@@ -30,7 +30,7 @@ pub fn get_active_leg_idx(
 pub fn get_active_leg_mode<'a>(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &'a MultimodalStateMapping,
 ) -> Result<Option<&'a str>, StateModelError> {
     match get_active_leg_idx(state, state_model)? {
@@ -80,7 +80,7 @@ pub fn get_leg_mode_label(
     state: &[StateVariable],
     leg_idx: LegIdx,
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
 ) -> Result<Option<i64>, StateModelError> {
     validate_leg_idx(leg_idx, max_trip_legs)?;
     let name = fieldname::leg_mode_fieldname(leg_idx);
@@ -98,7 +98,7 @@ pub fn get_existing_leg_mode<'a>(
     state: &[StateVariable],
     leg_idx: LegIdx,
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &'a MultimodalStateMapping,
 ) -> Result<&'a str, StateModelError> {
     let label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
@@ -179,11 +179,11 @@ pub fn get_mode_time(
 pub fn get_mode_label_sequence(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
 ) -> Result<Vec<i64>, StateModelError> {
     let mut labels: Vec<i64> = vec![];
 
-    for leg_idx in (0..max_trip_legs) {
+    for leg_idx in (0..max_trip_legs.get()) {
         let mode_label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
         match mode_label_opt {
             None => break,
@@ -201,7 +201,7 @@ pub fn get_mode_label_sequence(
 pub fn get_mode_sequence(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalStateMapping,
 ) -> Result<Vec<String>, StateModelError> {
     let mut modes: Vec<String> = vec![];
@@ -222,7 +222,7 @@ pub fn get_mode_sequence(
 pub fn increment_active_leg_idx(
     state: &mut [StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
 ) -> Result<LegIdx, StateModelError> {
     // get the index of the next leg
     let next_leg_idx_u64 = match get_active_leg_idx(state, state_model)? {
@@ -280,8 +280,8 @@ pub fn set_leg_route_id(
 }
 
 /// validates leg_idx values, which must be in range [0, max_trip_legs)
-pub fn validate_leg_idx(leg_idx: LegIdx, max_trip_legs: LegIdx) -> Result<(), StateModelError> {
-    if leg_idx >= max_trip_legs {
+pub fn validate_leg_idx(leg_idx: LegIdx, max_trip_legs: NonZeroU64) -> Result<(), StateModelError> {
+    if leg_idx >= max_trip_legs.get() {
         Err(StateModelError::RuntimeError(format!(
             "invalid leg id {leg_idx} >= max leg id {max_trip_legs}"
         )))

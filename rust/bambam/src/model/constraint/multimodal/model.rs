@@ -1,3 +1,4 @@
+use std::num::NonZeroU64;
 use std::sync::Arc;
 
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
@@ -26,7 +27,7 @@ impl MultimodalConstraintModel {
         constraints: Vec<Constraint>,
         modes: &[&str],
         route_ids: &[&str],
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
         use_route_ids: bool,
     ) -> Result<Self, ConstraintModelError> {
         let mode_to_state =
@@ -128,10 +129,10 @@ fn valid_trip_leg_count(
     state: &[StateVariable],
     state_model: &StateModel,
     edge_mode: &str,
-    max_legs: u64,
+    max_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
 ) -> Result<bool, ConstraintModelError> {
-    let max_legs_usize = max_legs as usize;
+    let max_legs_usize = max_legs.get() as usize;
     // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
     let active_mode = state_ops::get_active_leg_mode(state, state_model, max_legs, mode_to_state)
         .map_err(|e| {
@@ -154,7 +155,10 @@ fn valid_trip_leg_count(
 
 #[cfg(test)]
 mod test {
-    use std::collections::{HashMap, HashSet};
+    use std::{
+        collections::{HashMap, HashSet},
+        num::NonZeroU64,
+    };
 
     use itertools::Itertools;
     use routee_compass_core::model::{
@@ -176,7 +180,7 @@ mod test {
     #[test]
     fn test_valid_max_trip_legs_empty_state() {
         // testing validitity of an initial state using constraint "max trip legs = 1"
-        let max_trip_legs = 1;
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (mam, mfm, state_model, state) =
             test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
 
@@ -192,7 +196,7 @@ mod test {
     #[test]
     fn test_valid_n_legs() {
         // testing validitity of a state with one leg using constraint "max trip legs = 2"
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mam, mfm, state_model, mut state) =
             test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
 
@@ -214,7 +218,7 @@ mod test {
     #[test]
     fn test_invalid_n_legs() {
         // testing validitity of a state with two legs using constraint "max trip legs = 1"
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mam, mfm, state_model, mut state) =
             test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
 
@@ -240,7 +244,7 @@ mod test {
         // testing validitity of traversing a "walk" edge using state with "walk", "drive", "walk" sequence.
         // our constraint is walk<=2, drive<=1. since this new edge has walk-mode, it will not increase the
         // number of trip legs, so it should be valid.
-        let max_trip_legs = 5;
+        let max_trip_legs = NonZeroU64::new(5).unwrap();
         let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 2),
             ("drive".to_string(), 1),
@@ -281,7 +285,7 @@ mod test {
         // testing validitity of traversing a "drive" edge using state with "walk", "drive", "walk" sequence.
         // our constraint is walk<=2, drive<=1. since this new edge has drive-mode, it will increase the
         // number of trip legs, so it should be invalid.
-        let max_trip_legs = 5;
+        let max_trip_legs = NonZeroU64::new(5).unwrap();
         let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 2),
             ("drive".to_string(), 1),
@@ -316,7 +320,7 @@ mod test {
         // "walk" and "transit" modes. this should be valid.
         let mode_constraint =
             Constraint::AllowedModes(HashSet::from(["walk".to_string(), "transit".to_string()]));
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -354,7 +358,7 @@ mod test {
         // "walk" and "transit" modes. this should be invalid.
         let mode_constraint =
             Constraint::AllowedModes(HashSet::from(["walk".to_string(), "transit".to_string()]));
-        let max_trip_legs = 4;
+        let max_trip_legs = NonZeroU64::new(4).unwrap();
         let (mtm, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "drive",
@@ -390,7 +394,7 @@ mod test {
             "walk".to_string(),
         ]);
         let mode_constraint = Constraint::ExactSequences(trie);
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -425,7 +429,7 @@ mod test {
             "walk".to_string(),
         ]);
         let mode_constraint = Constraint::ExactSequences(trie);
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -464,7 +468,7 @@ mod test {
         let mut trie = SubSequenceTrie::new();
         trie.insert_sequence(vec!["walk".to_string(), "transit".to_string()]);
         let mode_constraint = Constraint::ExactSequences(trie);
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -497,7 +501,7 @@ mod test {
         this_mode: &str,
         modes: &[&str],
         route_ids: &[&str],
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
     ) -> (
         MultimodalTraversalModel,
         MultimodalConstraintModel,
@@ -528,7 +532,7 @@ mod test {
         state: &mut [StateVariable],
         state_model: &StateModel,
         mode_to_state: &MultimodalStateMapping,
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
     ) {
         for (leg_idx, mode) in legs.iter().enumerate() {
             state_ops::set_leg_mode(state, leg_idx as u64, mode, state_model, mode_to_state)
@@ -541,7 +545,7 @@ mod test {
     #[test]
     fn test_max_trip_legs_zero() {
         // Test with max_trip_legs = 0 - empty state should be valid since it has 0 legs
-        let max_trip_legs = 1;
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (mam, mfm, state_model, state) =
             test_setup(vec![], "walk", &["walk"], &[], max_trip_legs);
 
@@ -559,7 +563,7 @@ mod test {
             ("walk".to_string(), 0),
             ("bike".to_string(), 1),
         ]));
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (walk_mtm, walk_mfm, state_model, state) = test_setup(
             vec![mode_constraint],
             "walk", // Start with bike mode to avoid walk
@@ -583,7 +587,7 @@ mod test {
             ("walk".to_string(), 2),
             ("bike".to_string(), 1),
         ]));
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let (mam, mfm, state_model, state) = test_setup(
             vec![mode_constraint],
             "drive",
@@ -604,7 +608,7 @@ mod test {
     fn test_mode_counts_same_mode_continuation() {
         // Test that continuing with the same mode doesn't increment the count
         let mode_constraint = Constraint::ModeCounts(HashMap::from([("walk".to_string(), 1)]));
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -633,7 +637,7 @@ mod test {
     fn test_allowed_modes_empty_set() {
         // Test with empty allowed modes set (should reject all modes)
         let mode_constraint = Constraint::AllowedModes(HashSet::new());
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let modes = [
             "walk", "bike", "drive", "tnc", "transit", "eBike", "eVTOL", "airplane", "ferry",
         ];
@@ -661,7 +665,7 @@ mod test {
         let mode_constraint = Constraint::AllowedModes(HashSet::from([
             "Walk".to_string(), // Note capital W
         ]));
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mam, mfm, state_model, state) = test_setup(
             vec![mode_constraint],
             "walk",            // lowercase
@@ -684,7 +688,7 @@ mod test {
         trie.insert_sequence(vec!["walk".to_string(), "transit".to_string()]);
         trie.insert_sequence(vec!["bike".to_string(), "walk".to_string()]);
         let mode_constraint = Constraint::ExactSequences(trie);
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -714,7 +718,7 @@ mod test {
         // Test with empty trie (should reject all sequences)
         let trie = SubSequenceTrie::new();
         let mode_constraint = Constraint::ExactSequences(trie);
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mam, mfm, state_model, state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -741,7 +745,7 @@ mod test {
             "walk".to_string(),
         ]);
         let mode_constraint = Constraint::ExactSequences(trie);
-        let max_trip_legs = 5;
+        let max_trip_legs = NonZeroU64::new(5).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
             "walk",
@@ -769,7 +773,7 @@ mod test {
     #[test]
     fn test_multiple_constraints_all_valid() {
         // Test with multiple constraints where all should pass
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let constraints = vec![
             Constraint::AllowedModes(HashSet::from(["walk".to_string(), "bike".to_string()])),
             Constraint::ModeCounts(HashMap::from([
@@ -798,7 +802,7 @@ mod test {
     #[test]
     fn test_multiple_constraints_one_fails() {
         // Test with multiple constraints where one should fail
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let mut trie = SubSequenceTrie::new();
         trie.insert_sequence(vec!["walk".to_string(), "bike".to_string()]);
         let constraints = vec![
@@ -828,7 +832,7 @@ mod test {
     #[test]
     fn test_large_mode_sequence() {
         // Test with a large number of trip legs to ensure performance
-        let max_trip_legs = 100;
+        let max_trip_legs = NonZeroU64::new(100).unwrap();
         let mode_constraint = Constraint::ModeCounts(HashMap::from([
             ("walk".to_string(), 25), // Lower limit to trigger the constraint
             ("bike".to_string(), 25),
@@ -864,7 +868,7 @@ mod test {
     #[test]
     fn test_max_trip_legs_would_exceed_limit() {
         // Test transition from valid state to invalid state when adding a new mode
-        let max_trip_legs = 1;
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (bike_mtm, bike_mfm, state_model, mut state) =
             test_setup(vec![], "bike", &["walk", "bike"], &[], max_trip_legs);
 

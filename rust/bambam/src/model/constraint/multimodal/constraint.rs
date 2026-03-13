@@ -18,6 +18,7 @@ use routee_compass_core::model::{
     unit::TimeUnit,
 };
 use std::collections::{HashMap, HashSet};
+use std::num::NonZeroU64;
 use uom::si::f64::{Energy, Length, Time};
 
 #[derive(Debug)]
@@ -67,7 +68,7 @@ impl Constraint {
         state: &[StateVariable],
         state_model: &StateModel,
         mode_to_state: &MultimodalStateMapping,
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
     ) -> Result<bool, ConstraintModelError> {
         use Constraint as MFC;
 
@@ -224,7 +225,7 @@ fn validate_mode_counts(
     state: &[StateVariable],
     state_model: &StateModel,
     limits: &HashMap<String, usize>,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -254,7 +255,7 @@ fn validate_mode_sequences(
     state: &[StateVariable],
     state_model: &StateModel,
     trie: &SubSequenceTrie,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -286,7 +287,7 @@ fn validate_mode_distance(
     state: &[StateVariable],
     state_model: &StateModel,
     limits: &HashMap<String, DistanceConstraint>,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -307,7 +308,7 @@ fn validate_mode_time(
     state: &[StateVariable],
     state_model: &StateModel,
     limits: &HashMap<String, TimeConstraint>,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -336,7 +337,7 @@ fn validate_mode_energy(
     state: &[StateVariable],
     state_model: &StateModel,
     limits: &HashMap<String, EnergyConstraint>,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -358,7 +359,7 @@ fn validate_mode_leg_distance(
     state: &[StateVariable],
     state_model: &StateModel,
     limits: &HashMap<String, ModeLegDistanceConstraint>,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -386,7 +387,7 @@ fn validate_mode_leg_time(
     state: &[StateVariable],
     state_model: &StateModel,
     limits: &HashMap<String, ModeLegTimeConstraint>,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -414,7 +415,7 @@ fn validate_mode_leg_energy(
     state: &[StateVariable],
     state_model: &StateModel,
     limits: &HashMap<String, ModeLegEnergyConstraint>,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
@@ -497,7 +498,7 @@ fn get_energy(
 fn check_mode_switch(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalMapping<String, i64>,
     edge_mode: &str,
 ) -> Result<bool, ConstraintModelError> {

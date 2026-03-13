@@ -235,13 +235,13 @@ impl TripLegConstraint {
         &self,
         state: &[StateVariable],
         state_model: &StateModel,
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
     ) -> Result<bool, ConstraintModelError> {
         match self {
             TripLegConstraint::First => matches_leg(state, state_model, 0),
             TripLegConstraint::LegIndex { index } => matches_leg(state, state_model, *index as u64),
             TripLegConstraint::Last => {
-                let max_trip_idx = max_trip_legs - 1;
+                let max_trip_idx = max_trip_legs.get() - 1;
                 matches_leg(state, state_model, max_trip_idx)
             }
             TripLegConstraint::Arrival {

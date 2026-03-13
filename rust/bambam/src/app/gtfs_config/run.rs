@@ -1,5 +1,6 @@
 use std::{
     fs::{DirEntry, File},
+    num::NonZeroU64,
     path::{Path, PathBuf},
 };
 
@@ -100,7 +101,7 @@ pub fn run(
     let (mmfc, tlfc) = get_constraint_model_arguments(&compass_conf)?;
     let time_limit = tlfc.time_limit.clone();
     let constraints = mmfc.constraints.clone();
-    let max_trip_legs = mmfc.max_trip_legs as usize;
+    let max_trip_legs = mmfc.max_trip_legs;
 
     log::info!("finding metadata files in {directory}");
     let read_dir = std::fs::read_dir(directory).map_err(|e| GtfsConfigError::ReadError {
@@ -383,7 +384,7 @@ pub fn gtfs_traversal_model_config(
     edges_metadata: &str,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
-    max_trip_legs: usize,
+    max_trip_legs: NonZeroU64,
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let route_ids_input_file = Some(fq_route_ids_filepath.to_string_lossy().to_string());
     let dtc_conf = DistanceTraversalConfig {
@@ -400,7 +401,7 @@ pub fn gtfs_traversal_model_config(
         this_mode: "transit".to_string(),
         available_modes: available_modes.to_vec(),
         route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-        max_trip_legs: max_trip_legs as u64,
+        max_trip_legs,
     };
     let dtc = as_json_with_type_tag(&dtc_conf, "distance")?;
     let ttc = as_json_with_type_tag(&ttc_conf, "transit")?;
@@ -419,14 +420,14 @@ pub fn gtfs_constraint_model_config(
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
-    max_trip_legs: usize,
+    max_trip_legs: NonZeroU64,
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
         constraints: constraints.to_vec(),
         available_modes: available_modes.to_vec(),
         route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-        max_trip_legs: max_trip_legs as u64,
+        max_trip_legs,
     };
     let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
     let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
