@@ -236,7 +236,7 @@ fn validate_mode_counts(
         state_ops::get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state).map_err(
             |e| {
                 ConstraintModelError::ConstraintModelError(format!(
-                    "while applying mode count frontier model constraint, {e}"
+                    "while applying mode count constraint model, {e}"
                 ))
             },
         )?;
@@ -271,7 +271,7 @@ fn validate_mode_sequences(
         state_ops::get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state).map_err(
             |e| {
                 ConstraintModelError::ConstraintModelError(format!(
-                    "while applying mode count frontier model constraint, {e}"
+                    "while testing for matching mode sub-sequence, {e}"
                 ))
             },
         )?;
@@ -488,7 +488,7 @@ fn check_mode_switch(
         state_ops::get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state).map_err(
             |e| {
                 ConstraintModelError::ConstraintModelError(format!(
-                    "while applying mode count frontier model constraint, {e}"
+                    "while checking for mode switch in metric-based constraint, {e}"
                 ))
             },
         )?;

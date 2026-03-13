@@ -136,9 +136,7 @@ fn valid_trip_leg_count(
     // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
     let active_mode = state_ops::get_active_leg_mode(state, state_model, max_legs, mode_to_state)
         .map_err(|e| {
-        ConstraintModelError::ConstraintModelError(format!(
-            "while applying mode count frontier model constraint, {e}"
-        ))
+        ConstraintModelError::ConstraintModelError(format!("while validating trip leg count, {e}"))
     })?;
     let n_existing_legs = state_ops::get_n_legs(state, state_model).map_err(|e| {
         ConstraintModelError::ConstraintModelError(
