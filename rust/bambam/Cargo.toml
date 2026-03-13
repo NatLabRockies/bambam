@@ -31,7 +31,7 @@ flate2 = { workspace = true }
 geo = { workspace = true }
 geo-traits = { workspace = true }
 geo-types = { workspace = true }
-geojson = { workspace = true }
+geozero = { workspace = true }
 gtfs-structures = { workspace = true }
 
 h3o = { workspace = true }
@@ -60,6 +60,4 @@ tokio = { workspace = true }
 toml = { workspace = true }
 
 uom = { workspace = true }
-wkb = { workspace = true }
-wkt = { workspace = true }
 zip = { workspace = true }

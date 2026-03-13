@@ -1,6 +1,7 @@
 use super::{extent_format::ExtentFormat, grid_type::GridType};
 use crate::model::input_plugin::population::population_source::PopulationSource;
 use geo::{Area, Geometry};
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 use kdam::{Bar, BarExt};
 use rayon::prelude::*;
 use routee_compass::{
@@ -16,7 +17,6 @@ use std::{
     collections::LinkedList,
     sync::{Arc, Mutex},
 };
-use wkt::TryFromWkt;
 
 pub struct GridInputPlugin {
     pub population_source: Option<PopulationSource>,
@@ -250,7 +250,8 @@ fn get_query_population_proportion(
             e
         )
     })?;
-    let geometry = Geometry::try_from_wkt_str(&wkt_string)
+    let geometry = WktReader(wkt_string.as_str())
+        .to_geo()
         .map_err(|e| format!("internal error, expected {} is WKT: {}", super::GEOMETRY, e))?;
     let intersecting = population_rtree.intersection_with_overlap_area(&geometry)?;
 

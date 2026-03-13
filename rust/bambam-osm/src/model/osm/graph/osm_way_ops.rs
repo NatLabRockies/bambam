@@ -2,12 +2,13 @@ use std::cmp::Ordering;
 
 use crate::model::osm::graph::OsmNodeId;
 use geo::LineString;
+use geo::{Convert, MapCoords};
+use geozero::{wkt::Wkt as WktReader, ToGeo, ToWkt};
 use itertools::Itertools;
 use routee_compass_core::model::unit::SpeedUnit;
 use serde::{de, Serializer};
 use uom::si::f64::Velocity;
 use uom::si::velocity;
-use wkt::ToWkt;
 
 pub const DEFAULT_WALK_SPEED_KPH: f64 = 5.0;
 
@@ -142,12 +143,16 @@ pub fn csv_string_to_linestring(v: &str) -> Result<LineString<f32>, String> {
         v
     };
 
-    let wkt: wkt::Wkt<f32> = cleaned_v
-        .parse()
+    let geometry_f64 = WktReader(cleaned_v)
+        .to_geo()
         .map_err(|e| format!("failed to parse WKT string: {e}"))?;
-    let linestring: LineString<f32> = wkt
-        .try_into()
-        .map_err(|e| format!("failed to parse WKT string: {e}"))?;
+    let linestring: LineString<f32> = match geometry_f64 {
+        geo::Geometry::LineString(ls) => ls.map_coords(|c| geo::Coord {
+            x: c.x as f32,
+            y: c.y as f32,
+        }),
+        _ => return Err("expected a LINESTRING, got a different geometry type".to_string()),
+    };
     Ok(linestring)
 }
 
@@ -156,7 +161,8 @@ pub fn serialize_linestring<S>(row: &LineString<f32>, s: S) -> Result<S::Ok, S::
 where
     S: Serializer,
 {
-    let wkt = row.to_wkt().to_string();
+    let row_f64: geo::LineString<f64> = row.convert();
+    let wkt = geo::Geometry::from(row_f64).to_wkt().unwrap_or_default();
     s.serialize_str(&wkt)
 }
 

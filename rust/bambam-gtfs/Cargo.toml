@@ -20,7 +20,7 @@ downloader = { workspace = true }
 env_logger = { workspace = true }
 flate2 = { workspace = true }
 geo = { workspace = true }
-geojson = { workspace = true }
+geozero = { workspace = true }
 gtfs-structures = { workspace = true }
 h3o = { workspace = true }
 itertools = { workspace = true }
@@ -35,6 +35,4 @@ skiplist = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 uom = { workspace = true }
-wkb = { workspace = true }
-wkt = { workspace = true }
 zip = { workspace = true }

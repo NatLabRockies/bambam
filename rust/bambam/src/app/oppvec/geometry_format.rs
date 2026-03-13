@@ -1,8 +1,8 @@
 use csv::StringRecord;
-use geo::Geometry;
+use geo::{Geometry, MapCoords};
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use wkt::TryFromWkt;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
@@ -62,9 +62,17 @@ impl GeometryFormat {
                     .get(column_name)
                     .ok_or_else(|| format!("file does not contain column '{column_name}'"))?;
                 let value = row.get(*idx).ok_or_else(|| format!("internal error: column index lookup has col '{column_name}' at idx '{idx}' which is not found in the lookup"))?;
-                let g = Geometry::try_from_wkt_str(value).map_err(|e| {
-                    format!("failure reading geometry at column '{column_name}': {e}")
-                })?;
+                let g = WktReader(value)
+                    .to_geo()
+                    .map(|geom| {
+                        geom.map_coords(|c| geo::Coord {
+                            x: c.x as f32,
+                            y: c.y as f32,
+                        })
+                    })
+                    .map_err(|e| {
+                        format!("failure reading geometry at column '{column_name}': {e}")
+                    })?;
                 Ok(g)
                 // match g {
                 //     Geometry::Point(point) => Ok(point),

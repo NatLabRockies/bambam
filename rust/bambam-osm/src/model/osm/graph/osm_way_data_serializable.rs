@@ -2,6 +2,7 @@ use super::osm_way_ops::{self, deserialize_linestring, serialize_linestring};
 use super::{OsmGraph, OsmNodeData, OsmNodeId, OsmWayData, OsmWayId};
 use crate::model::{feature::highway::Highway, osm::OsmError};
 use geo::{Convert, Coord, Haversine, Length, LineString};
+use geozero::ToWkt;
 use itertools::Itertools;
 use routee_compass_core::model::network::{Vertex, VertexId};
 use serde::{Deserialize, Serialize};
@@ -9,7 +10,6 @@ use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
 };
-use wkt::ToWkt;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OsmWayDataSerializable {
@@ -107,7 +107,7 @@ impl OsmWayDataSerializable {
         if linestring.coords().collect_vec().len() < 2 {
             return Err(OsmError::InternalError(format!(
                 "during output processing, way ({})-[{}]->({}) produces a linestring with less than 2 nodes: '{}'",
-                src_node_id, way.osmid, dst_node_id, linestring.to_wkt()
+                src_node_id, way.osmid, dst_node_id, { let ls_f64: LineString<f64> = linestring.convert(); geo::Geometry::from(ls_f64).to_wkt().unwrap_or_default() }
             )));
         }
 

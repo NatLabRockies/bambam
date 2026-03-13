@@ -10,6 +10,7 @@ use crate::schedule::{
 };
 use clap::Subcommand;
 use geo::{Coord, Geometry, LineString};
+use geozero::{wkt::Wkt as WktReader, ToGeo, ToWkt};
 use gtfs_structures::Gtfs;
 use itertools::Itertools;
 use kdam::Bar;
@@ -22,7 +23,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashSet, fs::File, io::Write, path::Path, time::Duration};
 use uom::si::f64::Length;
-use wkt::{ToWkt, TryFromWkt};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Subcommand)]
 pub enum GtfsOperation {
@@ -406,7 +406,14 @@ fn shapes(rows: &Vec<GtfsProvider>) {
     writeln!(out, "provider,url,state_code,shape_id,geometry").unwrap();
 
     for (record, shape_id, linestring) in results {
-        writeln!(out, "{},{},\"{}\"", record, shape_id, linestring.to_wkt()).unwrap();
+        writeln!(
+            out,
+            "{},{},\"{}\"",
+            record,
+            shape_id,
+            geo::Geometry::from(linestring).to_wkt().unwrap_or_default()
+        )
+        .unwrap();
     }
 }
 
@@ -449,7 +456,7 @@ fn read_extent_file(extent_file: Option<&String>) -> Result<Option<Geometry>, Sc
     let extent_string = std::fs::read_to_string(extent_file).map_err(|e| {
         ScheduleError::InvalidData(format!("failed to read WKT from '{extent_file}': {e}"))
     })?;
-    let extent = Geometry::try_from_wkt_str(&extent_string).map_err(|e| {
+    let extent = WktReader(extent_string.as_str()).to_geo().map_err(|e| {
         ScheduleError::InvalidData(format!("could not read file '{extent_file}' as WKT: {e}"))
     })?;
     match &extent {
