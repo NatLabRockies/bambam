@@ -7,8 +7,9 @@ use super::{
 use crate::model::osm::graph::{
     osm_way_data_serializable::create_linestring_for_od_path, OsmNodeData, OsmWayData,
 };
+use geo::Convert;
+use geozero::ToWkt;
 use kdam::tqdm;
-use wkt::ToWkt;
 
 pub struct OsmGraphVectorized {
     /// the collection of OSM nodes associated via their OSMID
@@ -113,7 +114,10 @@ fn debug_linestring(
     match traj.first() {
         None => "invalid: empty linestring".to_string(),
         Some((src, way, dst)) => create_linestring_for_od_path(&src.osmid, &dst.osmid, way, graph)
-            .map(|l| l.to_wkt().to_string())
+            .map(|l| {
+                let l_f64: geo::LineString<f64> = l.convert();
+                geo::Geometry::from(l_f64).to_wkt().unwrap_or_default()
+            })
             .unwrap_or_else(|_| "invalid: unable to construct linestring".to_string()),
     }
 }

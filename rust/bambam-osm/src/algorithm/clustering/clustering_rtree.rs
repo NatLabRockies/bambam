@@ -1,12 +1,13 @@
 use crate::model::osm::graph::OsmNodeId;
 
 use super::ClusteredGeometry;
+use geo::Convert;
 use geo::{BoundingRect, Coord, Polygon};
+use geozero::ToWkt;
 use itertools::Itertools;
 use kdam::tqdm;
 use rstar::primitives::{GeomWithData, Rectangle};
 use rstar::{RTree, RTreeObject};
-use wkt::ToWkt;
 
 pub type ClusteredIntersections = GeomWithData<Rectangle<(f32, f32)>, ClusteredGeometry>;
 
@@ -75,10 +76,10 @@ fn rect_from_geometries(ps: &[&Polygon<f32>]) -> Result<Rectangle<(f32, f32)>, S
     let mut maxs = vec![];
     for p in ps {
         let bbox_rect = p.bounding_rect().ok_or_else(|| {
-            format!(
-                "internal error: cannot get bounds of geometry: '{}'",
-                p.to_wkt()
-            )
+            format!("internal error: cannot get bounds of geometry: '{}'", {
+                let p_f64: geo::Polygon<f64> = p.convert();
+                geo::Geometry::from(p_f64).to_wkt().unwrap_or_default()
+            })
         })?;
         mins.push(bbox_rect.min());
         maxs.push(bbox_rect.max());

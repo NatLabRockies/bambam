@@ -1,10 +1,9 @@
-use geo::{ConvexHull, Geometry, MultiPolygon};
-use geo::{Point, Polygon};
+use geo::{ConvexHull, Geometry, MapCoords, MultiPolygon, Point, Polygon};
+use geozero::{wkt::Wkt as WktReader, ToGeo};
 use rstar::{RTreeObject, AABB};
 use serde::de;
 use serde::Serialize;
 use uom::si::f64::Time;
-use wkt::TryFromWkt;
 
 #[derive(Serialize, Clone, Debug)]
 pub struct TimeDelayRecord {
@@ -54,19 +53,35 @@ impl<'de> de::Deserialize<'de> for TimeDelayRecord {
                             "geometry" => {
                                 // should be one of POLYGON | MULTIPOLYGON
                                 let value_trim = value.replace('\"', "");
-                                let polygon_result = Polygon::try_from_wkt_str(value_trim.as_str())
-                                    .map(|p: Polygon<f32>| Geometry::Polygon(p));
-                                let row_geometry = polygon_result
-                                    .or_else(|_| {
-                                        MultiPolygon::try_from_wkt_str(value)
-                                            .map(Geometry::MultiPolygon)
-                                    })
+                                let geo_f64 = WktReader(value_trim.as_str())
+                                    .to_geo()
+                                    .or_else(|_| WktReader(value).to_geo())
                                     .map_err(|e| {
                                         de::Error::custom(format!(
                                             "unable to parse WKT geometry '{}': {}",
                                             &value, e
                                         ))
                                     })?;
+                                let row_geometry: Geometry<f32> = match geo_f64 {
+                                    Geometry::Polygon(p) => {
+                                        Geometry::Polygon(p.map_coords(|c| geo::Coord {
+                                            x: c.x as f32,
+                                            y: c.y as f32,
+                                        }))
+                                    }
+                                    Geometry::MultiPolygon(mp) => {
+                                        Geometry::MultiPolygon(mp.map_coords(|c| geo::Coord {
+                                            x: c.x as f32,
+                                            y: c.y as f32,
+                                        }))
+                                    }
+                                    _ => {
+                                        return Err(de::Error::custom(format!(
+                                            "expected Polygon or MultiPolygon geometry, found unexpected type in '{}'",
+                                            &value
+                                        )));
+                                    }
+                                };
                                 geometry_option = Some(row_geometry);
                             }
                             "time" => {
