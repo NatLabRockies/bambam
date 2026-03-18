@@ -98,7 +98,8 @@ fn read_geometries(
     let features = geojson_value["features"]
         .as_array()
         .ok_or_else(|| ZoneError::Parse {
-            message: "zonal geometry input GeoJSON does not have 'features' key as expected".to_string(),
+            message: "zonal geometry input GeoJSON does not have 'features' key as expected"
+                .to_string(),
             path: geom_path.to_path_buf(),
         })?;
     let n_features: usize = features.len();
