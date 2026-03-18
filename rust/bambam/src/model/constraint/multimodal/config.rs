@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use super::ConstraintConfig;
 use serde::{Deserialize, Serialize};
 
@@ -13,5 +15,5 @@ pub struct MultimodalConstraintConfig {
     /// to generate an enumeration used in state modeling.
     pub route_ids_input_file: Option<String>,
     /// maximum number of legs allowed in a trip
-    pub max_trip_legs: u64,
+    pub max_trip_legs: NonZeroU64,
 }

@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use crate::model::state::{
     fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalStateMapping,
 };
@@ -13,7 +15,7 @@ pub fn mode_switch(
     state_model: &StateModel,
     prev_mode: &str,
     mode_to_state: &MultimodalStateMapping,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
     // grab the leg_idx and leg mode if it exists. allow None cases to flow through
     // and handle error cases.
@@ -54,7 +56,7 @@ pub fn update_accumulators(
     mode: &str,
     leg_idx: LegIdx,
     mode_to_state: &MultimodalStateMapping,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
     let distance: Length = state_model.get_distance(state, fieldname::EDGE_DISTANCE)?;
     let time: Time = state_model.get_time(state, fieldname::EDGE_TIME)?;
@@ -84,7 +86,7 @@ pub fn update_route_id(
     mode: &str,
     leg_idx: LegIdx,
     route_id_to_state: &MultimodalStateMapping,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
     let route_id_label = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
     let route_id_opt = route_id_to_state.get_categorical(route_id_label)?;

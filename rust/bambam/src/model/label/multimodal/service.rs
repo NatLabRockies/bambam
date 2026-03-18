@@ -11,7 +11,7 @@ use routee_compass_core::model::{
     state::{StateModel, StateVariable},
 };
 use serde_json::Value;
-use std::sync::Arc;
+use std::{num::NonZeroU64, sync::Arc};
 
 pub struct MultimodalLabelService {
     config: MultimodalLabelConfig,
@@ -46,7 +46,7 @@ impl MultimodalLabelService {
     pub fn get_max_trip_legs(
         &self,
         query_conf: &MultimodalLabelConfig,
-    ) -> Result<LegIdx, LabelModelError> {
+    ) -> Result<NonZeroU64, LabelModelError> {
         self.get_conf(query_conf, "max_trip_legs", |c| c.max_trip_legs)
     }
 

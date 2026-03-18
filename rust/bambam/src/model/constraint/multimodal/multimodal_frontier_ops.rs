@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroU64};
 
 use crate::model::state::{
     multimodal_state_ops as state_ops, MultimodalMapping, MultimodalStateMapping,
@@ -15,7 +15,7 @@ use uom::si::f64::Time;
 pub fn get_mode_counts(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: u64,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalStateMapping,
 ) -> Result<HashMap<String, usize>, ConstraintModelError> {
     let modes = state_ops::get_mode_sequence(state, state_model, max_trip_legs, mode_to_state)

@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -11,5 +13,5 @@ pub struct MultimodalTraversalConfig {
     /// to generate an enumeration used in state modeling.
     pub route_ids_input_file: Option<String>,
     /// for a given search, the limit to the number of mode transitions that can occur
-    pub max_trip_legs: u64,
+    pub max_trip_legs: NonZeroU64,
 }
