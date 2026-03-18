@@ -16,6 +16,7 @@ gtfs-structures = { workspace = true, optional = true }
 bambam-core = { version = "0.2.3", path = "../bambam-core" } 
 chrono = { workspace = true }
 csv = { workspace = true }
+clap = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }
 geojson = { workspace = true }

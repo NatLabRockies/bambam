@@ -1,29 +1,45 @@
 use std::path::Path;
+use clap::Parser;
 
 mod agency;
 mod calendar;
 mod flex_processor;
 mod stop_times;
 mod trips;
+mod app;
 
 use crate::flex_processor::process_gtfs_flex_bundle;
+use crate::app::{Cli, Commands};
 
 fn main() -> std::io::Result<()> {
-    // feeds path directory
-    let flex_dir = Path::new("src/test/assets");
+    // parse cli arguments
+    let cli = Cli::parse();
 
-    // requested datefor processing GTFS-Flex feeds
-    let date_requested = "20240902";
+    match cli.command {
+        Commands::ProcessGtfsFlexFeeds(args) => {
+            let flex_dir = Path::new(&args.flex_dir);
+            let date_requested = &args.date_requested;
+            let output_file = &args.output_csv;
 
-    // process GTFS-Flex feeds in the specified directory for the requested date
-    let valid_zones = process_gtfs_flex_bundle(flex_dir, date_requested)?;
+            // check if the input directory exists
+            if !flex_dir.exists() || !flex_dir.is_dir() {
+                eprintln!("Error: The specified directory does not exist or is not a directory.");
+                std::process::exit(1);
+            }
 
-    // write valid zones to a csv file
-    let mut writer = csv::Writer::from_path(flex_dir.join("valid-zones.csv"))?;
-    for zone in valid_zones {
-        writer.serialize(zone)?;
+            // process GTFS-Flex feeds
+            let valid_zones = process_gtfs_flex_bundle(flex_dir, date_requested)?;
+
+            // write valid zones CSV
+            let mut writer = csv::Writer::from_path(flex_dir.join(output_file))?;
+            for zone in valid_zones {
+                writer.serialize(zone)?;
+            }
+            writer.flush()?;
+
+            println!("Valid zones written to {}", output_file);
+        }
     }
-    writer.flush()?;
 
     Ok(())
 }
