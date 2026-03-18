@@ -18,7 +18,7 @@ clap = { workspace = true }
 csv = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }
-geojson = { workspace = true }
+geozero = { workspace = true }
 gtfs-structures = { workspace = true, optional = true }
 kdam = { workspace = true }
 ordered-float = { workspace = true }

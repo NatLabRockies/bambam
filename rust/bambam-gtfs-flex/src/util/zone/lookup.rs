@@ -5,6 +5,7 @@ use crate::util::zone::{ZoneError, ZoneGraph, ZoneId, ZoneLookupConfig, ZoneReco
 use bambam_core::util::geo_utils::try_convert_f32;
 use chrono::NaiveDateTime;
 use geo::Geometry;
+use geozero::{geojson::GeoJsonString, ToGeo};
 use kdam::BarBuilder;
 use routee_compass_core::{
     model::{constraint::ConstraintModelError, network::Vertex, traversal::TraversalModelError},
@@ -88,56 +89,69 @@ fn read_geometries(
         path: geom_path.to_path_buf(),
         source: e,
     })?;
-    let geojson_value = geojson_str
-        .parse::<geojson::GeoJson>()
-        .map_err(|e| ZoneError::Parse {
+
+    let geojson_value: serde_json::Value =
+        serde_json::from_str(&geojson_str).map_err(|e| ZoneError::Parse {
             message: e.to_string(),
             path: geom_path.to_path_buf(),
         })?;
-
-    let zone_geometries = match geojson_value {
-        geojson::GeoJson::FeatureCollection(feature_collection) => {
-            let n_features = feature_collection.features.len();
-            let mut tree_nodes = Vec::with_capacity(n_features);
-            for (n, feature) in feature_collection.features.iter().enumerate() {
-                let zone_id_str = feature
-                    .property(zone_id_col)
-                    .ok_or_else(|| ZoneError::Deserialize {
-                        col: zone_id_col.to_string(),
-                        path: geom_path.to_path_buf(),
-                        message: "column missing".to_string(),
-                    })?
-                    .as_str()
-                    .ok_or_else(|| ZoneError::Deserialize {
-                        col: zone_id_col.to_string(),
-                        path: geom_path.to_path_buf(),
-                        message: "cannot read as string".to_string(),
-                    })?;
-                let zone_id = ZoneId(zone_id_str.to_string());
-
-                let geom_json = feature
-                    .geometry
-                    .clone()
-                    .ok_or_else(|| ZoneError::Deserialize {
-                        col: "geometry".to_string(),
-                        path: geom_path.to_path_buf(),
-                        message: format!("no geometry in feature {n}"),
-                    })?;
-                let geometry: Geometry = geom_json.try_into().map_err(|e| {
-                    ZoneError::Deserialize { col: "geometry".to_string(), path: geom_path.to_path_buf(), message: format!("failure decoding GeoJson geometry to geo-types for ZoneId {zone_id}: {e}") }
-                })?;
-                let geom_f32 = try_convert_f32(&geometry).map_err(|e| {
-                    ZoneError::Deserialize { col: "geometry".to_string(), path: geom_path.to_path_buf(), message: format!("failure converting geometry to 32-bit FP representation for ZoneId {zone_id}: {e}") }
-                })?;
-                tree_nodes.push((geom_f32, zone_id));
-            }
-            Ok(tree_nodes)
-        }
-        _ => Err(ZoneError::Parse {
+    let features = geojson_value["features"]
+        .as_array()
+        .ok_or_else(|| ZoneError::Parse {
+            message: format!(
+                "zonal geometry input GeoJSON does not have 'features' key as expected"
+            ),
             path: geom_path.to_path_buf(),
-            message: "geojson in file must be a FeatureCollection".to_string(),
-        }),
-    }?;
+        })?;
+    let n_features: usize = features.len();
+    let mut zone_geometries = Vec::with_capacity(n_features);
+    for feature in features.iter() {
+        let zone_id_str = feature
+            .get("properties")
+            .ok_or_else(|| ZoneError::Deserialize {
+                col: "properties".to_string(),
+                path: geom_path.to_path_buf(),
+                message: "column missing".to_string(),
+            })?
+            .get(zone_id_col)
+            .ok_or_else(|| ZoneError::Deserialize {
+                col: zone_id_col.to_string(),
+                path: geom_path.to_path_buf(),
+                message: "column missing".to_string(),
+            })?
+            .as_str()
+            .ok_or_else(|| ZoneError::Deserialize {
+                col: zone_id_col.to_string(),
+                path: geom_path.to_path_buf(),
+                message: "cannot read as string".to_string(),
+            })?;
+        let zone_id = ZoneId(zone_id_str.to_string());
+        let geometry_json =
+            serde_json::to_string(&feature["geometry"]).map_err(|e| ZoneError::Deserialize {
+                col: "geometry".to_string(),
+                path: geom_path.to_path_buf(),
+                message: format!("failure serializing geometry for ZoneId {zone_id}: {e}"),
+            })?;
+        let geometry: Geometry =
+            GeoJsonString(geometry_json)
+                .to_geo()
+                .map_err(|e| ZoneError::Deserialize {
+                    col: "geometry".to_string(),
+                    path: geom_path.to_path_buf(),
+                    message: format!(
+                        "failure decoding GeoJson geometry to geo-types for ZoneId {zone_id}: {e}"
+                    ),
+                })?;
+        let geom_f32 = try_convert_f32(&geometry).map_err(|e| ZoneError::Deserialize {
+            col: "geometry".to_string(),
+            path: geom_path.to_path_buf(),
+            message: format!(
+                "failure converting geometry to 32-bit FP representation for ZoneId {zone_id}: {e}"
+            ),
+        })?;
+
+        zone_geometries.push((geom_f32, zone_id));
+    }
 
     let rtree = PolygonalRTree::new(zone_geometries).map_err(|e| {
         let msg = format!("failure building spatial index for GTFS Flex zones: {e}");
