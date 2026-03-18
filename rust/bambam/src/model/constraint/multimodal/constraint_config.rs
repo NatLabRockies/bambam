@@ -25,10 +25,11 @@ use uom::si::f64::{Energy, Length, Time};
 /// mode_distance_limit.walk = { limit = 0.5, unit = "miles" }
 /// ```
 ///
-/// ## Walk mode can only be used at the beginning and end of a trip
+/// ## Walk mode can only be used in the first or third leg of a trip
+/// which may include a middle leg in either bike or drive mode.
 ///
 /// ```toml
-/// mode_sequences = [["walk", "bike", "walk"], ["walk", "drive", "walk"]]
+/// exact_sequences = [["walk", "bike", "walk"], ["walk", "drive", "walk"]]
 /// ```
 ///
 /// ### Walk mode should not exceed 5m on first leg of trip and 20m total
