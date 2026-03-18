@@ -14,7 +14,7 @@ use routee_compass_core::{
     },
 };
 use serde_json::json;
-use std::sync::Arc;
+use std::{num::NonZeroU64, sync::Arc};
 use uom::si::f64::{Length, Time};
 
 /// maps edge_time values to the correct mode and leg accumulators during traversal.
@@ -24,7 +24,7 @@ use uom::si::f64::{Length, Time};
 /// across edge lists.
 pub struct MultimodalTraversalModel {
     pub mode: String,
-    pub max_trip_legs: u64,
+    pub max_trip_legs: NonZeroU64,
     pub mode_to_state: Arc<MultimodalStateMapping>,
     pub route_id_to_state: Arc<Option<MultimodalStateMapping>>,
 }
@@ -58,18 +58,18 @@ impl TraversalModel for MultimodalTraversalModel {
             fieldname::ACTIVE_LEG.to_string(),
             variable::active_leg_variable_config(),
         ));
-        let leg_mode = (0..self.max_trip_legs).map(|idx| {
+        let leg_mode = (0..self.max_trip_legs.get()).map(|idx| {
             let name = fieldname::leg_mode_fieldname(idx);
             let config = variable::leg_mode_variable_config();
             (name, config)
         });
 
-        let leg_dist = (0..self.max_trip_legs).map(|idx| {
+        let leg_dist = (0..self.max_trip_legs.get()).map(|idx| {
             let name = fieldname::leg_distance_fieldname(idx);
             let config = variable::multimodal_distance_variable_config(None);
             (name, config)
         });
-        let leg_time = (0..self.max_trip_legs).map(|idx| {
+        let leg_time = (0..self.max_trip_legs.get()).map(|idx| {
             let name = fieldname::leg_time_fieldname(idx);
             let config = variable::multimodal_time_variable_config(None);
             (name, config)
@@ -77,7 +77,7 @@ impl TraversalModel for MultimodalTraversalModel {
 
         let leg_route_id: Box<dyn Iterator<Item = (String, StateVariableConfig)>> =
             if self.route_id_to_state.is_some() {
-                Box::new((0..self.max_trip_legs).map(|idx| {
+                Box::new((0..self.max_trip_legs.get()).map(|idx| {
                     let name = fieldname::leg_route_id_fieldname(idx);
                     let config = variable::route_id_variable_config();
                     (name, config)
@@ -186,7 +186,7 @@ impl MultimodalTraversalModel {
     /// built just for this case.
     pub fn new(
         mode: String,
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
         mode_to_state: Arc<MultimodalStateMapping>,
         route_id_to_state: Arc<Option<MultimodalStateMapping>>,
     ) -> MultimodalTraversalModel {
@@ -202,7 +202,7 @@ impl MultimodalTraversalModel {
     /// used in synchronous contexts like scripting or testing.
     pub fn new_local(
         mode: &str,
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
         modes: &[&str],
         route_ids: &[&str],
     ) -> Result<MultimodalTraversalModel, StateModelError> {
@@ -251,7 +251,7 @@ impl MultimodalTraversalModel {
         accumulators_only: bool,
     ) -> Result<(), StateModelError> {
         // use mappings to map any multimodal state values to their respective categoricals
-        for idx in (0..self.max_trip_legs) {
+        for idx in (0..self.max_trip_legs.get()) {
             // re-map leg mode
             let mode_key = fieldname::leg_mode_fieldname(idx);
             ops::apply_mapping_for_serialization(state_json, &mode_key, idx, &self.mode_to_state)?;
@@ -294,7 +294,7 @@ mod test {
         },
         testing::mock::traversal_model::TestTraversalModel,
     };
-    use std::{collections::HashMap, sync::Arc};
+    use std::{collections::HashMap, num::NonZeroU64, sync::Arc};
     use uom::si::f64::{Length, Time};
 
     // an initialized trip that has not begun should have active leg of None and
@@ -302,7 +302,7 @@ mod test {
     #[test]
     fn test_initialize_trip_access() {
         let test_mode = "walk";
-        let max_trip_legs = 1;
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
         let mtm =
             MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"], &["A", "B", "C"])
                 .expect("test invariant failed, model constructor had error");
@@ -339,7 +339,7 @@ mod test {
     #[test]
     fn test_start_trip_access() {
         let test_mode = "walk";
-        let max_trip_legs = 1;
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (mtm, test_tm, state_model, mut state) =
             build_test_assets(&["walk"], &[], max_trip_legs, test_mode);
 
@@ -354,14 +354,20 @@ mod test {
         assert_active_leg(Some(0), &state, &state_model).expect("assertion 1 failed");
 
         // ASSERTION 2: the trip leg should be associated with the mode that the AccessModel sets.
-        assert_active_mode(Some(test_mode), &state, &state_model, 1, &mtm.mode_to_state)
-            .expect("assertion 2 failed");
+        assert_active_mode(
+            Some(test_mode),
+            &state,
+            &state_model,
+            max_trip_legs,
+            &mtm.mode_to_state,
+        )
+        .expect("assertion 2 failed");
     }
 
     #[test]
     fn test_switch_trip_mode_access() {
         // simulate two edge lists each with a mode-specific multimodal traversal model
-        let max_trip_legs = 2;
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mtm_walk, test_walk, state_model, initial_state) =
             build_test_assets(&["bike", "walk"], &[], max_trip_legs, "walk");
         let (mtm_bike, test_bike, _, _) =
@@ -404,7 +410,7 @@ mod test {
             Some("walk"),
             &et1.result_state,
             &state_model,
-            2,
+            max_trip_legs,
             &mtm_walk.mode_to_state.clone(),
         )
         .expect("assertion 1 failed");
@@ -436,7 +442,7 @@ mod test {
             Some("bike"),
             &et2.result_state,
             &state_model,
-            2,
+            max_trip_legs,
             &mtm_bike.mode_to_state,
         )
         .expect("assertion 2 failed");
@@ -446,7 +452,7 @@ mod test {
     fn test_switch_exceeds_max_legs() {
         // create an access model for two edge lists, "walk" and "bike" topology
         // but, here, we limit trip legs to 1, so our trip should not be able to transition to bike
-        let max_trip_legs = 1;
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (mtm_walk, test_walk, state_model, initial_state) =
             build_test_assets(&["bike", "walk"], &[], max_trip_legs, "walk");
         let (mtm_bike, test_bike, _, _) =
@@ -510,7 +516,7 @@ mod test {
     #[test]
     fn test_initialize_trip_traversal() {
         let available_modes = ["walk", "bike", "drive"];
-        let max_trip_legs = 4;
+        let max_trip_legs = NonZeroU64::new(4).unwrap();
         let this_mode = "walk";
 
         let (tm, test_tm, state_model, state) =
@@ -531,12 +537,12 @@ mod test {
                 + route_id
                 + input_features
                 + available_modes.len() * mode_fields
-                + max_trip_legs as usize * leg_fields
+                + max_trip_legs.get() as usize * leg_fields
         };
         assert_eq!(state.len(), expected_len);
 
         // ASSERTION 2: confirm each leg's dist/time keys exist and values were set with zeroes
-        for leg_idx in (0..max_trip_legs) {
+        for leg_idx in (0..max_trip_legs.get()) {
             let dist = state_ops::get_leg_distance(&state, leg_idx, &state_model)
                 .unwrap_or_else(|_| panic!("unable to get leg distance for leg {leg_idx}"));
             let time = state_ops::get_leg_time(&state, leg_idx, &state_model)
@@ -552,7 +558,7 @@ mod test {
     #[test]
     fn test_start_trip_traversal() {
         let available_modes = ["walk"];
-        let max_trip_legs = 1;
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
         let this_mode = "walk";
         let (tm, test_tm, state_model, mut state) =
             build_test_assets(&available_modes, &[], max_trip_legs, this_mode);
@@ -602,7 +608,7 @@ mod test {
     fn build_test_assets(
         available_modes: &[&str],
         available_route_ids: &[&str],
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
         this_mode: &str,
     ) -> (
         Arc<MultimodalTraversalModel>,
@@ -707,7 +713,7 @@ mod test {
         mode: Option<&str>,
         state: &[StateVariable],
         state_model: &StateModel,
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
         mode_to_state: &MultimodalStateMapping,
     ) -> Result<(), String> {
         let active_leg_opt = state_ops::get_active_leg_idx(state, state_model)

@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use serde::{Deserialize, Serialize};
 
 use crate::model::state::LegIdx;
@@ -10,6 +12,6 @@ use crate::model::state::LegIdx;
 /// used by the [`MultimodalLabelService`].
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MultimodalLabelConfig {
-    pub max_trip_legs: Option<LegIdx>,
+    pub max_trip_legs: Option<NonZeroU64>,
     pub modes: Option<Vec<String>>,
 }
