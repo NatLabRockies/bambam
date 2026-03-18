@@ -12,21 +12,21 @@ default = ["type4"]
 type4 = ["dep:gtfs-structures"]
 
 [dependencies]
-gtfs-structures = { workspace = true, optional = true }
 bambam-core = { version = "0.2.3", path = "../bambam-core" } 
 chrono = { workspace = true }
-csv = { workspace = true }
 clap = { workspace = true }
+csv = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }
 geojson = { workspace = true }
+gtfs-structures = { workspace = true, optional = true }
 kdam = { workspace = true }
-routee-compass-core = { workspace = true }
 ordered-float = { workspace = true }
+routee-compass-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-zip = { workspace = true }
 skiplist = { workspace = true }
 thiserror = { workspace = true }
 uom = { workspace = true }
+zip = { workspace = true }
 # No external dependencies needed for the simple version
