@@ -1,18 +1,16 @@
-use crate::model::input_plugin::grid;
-use bambam_core::util::polygonal_rtree::PolygonalRTree;
+use std::collections::HashSet;
+
 use bamcensus::app::acs_tiger::{self, AcsTigerResponse};
 use bamcensus_acs::model::{AcsApiQueryParams, AcsGeoidQuery, AcsType};
 use bamcensus_core::model::identifier::{Geoid, GeoidType};
 use geo::Geometry;
 use itertools::Itertools;
 use kdam::{tqdm, Bar, BarExt};
-use routee_compass_core::config::ConfigJsonExtensions;
-use std::collections::HashSet;
-use wkt::TryFromWkt;
+use routee_compass_core::util::geo::PolygonalRTree;
 
 pub enum PopulationSource {
     UsCensusAcs {
-        states: PolygonalRTree<Geoid>,
+        states: PolygonalRTree<f64, Geoid>,
         acs_type: AcsType,
         acs_year: u64,
         acs_resolution: Option<GeoidType>,

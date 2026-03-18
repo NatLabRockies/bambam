@@ -1,28 +1,24 @@
 use std::collections::HashMap;
 
 use super::opportunity_model::OpportunityModel;
-use super::opportunity_model_config::OpportunityModelConfig;
-use crate::model::output_plugin::opportunity::OpportunityPluginConfig;
-use bambam_core::model::output_plugin::opportunity::OpportunityFormat;
-use bambam_core::model::{bambam_field, bambam_ops};
-use itertools::Itertools;
+use super::OpportunityPluginConfig;
+use bambam_core::model::bambam_typed::{self, BambamOutputRow};
+use bambam_core::model::destination::{self, DestinationFilter};
+use bambam_core::model::output_plugin::opportunity::{opportunity_ops, OpportunityFormat};
 use routee_compass::app::{compass::CompassAppError, search::SearchAppResult};
 use routee_compass::plugin::output::OutputPlugin;
 use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::algorithm::search::SearchInstance;
 use routee_compass_core::util::duration_extension::DurationExtension;
-use serde_json::json;
 use std::time::{Duration, Instant};
 
 /// RouteE Compass output plugin that appends opportunities to a search result row.
-/// uses the loaded [`OpportunityModel`] to look up points-of-interest and returns
+/// uses the loaded [`OpportunityModel`] to look up points-of-interest and
 /// appends these results either aggregated or disaggregate, based on the chosen
-/// [`OpportunityCollectFormat`]. this is run for each expected [`TimeBin`] in the search
-/// row.
+/// [`OpportunityFormat`]. this is run for each expected bin in the search row.
 pub struct OpportunityOutputPlugin {
     pub model: OpportunityModel,
     pub totals: HashMap<String, f64>,
-    pub opportunity_format: OpportunityFormat,
 }
 
 impl OutputPlugin for OpportunityOutputPlugin {
@@ -35,45 +31,56 @@ impl OutputPlugin for OpportunityOutputPlugin {
         let start_time = Instant::now();
         let (app_result, si) = match result {
             Ok((r, si)) => (r, si),
-            Err(e) => {
-                bambam_field::insert_nested_with_parents(
-                    output,
-                    &[bambam_field::INFO],
-                    bambam_field::OPPORTUNITY_PLUGIN_RUNTIME,
-                    json![Duration::ZERO.hhmmss()],
-                    true,
-                )
-                .map_err(OutputPluginError::OutputPluginFailed)?;
+            Err(_) => {
+                let mut row = BambamOutputRow::new(output);
+                let mut info = row.info_mut()?;
+                info.set_opportunity_runtime(Duration::ZERO.hhmmss())?;
                 return Ok(());
             }
         };
 
-        // write down model and global info
-        output[bambam_field::OPPORTUNITY_FORMAT] = json![self.opportunity_format.to_string()];
-        output[bambam_field::ACTIVITY_TYPES] = json![self.model.activity_types()];
-        output[bambam_field::OPPORTUNITY_TOTALS] = json![self.totals];
+        // grab parameters for this run from the row
+        let mut row = BambamOutputRow::new(output);
+        let info = row.info_ref()?;
+        let format = info.get_opportunity_format()?
+            .ok_or_else(|| {
+                let msg = String::from("opportunity plugin called on row with no opportunity_format set. the 'bambam' plugin should always run before this plugin.");
+                OutputPluginError::OutputPluginFailed(msg)
+            })?;
 
-        // we use only destinations that changed from the last time bin, so we do "walk"
-        // the previous TimeBin.min_time during iteration
-        match self.opportunity_format {
+        let mut info = row.info_mut()?;
+
+        // set globals on row
+        info.set_activity_types(&self.model.activity_types())?;
+        row.set_opportunity_totals(&self.totals)?;
+
+        // read destination filter from the row info
+        let filter = row
+            .info_ref()?
+            .get_destination_filter()?
+            .map(DestinationFilter);
+
+        match format {
             OpportunityFormat::Aggregate => {
-                process_aggregate_opportunities(output, app_result, si, self)?;
+                process_aggregate_opportunities(&mut row, app_result, si, self, filter.as_ref())?;
             }
             OpportunityFormat::Disaggregate => {
-                process_disaggregate_opportunities(output, app_result, si, self)?;
+                process_disaggregate_opportunities(
+                    &mut row,
+                    app_result,
+                    si,
+                    self,
+                    filter.as_ref(),
+                )?;
             }
         }
 
         // write the plugin runtime
         let dur = Instant::now().duration_since(start_time);
-        bambam_field::insert_nested_with_parents(
-            output,
-            &[bambam_field::INFO],
-            bambam_field::OPPORTUNITY_PLUGIN_RUNTIME,
-            json![dur.hhmmss()],
-            false,
-        )
-        .map_err(OutputPluginError::OutputPluginFailed)?;
+        {
+            let mut info = row.info_mut()?;
+            info.set_opportunity_runtime(dur.hhmmss())?;
+        }
         Ok(())
     }
 }
@@ -93,77 +100,75 @@ impl TryFrom<&OpportunityPluginConfig> for OpportunityOutputPlugin {
                 )));
             }
         }
-        let plugin = OpportunityOutputPlugin {
-            model,
-            totals,
-            opportunity_format: value.collect_format,
-        };
+        let plugin = OpportunityOutputPlugin { model, totals };
         Ok(plugin)
     }
 }
 
 fn process_disaggregate_opportunities(
-    output: &mut serde_json::Value,
+    row: &mut BambamOutputRow<'_>,
     result: &SearchAppResult,
     instance: &SearchInstance,
     plugin: &OpportunityOutputPlugin,
+    filter: Option<&DestinationFilter>,
 ) -> Result<(), OutputPluginError> {
-    let destinations_iter = bambam_ops::collect_destinations(result, None, &instance.state_model);
-    let opps = plugin
+    let destinations_iter =
+        destination::iter::new_destinations_iterator(result, None, filter, &instance.state_model);
+    let opportunities = plugin
         .model
         .collect_trip_opportunities(destinations_iter, instance)?;
-    let opportunities_json = plugin
-        .opportunity_format
-        .serialize_opportunities(&opps, &plugin.model.activity_types())?;
-    output[bambam_field::OPPORTUNITIES] = opportunities_json;
+    let opps =
+        opportunity_ops::collect_disaggregate(&opportunities, &plugin.model.activity_types())?;
+    let mut dis = row.disaggregate()?;
+    dis.set_opportunities(&opps)?;
     Ok(())
 }
 
-/// for aggregate opportunity formats, we collect all opportunities within each time band
+/// for aggregate opportunity formats, we collect all opportunities within each bin
 /// and bundle them together into a single output row.
 fn process_aggregate_opportunities(
-    output: &mut serde_json::Value,
+    row: &mut BambamOutputRow<'_>,
     result: &SearchAppResult,
     instance: &SearchInstance,
     plugin: &OpportunityOutputPlugin,
+    filter: Option<&DestinationFilter>,
 ) -> Result<(), OutputPluginError> {
-    let bins =
-        bambam_field::get_time_bins(output).map_err(OutputPluginError::OutputPluginFailed)?;
+    // expect bin configuration for aggregate format
+    let bin_config = row.info_ref()?.get_bin_range()?.ok_or_else(|| {
+        OutputPluginError::OutputPluginFailed(
+            "row with aggregate opportunities has no bin range config".to_string(),
+        )
+    })?;
 
-    for time_bin in bins {
+    let mut agg = row.aggregate()?;
+    let bins = bin_config
+        .build_bins()
+        .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
+    for bin in bins.into_iter() {
         let start_time = Instant::now();
+        let bin_key = bin.bin_key();
 
-        // collect all opportunities from destinations within this time bin as a JSON object
-        let destinations_iter =
-            bambam_ops::collect_destinations(result, Some(&time_bin), &instance.state_model);
+        // collect all opportunities from destinations within this bin
+        let destinations_iter = destination::iter::new_destinations_iterator(
+            result,
+            Some(&bin),
+            filter,
+            &instance.state_model,
+        );
+
+        // collect aggregated opportunities and write to output
         let destination_opportunities = plugin
             .model
             .collect_trip_opportunities(destinations_iter, instance)?;
-        let opportunities_json = plugin
-            .opportunity_format
-            .serialize_opportunities(&destination_opportunities, &plugin.model.activity_types())?;
+        let opps = opportunity_ops::collect_aggregate(
+            &destination_opportunities,
+            &plugin.model.activity_types(),
+        )?;
+        agg.set_opportunities(&bin_key, &opps)?;
 
-        // write opportunities
-        let time_bin_key = time_bin.key();
-        bambam_field::insert_nested_with_parents(
-            output,
-            &[bambam_field::TIME_BINS, &time_bin_key],
-            bambam_field::OPPORTUNITIES,
-            opportunities_json,
-            false,
-        )
-        .map_err(OutputPluginError::OutputPluginFailed)?;
-
-        // write runtime
+        // write bin-level runtime
         let runtime = Instant::now().duration_since(start_time);
-        bambam_field::insert_nested_with_parents(
-            output,
-            &[bambam_field::TIME_BINS, &time_bin_key, bambam_field::INFO],
-            bambam_field::OPPORTUNITY_BIN_RUNTIME,
-            json![runtime.hhmmss()],
-            false,
-        )
-        .map_err(OutputPluginError::OutputPluginFailed)?;
+        agg.set_bin_runtime(&bin_key, runtime.hhmmss())?;
     }
     Ok(())
 }

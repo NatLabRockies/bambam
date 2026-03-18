@@ -1,48 +1,6 @@
 //! Fields and types assigned to the JSON output during bambam runs.
 //!
-//! # Examples
-//!
-//! ### Aggregate Data Rows
-//!
-//! ```json
-//! {
-//!   "opportunity_format": "aggregate",
-//!   "opportunity_totals": {},
-//!   "activity_types": [],
-//!   "info": {
-//!     "opportunity_runtime": "hh:mm:ss",
-//!     "mep_runtime": "hh:mm:ss",
-//!     "tree_size": 0,
-//!   }
-//!   "bin": {
-//!     10: {
-//!       "isochrone": {},
-//!       "opportunities" {},
-//!       "mep": {},
-//!       "info": {
-//!         "time_bin": { .. },
-//!         "bin_runtime":
-//!       },
-//!     }
-//!   }
-//! }
-//! ```
-//!
-//! ### Disaggregate Data Rows
-//! ```json
-//! {
-//!   "opportunity_format": "disaggregate",
-//!   "opportunity_totals": {},
-//!   "activity_types": [],
-//!   "opportunities": {
-//!     "{EdgeListId}-{EdgeId}": {
-//!       "counts": {},
-//!       "state": []
-//!     }
-//!   }
-//! }
-//! ```
-//!
+//! see [super::bambam_typed] for assigning/reading values for these fields.
 use crate::model::TimeBin;
 use itertools::Itertools;
 use routee_compass::plugin::output::OutputPluginError;
@@ -53,20 +11,28 @@ pub const TIME_BINS: &str = "bin";
 pub const TIME_BIN: &str = "time_bin";
 pub const INFO: &str = "info";
 pub const MODE: &str = "mode";
+pub const OUTPUT_CONFIG: &str = "output_config";
 pub const ISOCHRONE: &str = "isochrone";
+pub const ISOCHRONE_ALGORITHM: &str = "isochrone_algorithm";
 pub const ISOCHRONE_FORMAT: &str = "isochrone_format";
-pub const TREE_SIZE: &str = "tree_size";
+pub const GEOMETRY_MODEL: &str = "geometry_model";
+pub const BIN_RANGE: &str = "bin_range";
+pub const DESTINATION_FILTER: &str = "destination_filter";
+pub const N_DESTINATIONS: &str = "n_destinations";
 pub const ACTIVITY_TYPES: &str = "activity_types";
 pub const OPPORTUNITIES: &str = "opportunities";
+pub const AGGREGATE_OPPORTUNITIES: &str = "aggregate_opportunities";
+pub const DISAGGREGATE_OPPORTUNITIES: &str = "disaggregate_opportunities";
 pub const OPPORTUNITY_COUNTS: &str = "opportunity_counts";
 pub const OPPORTUNITY_ORIENTATION: &str = "opportunity_orientation";
 pub const OPPORTUNITY_FORMAT: &str = "opportunity_format";
 pub const OPPORTUNITY_TOTALS: &str = "opportunity_totals";
-pub const VEHICLE_STATE: &str = "vehicle_state";
+pub const SEARCH_STATE: &str = "search_state";
 pub const OPP_FMT_AGGREGATE: &str = "aggregate";
 pub const OPP_FMT_DISAGGREGATE: &str = "disaggregate";
 pub const OPPORTUNITY_PLUGIN_RUNTIME: &str = "opportunity_runtime";
 pub const OPPORTUNITY_BIN_RUNTIME: &str = "bin_runtime";
+pub const COST: &str = "cost";
 
 pub mod get {
     use itertools::Itertools;
@@ -132,7 +98,7 @@ pub mod get {
         get_from_value(super::OPPORTUNITY_COUNTS, value)
     }
     pub fn state(value: &Value) -> Result<Vec<StateVariable>, OutputPluginError> {
-        get_from_value(super::VEHICLE_STATE, value)
+        get_from_value(super::SEARCH_STATE, value)
     }
 
     /// helper for deserializing fields from a JSON value in a deserializable type

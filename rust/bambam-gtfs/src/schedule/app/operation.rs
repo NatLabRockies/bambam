@@ -9,7 +9,8 @@ use crate::schedule::{
     GtfsSummary, MissingStopLocationPolicy,
 };
 use clap::Subcommand;
-use geo::{Coord, LineString};
+use geo::{Coord, Geometry, LineString};
+use geozero::{wkt::Wkt as WktReader, ToGeo, ToWkt};
 use gtfs_structures::Gtfs;
 use itertools::Itertools;
 use kdam::Bar;
@@ -22,7 +23,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashSet, fs::File, io::Write, path::Path, time::Duration};
 use uom::si::f64::Length;
-use wkt::ToWkt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Subcommand)]
 pub enum GtfsOperation {
@@ -111,6 +111,9 @@ pub enum GtfsOperation {
         #[arg(long)]
         date_mapping_match_weekday: Option<bool>,
 
+        #[arg(long)]
+        extent_file: Option<String>,
+
         #[arg(long, default_value_t = true)]
         overwrite: bool,
 
@@ -169,6 +172,7 @@ impl GtfsOperation {
                 vertex_match_tolerance,
                 missing_stop_location_policy,
                 distance_calculation_policy,
+                extent_file,
                 output_directory,
                 overwrite,
                 parallelism,
@@ -202,6 +206,10 @@ impl GtfsOperation {
                             serde_json::to_string_pretty(&date_mapping_config).unwrap_or_default(),
                         )
                     });
+                let extent = match read_extent_file(extent_file.as_ref()) {
+                    Ok(e) => e,
+                    Err(err) => panic!("{}", err),
+                };
 
                 let config = Arc::new(ProcessBundlesConfig {
                     start_date: start_date.clone(),
@@ -211,6 +219,7 @@ impl GtfsOperation {
                     missing_stop_location_policy: missing_stop_location_policy.clone(),
                     distance_calculation_policy: distance_calculation_policy.clone(),
                     date_mapping_policy: date_mapping_policy.clone(),
+                    extent,
                     output_directory: output_directory.clone(),
                     overwrite: *overwrite,
                 });
@@ -222,8 +231,11 @@ impl GtfsOperation {
                             log::error!("failure running preprocess-bundle: {e}");
                         })
                 } else {
-                    let bundle = bundle_ops::process_bundle(input, config.clone())
+                    let bundle_opt = bundle_ops::process_bundle(input, config.clone())
                         .expect("failure processing GTFS bundle");
+                    let bundle = bundle_opt.expect(
+                        "GTFS archive import was skipped as the extent does not intersect any archives",
+                    );
                     bundle_ops::write_bundle(&bundle, config.clone(), config.starting_edge_list_id)
                         .expect("failure writing GTFS bundle");
                 }
@@ -394,7 +406,14 @@ fn shapes(rows: &Vec<GtfsProvider>) {
     writeln!(out, "provider,url,state_code,shape_id,geometry").unwrap();
 
     for (record, shape_id, linestring) in results {
-        writeln!(out, "{},{},\"{}\"", record, shape_id, linestring.to_wkt()).unwrap();
+        writeln!(
+            out,
+            "{},{},\"{}\"",
+            record,
+            shape_id,
+            geo::Geometry::from(linestring).to_wkt().unwrap_or_default()
+        )
+        .unwrap();
     }
 }
 
@@ -427,4 +446,40 @@ fn download(rows: &[GtfsProvider], parallelism: usize) {
             Err(e) => log::error!("{e}"),
         }
     }
+}
+
+fn read_extent_file(extent_file: Option<&String>) -> Result<Option<Geometry>, ScheduleError> {
+    let extent_file = match extent_file {
+        Some(f) => f,
+        None => return Ok(None),
+    };
+    let extent_string = std::fs::read_to_string(extent_file).map_err(|e| {
+        ScheduleError::InvalidData(format!("failed to read WKT from '{extent_file}': {e}"))
+    })?;
+    let extent = WktReader(extent_string.as_str()).to_geo().map_err(|e| {
+        ScheduleError::InvalidData(format!("could not read file '{extent_file}' as WKT: {e}"))
+    })?;
+    match &extent {
+        Geometry::Polygon(_) => Ok(()),
+        Geometry::MultiPolygon(_) => Ok(()),
+        Geometry::GeometryCollection(gc) => {
+            // test features within geometry collection
+            for g in gc.iter() {
+                match g {
+                    Geometry::Polygon(_) => {}
+                    Geometry::MultiPolygon(_) => {}
+                    _ => {
+                        return Err(ScheduleError::InvalidData(format!(
+                        "WKT in '{extent_file}' is a GeometryCollection with non-polygonal features"
+                    )))
+                    }
+                }
+            }
+            Ok(())
+        }
+        _ => Err(ScheduleError::InvalidData(format!(
+            "WKT in '{extent_file}' is not polygonal"
+        ))),
+    }?;
+    Ok(Some(extent))
 }

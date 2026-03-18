@@ -1,5 +1,6 @@
 use crate::model::{
-    bambam_field, bambam_state, output_plugin::opportunity::OpportunityOrientation, TimeBin,
+    bambam_field, bambam_state, destination::BinInterval,
+    output_plugin::opportunity::OpportunityOrientation,
 };
 use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::model::state::{StateModel, StateVariable};
@@ -19,7 +20,8 @@ pub enum OpportunityRecord {
     Aggregate {
         activity_type: String,
         geometry: geo::Geometry<f32>,
-        time_bin: TimeBin,
+        /// the bin (range + unit + feature) from which this record was produced
+        bin: BinInterval,
         count: f64,
     },
     Disaggregate {
@@ -34,11 +36,18 @@ pub enum OpportunityRecord {
 impl OpportunityRecord {
     pub fn get_json_path(&self) -> Vec<String> {
         match self {
-            OpportunityRecord::Aggregate { time_bin, .. } => {
-                vec![bambam_field::TIME_BINS.to_string(), time_bin.key()]
+            OpportunityRecord::Aggregate { bin, .. } => {
+                vec![
+                    bambam_field::AGGREGATE_OPPORTUNITIES.to_string(),
+                    bin.bin_key(),
+                ]
             }
             OpportunityRecord::Disaggregate { id, .. } => {
-                vec![bambam_field::OPPORTUNITIES.to_string(), id.to_string()]
+                vec![
+                    bambam_field::DISAGGREGATE_OPPORTUNITIES.to_string(),
+                    bambam_field::OPPORTUNITIES.to_string(),
+                    id.to_string(),
+                ]
             }
         }
     }
@@ -50,10 +59,13 @@ impl OpportunityRecord {
                 state_model.get_time(state, bambam_state::TRIP_TIME)
                     .map_err(|e| OutputPluginError::OutputPluginFailed(format!("with disaggregate opportunity record, could not find trip time due to: {e}")))
             }
-            Self::Aggregate { time_bin, .. } => {
-                // time comes from the isochrone bin
-                Ok(time_bin.max_time())
-            }
+            Self::Aggregate { bin, .. } => match bin {
+                // time comes from the upper bound of the time bin
+                BinInterval::Time { max, .. } => Ok(*max),
+                _ => Err(OutputPluginError::OutputPluginFailed(
+                    "get_time() called on a non-time BinRange aggregate record".to_string(),
+                )),
+            },
         }
     }
     pub fn get_activity_type(&self) -> &str {

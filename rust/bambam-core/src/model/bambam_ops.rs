@@ -1,7 +1,10 @@
 use crate::model::bambam_state;
 
 use super::{bambam_field, TimeBin};
-use geo::{line_measures::LengthMeasurable, Haversine, InterpolatableLine, LineString, Point};
+use geo::{
+    line_measures::LengthMeasurable, Convert, Haversine, InterpolatableLine, LineString, Point,
+};
+use geozero::ToWkt;
 use routee_compass::{app::search::SearchAppResult, plugin::PluginError};
 use routee_compass_core::{
     algorithm::search::SearchTreeNode,
@@ -16,7 +19,6 @@ use uom::{
     si::f64::{Length, Time},
     ConstZero,
 };
-use wkt::ToWkt;
 
 pub type DestinationsIter<'a> =
     Box<dyn Iterator<Item = Result<(Label, &'a SearchTreeNode), StateModelError>> + 'a>;
@@ -28,28 +30,42 @@ pub fn collect_destinations<'a>(
     time_bin: Option<&'a TimeBin>,
     state_model: &'a StateModel,
 ) -> DestinationsIter<'a> {
-    match search_result.trees.first() {
-        None => Box::new(std::iter::empty()),
-        Some(tree) => {
-            let tree_destinations =
-                tree.iter()
-                    .filter_map(move |(label, branch)| match branch.incoming_edge() {
-                        None => None,
-                        Some(et) => {
-                            let result_state = &et.result_state;
-                            let within_bin = match &time_bin {
-                                Some(bin) => bin.state_time_within_bin(result_state, state_model),
-                                None => Ok(true),
-                            };
-                            match within_bin {
-                                Ok(true) => Some(Ok((label.clone(), branch))),
-                                Ok(false) => None,
-                                Err(e) => Some(Err(e)),
-                            }
-                        }
-                    });
+    let tree = match search_result.trees.first() {
+        None => return Box::new(std::iter::empty()),
+        Some(t) => t,
+    };
 
-            Box::new(tree_destinations)
+    let tree_destinations = tree
+        .iter()
+        .filter_map(move |(label, branch)| apply_predicate(label, branch, time_bin, state_model));
+
+    Box::new(tree_destinations)
+}
+
+/// apply the destinations predicate to this label/branch combination. designed
+/// to be run from within a FilterMap call. returns
+/// - None if the destination should be ignored
+/// - Some(Ok(_)) if the destination is valid
+/// - Some(Err(_)) if we encountered an error
+pub fn apply_predicate<'a>(
+    label: &Label,
+    branch: &'a SearchTreeNode,
+    time_bin: Option<&'a TimeBin>,
+    state_model: &'a StateModel,
+) -> Option<Result<(Label, &'a SearchTreeNode), StateModelError>> {
+    match branch.incoming_edge() {
+        None => None,
+        Some(et) => {
+            let result_state = &et.result_state;
+            let within_bin = match &time_bin {
+                Some(bin) => bin.state_time_within_bin(result_state, state_model),
+                None => Ok(true),
+            };
+            match within_bin {
+                Ok(true) => Some(Ok((label.clone(), branch))),
+                Ok(false) => None,
+                Err(e) => Some(Err(e)),
+            }
         }
     }
 }
@@ -88,7 +104,10 @@ pub fn points_along_linestring(
                             distance_to_point,
                             (fraction * 10000.0).trunc() / 100.0,
                             length_meters,
-                            linestring.to_wkt()
+                            {
+                                let ls_f64: geo::LineString<f64> = linestring.convert();
+                                geo::Geometry::from(ls_f64).to_wkt().unwrap_or_default()
+                            }
                         )
                     })?;
                 Ok(point)

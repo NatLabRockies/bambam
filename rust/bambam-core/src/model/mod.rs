@@ -1,5 +1,7 @@
 pub mod bambam_field;
 pub mod bambam_state;
+pub mod bambam_typed;
+pub mod destination;
 pub mod state;
 mod time_bin;
 
