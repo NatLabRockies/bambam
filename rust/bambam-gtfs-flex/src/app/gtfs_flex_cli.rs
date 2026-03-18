@@ -20,13 +20,12 @@ pub enum Commands {
 pub struct GTFSFLexCliArguments {
     /// directory containing GTFS-Flex feeds to process
     pub flex_dir: String,
-    
+
     /// date for which to process GTFS-Flex feeds (format: YYYYMMDD)
     pub date_requested: String,
-    
+
     /// output CSV file name for valid zones
     /// file will be created in the specified GTFS-Flex directory
     #[arg(short, long, default_value = "valid-zones.csv")]
     pub output_csv: String,
 }
-

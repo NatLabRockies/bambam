@@ -1,15 +1,15 @@
-use std::path::Path;
 use clap::Parser;
+use std::path::Path;
 
 mod agency;
+mod app;
 mod calendar;
 mod flex_processor;
 mod stop_times;
 mod trips;
-mod app;
 
-use crate::flex_processor::process_gtfs_flex_bundle;
 use crate::app::{Cli, Commands};
+use crate::flex_processor::process_gtfs_flex_bundle;
 
 fn main() -> std::io::Result<()> {
     // parse cli arguments

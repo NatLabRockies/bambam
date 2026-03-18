@@ -1,7 +1,7 @@
+use crate::agency::read_agency_from_flex;
 use crate::calendar::{read_calendar_from_flex, Calendar};
 use crate::stop_times::{read_stop_times_from_flex, StopTimes};
 use crate::trips::{read_trips_from_flex, Trips};
-use crate::agency::read_agency_from_flex;
 
 use chrono::Datelike;
 use chrono::NaiveTime;
@@ -35,8 +35,7 @@ pub fn process_gtfs_flex_bundle(
     discover_gtfs_flex_feeds(flex_directory_path)?;
 
     // process files in each feed
-    let all_valid_zones =
-        process_flex_files(flex_directory_path, date_requested)?;
+    let all_valid_zones = process_flex_files(flex_directory_path, date_requested)?;
 
     println!("=== GTFS-Flex processing complete ===");
     Ok(all_valid_zones)
@@ -78,7 +77,7 @@ pub fn process_flex_files(
     date_requested: &str,
 ) -> io::Result<Vec<ValidZone>> {
     println!("Processing GTFS-Flex feeds in {:?}", flex_directory_path);
-    
+
     let mut all_valid_zones = Vec::new();
 
     for entry in std::fs::read_dir(flex_directory_path)? {
@@ -87,12 +86,12 @@ pub fn process_flex_files(
 
         if path.is_file() && path.extension().is_some_and(|e| e == "zip") {
             println!("  Processing {:?}", path);
-            
+
             // read agency.txt
             let agencies = read_agency_from_flex(&path)?
                 .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "agency.txt missing"))?;
             println!("      agency.txt read!");
-            
+
             // get agency_id
             let agency_id = match agencies.as_slice() {
                 [] => None, // technically shouldn't happen if file exists
@@ -133,14 +132,20 @@ pub fn process_flex_files(
             println!("      stop_times.txt read!");
 
             // process files for requested date and time and get valid zones
-            let valid_zones =
-                join_flex_files(&calendar, &trips, &stop_times, date_requested, &feed_name, agency_id.clone())?;
+            let valid_zones = join_flex_files(
+                &calendar,
+                &trips,
+                &stop_times,
+                date_requested,
+                &feed_name,
+                agency_id.clone(),
+            )?;
 
             // println!(
             //     "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window): {:#?}",
             //     valid_zones
             // );
-            
+
             // valid zones with feed name
             let valid_zones_with_feed: Vec<ValidZone> = valid_zones
                 .into_iter()
@@ -166,7 +171,7 @@ pub fn join_flex_files(
     stop_times: &[StopTimes],
     date_requested: &str,
     feed_name: &str,
-    agency_id: Option<String>,     
+    agency_id: Option<String>,
 ) -> io::Result<Vec<ValidZone>> {
     // parse requested date
     let date = chrono::NaiveDate::parse_from_str(date_requested, "%Y%m%d")
@@ -198,7 +203,7 @@ pub fn join_flex_files(
     let active_trips: Vec<&Trips> = trips
         .iter()
         .filter(|t| active_service_ids.contains(&t.service_id.as_str()))
-        .collect();   
+        .collect();
     // println!("          active trips: {:?}", active_trips);
 
     // filter stop_times for active trips and by requested time

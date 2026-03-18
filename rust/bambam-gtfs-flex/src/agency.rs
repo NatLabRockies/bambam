@@ -82,8 +82,7 @@ pub fn read_agency_from_flex(zip_path: &Path) -> io::Result<Option<Vec<Agency>>>
     let mut agencies = Vec::new();
 
     for result in rdr.deserialize::<Agency>() {
-        let agency =
-            result.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        let agency = result.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
         agencies.push(agency);
     }
