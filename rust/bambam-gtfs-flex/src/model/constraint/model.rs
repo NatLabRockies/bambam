@@ -5,6 +5,7 @@ use routee_compass_core::model::constraint::ConstraintModel;
 use crate::util::zone::ZoneLookup;
 
 pub struct GtfsFlexDepartureConstraintModel {
+    #[allow(dead_code)]
     lookup: Arc<ZoneLookup>,
 }
 
