@@ -11,6 +11,8 @@ mod service;
 pub use builder::MultimodalConstraintBuilder;
 pub use config::MultimodalConstraintConfig;
 pub use constraint::Constraint;
-pub use constraint_config::ConstraintConfig;
+pub use constraint_config::{
+    ConstraintConfig, DistanceConstraint, EnergyConstraint, TimeConstraint, TripLegConstraint,
+};
 pub use engine::MultimodalConstraintEngine;
 pub use service::MultimodalConstraintService;

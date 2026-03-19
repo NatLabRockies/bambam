@@ -1,5 +1,7 @@
 //! builds labels that include enumerations for leg modes.
 //!
+use std::num::NonZeroU64;
+
 use itertools::Itertools;
 use routee_compass_core::model::{
     label::{label_model_error::LabelModelError, Label, LabelModel},
@@ -15,13 +17,13 @@ use crate::model::state::{
 /// does not impose a pareto domination scheme over the space of valid trips.
 pub struct MultimodalLabelModel {
     mode_to_state: MultimodalStateMapping,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
 }
 
 impl MultimodalLabelModel {
     pub fn new(
         mode_to_state: MultimodalStateMapping,
-        max_trip_legs: LegIdx,
+        max_trip_legs: NonZeroU64,
     ) -> MultimodalLabelModel {
         MultimodalLabelModel {
             mode_to_state,
@@ -73,6 +75,8 @@ impl LabelModel for MultimodalLabelModel {
 
 #[cfg(test)]
 mod test {
+    use std::num::NonZeroU64;
+
     use routee_compass_core::model::state::StateVariable;
     use routee_compass_core::model::traversal::TraversalModel;
     use routee_compass_core::model::{label::LabelModel, network::VertexId, state::StateModel};
@@ -85,14 +89,15 @@ mod test {
     use crate::model::traversal::multimodal::MultimodalTraversalModel;
     #[test]
     fn test_empty() {
-        let mtm = MultimodalTraversalModel::new_local("walk", 1, &["walk"], &[])
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
+        let mtm = MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"], &[])
             .expect("test invariant failed");
         let state_model = StateModel::new(mtm.output_features());
         let state = state_model
             .initial_state(None)
             .expect("test invariant failed");
         let vertex_id = VertexId(0);
-        let model = MultimodalLabelModel::new(MultimodalMapping::empty(), 1);
+        let model = MultimodalLabelModel::new(MultimodalMapping::empty(), max_trip_legs);
 
         let label = model
             .label_from_state(vertex_id, &state, &state_model)
@@ -104,7 +109,7 @@ mod test {
     #[test]
     fn test_store_leg_sequence_in_label() {
         // SETUP: assign a state with sequence ["drive", "transit", "walk"]
-        let max_trip_legs = 3;
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
         let am = MultimodalTraversalModel::new_local(
             "drive",
             max_trip_legs,
@@ -138,7 +143,7 @@ mod test {
         state: &mut [StateVariable],
         state_model: &StateModel,
         mode_to_state: &MultimodalStateMapping,
-        max_trip_legs: u64,
+        max_trip_legs: NonZeroU64,
     ) {
         for (leg_idx, mode) in legs.iter().enumerate() {
             state_ops::set_leg_mode(state, leg_idx as u64, mode, state_model, mode_to_state)
