@@ -5,6 +5,7 @@ members = [
     "bambam-core",
     "bambam-gbfs",
     "bambam-gtfs",
+    "bambam-gtfs-flex",
     "bambam-omf",
     "bambam-osm",
     "bambam-py",
