@@ -14,6 +14,7 @@ categories = ["command-line-utilities", "science", "science::geo"]
 [dependencies]
 bambam-core = { version = "0.2.3", path = "../bambam-core" }
 bambam-gbfs = { version = "0.2.3", path = "../bambam-gbfs" } 
+bambam-gtfs-flex = { version = "0.2.3", path = "../bambam-gtfs-flex" } 
 bambam-omf = { version = "0.2.3", path = "../bambam-omf" }
 bambam-osm = { version = "0.2.3", path = "../bambam-osm" }
 bamcensus = { workspace = true }

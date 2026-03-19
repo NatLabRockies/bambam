@@ -16,6 +16,7 @@ use crate::model::traversal::transit::TransitTraversalBuilder;
 use bambam_gbfs::model::constraint::boarding::BoardingConstraintBuilder;
 use bambam_gbfs::model::constraint::geofence::GeofenceConstraintBuilder;
 use bambam_gbfs::model::traversal::boarding::BoardingTraversalBuilder;
+use bambam_gtfs_flex::model::traversal::flex::GtfsFlexBuilder;
 use inventory;
 use routee_compass::app::compass::BuilderRegistration;
 use routee_compass::app::compass::CompassAppError;
@@ -52,6 +53,8 @@ pub const BUILDER_REGISTRATION: BuilderRegistration = BuilderRegistration(|build
         "gbfs_boarding".to_string(),
         Rc::new(BoardingTraversalBuilder {}),
     );
+
+    builders.add_traversal_model("gtfs_flex".to_string(), Rc::new(GtfsFlexBuilder {}));
 
     builders.add_constraint_model(
         "multimodal".to_string(),
