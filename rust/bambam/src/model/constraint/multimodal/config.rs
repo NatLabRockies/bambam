@@ -7,8 +7,6 @@ use serde::{Deserialize, Serialize};
 pub struct MultimodalConstraintConfig {
     /// name of the mode associated with this edge list
     pub this_mode: String,
-    /// constraints to apply when in this mode
-    pub constraints: Vec<ConstraintConfig>,
     /// modes that can be used on this trip
     pub available_modes: Vec<String>,
     /// all route ids available in multimodal search. this ordering will be used

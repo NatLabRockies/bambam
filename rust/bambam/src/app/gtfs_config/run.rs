@@ -100,7 +100,6 @@ pub fn run(
     // grab configuration arguments to copy into each GTFS frontier model configuration
     let (mmfc, tlfc) = get_constraint_model_arguments(&compass_conf)?;
     let time_limit = tlfc.time_limit.clone();
-    let constraints = mmfc.constraints.clone();
     let max_trip_legs = mmfc.max_trip_legs;
 
     log::info!("finding metadata files in {directory}");
@@ -179,7 +178,6 @@ pub fn run(
             max_trip_legs,
         )?;
         let cm_conf = gtfs_constraint_model_config(
-            &constraints,
             &time_limit,
             &available_modes,
             &fq_route_ids_filepath,
@@ -416,7 +414,6 @@ pub fn gtfs_traversal_model_config(
 
 /// generates the JSON fields expected for a transit frontier model
 pub fn gtfs_constraint_model_config(
-    constraints: &[ConstraintConfig],
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
@@ -424,7 +421,6 @@ pub fn gtfs_constraint_model_config(
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
-        constraints: constraints.to_vec(),
         available_modes: available_modes.to_vec(),
         route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
         max_trip_legs,

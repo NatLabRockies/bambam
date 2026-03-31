@@ -13,11 +13,15 @@ use routee_compass_core::model::{
 
 pub struct MultimodalConstraintModel {
     pub engine: Arc<MultimodalConstraintEngine>,
+    pub constraints: Vec<Constraint>,
 }
 
 impl MultimodalConstraintModel {
-    pub fn new(engine: Arc<MultimodalConstraintEngine>) -> Self {
-        Self { engine }
+    pub fn new(engine: Arc<MultimodalConstraintEngine>, constraints: Vec<Constraint>) -> Self {
+        Self {
+            engine,
+            constraints,
+        }
     }
 
     /// builds a new [`MultimodalConstraintModel`] from its data dependencies only.
@@ -57,13 +61,12 @@ impl MultimodalConstraintModel {
         };
         let engine = MultimodalConstraintEngine {
             mode: mode.to_string(),
-            constraints,
             mode_to_state: Arc::new(mode_to_state),
             route_id_to_state: Arc::new(route_id_to_state),
             max_trip_legs,
         };
 
-        let mmm = MultimodalConstraintModel::new(Arc::new(engine));
+        let mmm = MultimodalConstraintModel::new(Arc::new(engine), constraints);
         Ok(mmm)
     }
 }
@@ -95,7 +98,7 @@ impl ConstraintModel for MultimodalConstraintModel {
             return Ok(false);
         }
 
-        for constraint in self.engine.constraints.iter() {
+        for constraint in self.constraints.iter() {
             let valid = constraint.valid_frontier(
                 &self.engine.mode,
                 edge,

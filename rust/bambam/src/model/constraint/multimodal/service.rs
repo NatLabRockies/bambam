@@ -1,3 +1,4 @@
+use std::sync::Once;
 use std::{path::Path, sync::Arc};
 
 use routee_compass_core::{
@@ -11,7 +12,7 @@ use routee_compass_core::{
 use crate::model::{
     constraint::multimodal::{
         model::MultimodalConstraintModel, Constraint, MultimodalConstraintConfig,
-        MultimodalConstraintEngine,
+        MultimodalConstraintEngine, MultimodalConstraintModelQuery,
     },
     state::{MultimodalMapping, MultimodalStateMapping},
 };
@@ -41,14 +42,8 @@ impl MultimodalConstraintService {
             None => Arc::new(None),
         };
         let mode_to_state = Arc::new(mode_mapping);
-        let constraints = config
-            .constraints
-            .iter()
-            .map(Constraint::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
         let engine = MultimodalConstraintEngine {
             mode: config.this_mode,
-            constraints,
             max_trip_legs: config.max_trip_legs,
             mode_to_state,
             route_id_to_state,
@@ -60,13 +55,35 @@ impl MultimodalConstraintService {
     }
 }
 
+/// tracks whether to log (once) the warning about empty constraints on queries.
+static EMPTY_CONSTRAINTS_WARNING: Once = Once::new();
+
 impl ConstraintModelService for MultimodalConstraintService {
     fn build(
         &self,
         query: &serde_json::Value,
         state_model: Arc<StateModel>,
     ) -> Result<Arc<dyn ConstraintModel>, ConstraintModelError> {
-        let model = MultimodalConstraintModel::new(self.engine.clone());
+        let model_config: MultimodalConstraintModelQuery = serde_json::from_value(query.clone())
+            .map_err(|e| {
+                ConstraintModelError::BuildError(format!(
+                    "while reading query for multimodal constraint model, {e}"
+                ))
+            })?;
+        let constraints = model_config
+            .constraints
+            .unwrap_or_default()
+            .iter()
+            .map(Constraint::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if constraints.is_empty() {
+            EMPTY_CONSTRAINTS_WARNING.call_once(|| {
+                log::warn!("encountered a query with no multimodal constraints! in multimodal graphs this can lead to intractable search areas.");
+            });
+        }
+
+        let model = MultimodalConstraintModel::new(self.engine.clone(), constraints);
         Ok(Arc::new(model))
     }
 }
