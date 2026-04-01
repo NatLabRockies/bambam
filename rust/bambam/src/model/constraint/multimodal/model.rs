@@ -31,7 +31,6 @@ impl MultimodalConstraintModel {
         constraints: Vec<Constraint>,
         modes: &[&str],
         route_ids: &[&str],
-        max_trip_legs: NonZeroU64,
         use_route_ids: bool,
     ) -> Result<Self, ConstraintModelError> {
         let mode_to_state =
@@ -63,7 +62,6 @@ impl MultimodalConstraintModel {
             mode: mode.to_string(),
             mode_to_state: Arc::new(mode_to_state),
             route_id_to_state: Arc::new(route_id_to_state),
-            max_trip_legs,
         };
 
         let mmm = MultimodalConstraintModel::new(Arc::new(engine), constraints);
@@ -91,7 +89,6 @@ impl ConstraintModel for MultimodalConstraintModel {
             state,
             state_model,
             &self.engine.mode,
-            self.engine.max_trip_legs,
             &self.engine.mode_to_state,
         )?;
         if !valid_leg_count {

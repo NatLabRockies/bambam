@@ -7,5 +7,4 @@ pub struct MultimodalConstraintEngine {
     pub mode: String,
     pub mode_to_state: Arc<MultimodalStateMapping>,
     pub route_id_to_state: Arc<Option<MultimodalStateMapping>>,
-    pub max_trip_legs: NonZeroU64,
 }

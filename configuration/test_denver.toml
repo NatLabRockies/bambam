@@ -154,9 +154,6 @@ road_class_input_file = "../denver_co/edges-road-class-enumerated.txt.gz"
 
 [[search.frontier.models]]
 type = "multimodal"
-constraints = [
-    { allowed_modes = ["walk"]},
-]
 this_mode = "walk"
 available_modes = ["walk"]
 max_trip_legs = 1

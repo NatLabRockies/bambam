@@ -61,6 +61,32 @@ pub fn get_n_legs(
     }
 }
 
+/// a constraint model action, this tests if the addition of a single edge mode breaks the limit on trip legs
+/// set during configuration. this is determined based on a reading of the constraint model.
+pub fn appending_edge_mode_is_valid<'a>(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    leg_mode: &str,
+    mode_to_state: &'a MultimodalStateMapping,
+) -> Result<bool, StateModelError> {
+    let max_legs_usize = get_n_legs(state, state_model)?;
+    // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
+    let active_mode = get_active_leg_mode(state, state_model, max_legs_usize, mode_to_state)
+        .map_err(|e| {
+            StateModelError::RuntimeError(format!("while validating trip leg count, {e}"))
+        })?;
+    let n_existing_legs = get_n_legs(state, state_model).map_err(|e| {
+        StateModelError::RuntimeError(
+            (format!("while getting number of trip legs for this trip: {e}")),
+        )
+    })?;
+    let n_legs = match active_mode {
+        Some(active_mode) if active_mode != leg_mode => n_existing_legs + 1,
+        _ => n_existing_legs,
+    };
+    Ok(n_legs <= max_legs_usize)
+}
+
 /// report if any trip data has been recorded for the given trip leg.
 /// this uses the fact that any trip leg must have a leg mode, and leg modes
 /// are stored with non-negative integer values, negative denotes "empty".
