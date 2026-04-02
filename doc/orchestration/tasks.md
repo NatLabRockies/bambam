@@ -1,42 +1,50 @@
-# BAMBAM Tasks
+# BAMBAM Tasks - MVP
 
 This document lists independent tasks that can be run during a BAMBAM run. These are written for some orchestration tool such as [Consist](https://github.com/LBNL-UCB-STI/consist). Optional arguments are shown with braces `[]`.
 
-- Import network via `bambam-omf`:
-  - desc: OvertureMaps network + points of interest import
-  - inputs: `region_name, extent, [modes, omf_version, use_slurm]`
-  - outputs: `network_path, poi_path`
-- Import network via `bambam-osm`:
-  - desc: OpenStreetMaps network import
-  - inputs: `region_name, extent, [modes, omf_version, use_slurm]`
+- Import network via `bambam-omf network` command:
+  - desc: downloads OvertureMaps network for region within extent + buffer
+  - inputs: `region_name, extent, [buffer_radius, modes_config, omf_version, use_slurm]`
   - outputs: `network_path`
-- Append network data to config:
+- Create network data config:
   - desc: adds network data import metadata to compass config
-  - inputs: `compass_config_path`
-  - outputs: ``
-- Import POI from Census via `bambam`:
-  - desc: LEHD LODES Sectors mapped to POI import
-  - inputs: `year [, sector_mapping]`
+  - inputs: `network_path`
+  - outputs: `network config fragment`
+- Import opportunity data via `bambam-omf poi`:
+  - desc: downloads OvertureMaps points of interest
+  - inputs: `extent [, buffer_radius, category_mapping, use_slurm]`
   - outputs: `poi_path`
-- Walk Comfort Index (WCI) for network:
-  - desc: calculate WCI for each edge in an edge list
-  - input: `network_path [, mode_prefix]`
-  - output: `wci_{mode_prefix}_file`
-- Level of Traffic Stress (LTS) for network:
-  - desc: calculate LTS for each edge in an edge list
-  - input: `network_path [, mode_prefix]`
-  - output: `lts_{mode_prefix}_file`
-- Congestion-based Traffic Speeds for network:
-- 
-- Import transit agencies via `bambam-gtfs`:
-  - inputs: `extent, date, time_range [, use_slurm]`
-  - outputs: `processed_gtfs_path`
-- transit mode to Compass configuration:
-  - inputs: `compass_config_path, processed_gtfs_path`
-  - outputs: `compass_config_with_gtfs_path`
+- Create opportunity data config:
+  - desc: adds opportunity data import metadata to compass config
+  - inputs: `extent [, buffer_radius, category_mapping]`
+  - outputs: `poi config fragment`
+- Download transit agencies via `bambam-gtfs download`:
+  - desc: runs the download over some manifest of archives
+  - inputs: `extent [, use_slurm]`
+  - outputs: `gtfs_directory`
+- Import transit agencies via `bambam-gtfs preprocess-bundle`
+  - desc: processes each archive into a searchable edge list format with metadata
+  - inputs: `gtfs_directory, date, time_range [, extent, use_slurm]`
+  - outputs: `processed_gtfs_directory`
+- Create GTFS data config:
+  - desc: creates the edge list configuration to reference some processed GTFS data
+  - inputs: `processed_gtfs_directory [, starting_edge_list_id]`
+  - outputs: `gtfs config fragment`
+- Create population data config:
+  - desc: creates the grid input plugin entry with ACS population configuration
+  - inputs: `[acs_year, acs_categories, h3_resolution]`
+  - outputs: `grid input plugin config fragment`
 - Create base Compass config:
   - desc: reads a version of the base config TOML file and writes it to the working compass config path
   - inputs: `[version]`
   - outputs: `compass_config_path`
 - Append MEP computation to configuration (via routee-compass eval plugin)
 - Run BAMBAM
+
+### Additional steps
+
+- Import network via `bambam-osm`:
+- Import POI from Census via `bambam`:
+- Walk Comfort Index (WCI) for network:
+- Level of Traffic Stress (LTS) for network:
+- Congestion-based Traffic Speeds for network:
