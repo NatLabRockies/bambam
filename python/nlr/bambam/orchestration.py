@@ -183,7 +183,7 @@ def run_pipeline(
     acs_year: int,
     date: str = "2026-04-02",
     output_dir: str = "output",
-    db_url: str = "./provenance.duckdb",
+    db_url: Path = Path("./provenance.duckdb"),
 ):
     """Run the full BAMBAM MVP pipeline via Consist.
 
@@ -363,7 +363,7 @@ def run_pipeline(
             tags=["bambam", "run"],
         )
 
-    return bambam_result
+        return bambam_result
 
 
 if __name__ == "__main__":
