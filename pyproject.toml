@@ -3,7 +3,7 @@ name = "bambam"
 version = "0.1.0"
 description = "The Behavior and Advanced Mobility Big Access Model"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11,<3.14"
 authors = [{ name = "National Laboratory of the Rockies" }]
 license = { text = "BSD 3-Clause License Copyright (c) 2025, Alliance for Energy Innovation, LLC" }
 classifiers = [
@@ -22,7 +22,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "consist=0.1.0",
     "pytest>=8.0,<9.0",
     "maturin>=1.0,<2.0",
     # "jupyter-book>=1.0,<2.0",
@@ -48,7 +47,8 @@ osm = [
     "numpy>=1.26,<3.0",
     "seaborn>=0.12.0,<1.0",
 ]
-all = ["bambam[osm]", "bambam[dev]"]
+consist = ["consist[parquet]==0.1.0"]
+all = ["bambam[osm]", "bambam[dev]", "bambam[consist]"]
 
 [project.urls]
 Homepage = "https://github.com/NatLabRockies/bambam"
