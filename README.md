@@ -47,6 +47,14 @@ Options:
 
 Install the library, currently unpublished, using pip: `pip install -e ".[all]"`.
 
+## Consist
+
+The optional `consist` Python feature brings in an orchestration tool for running tasks:
+
+```sh
+% uv run python/nlr/bambam/orchestration.py
+```
+
 # Example
 
 Before running any examples, run the following setup command(s) to download example data assets:
