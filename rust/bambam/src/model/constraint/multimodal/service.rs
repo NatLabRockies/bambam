@@ -1,4 +1,3 @@
-use std::sync::Once;
 use std::{path::Path, sync::Arc};
 
 use routee_compass_core::{
@@ -44,7 +43,6 @@ impl MultimodalConstraintService {
         let mode_to_state = Arc::new(mode_mapping);
         let engine = MultimodalConstraintEngine {
             mode: config.this_mode,
-            max_trip_legs: config.max_trip_legs,
             mode_to_state,
             route_id_to_state,
         };
@@ -54,9 +52,6 @@ impl MultimodalConstraintService {
         Ok(service)
     }
 }
-
-/// tracks whether to log (once) the warning about empty constraints on queries.
-static EMPTY_CONSTRAINTS_WARNING: Once = Once::new();
 
 impl ConstraintModelService for MultimodalConstraintService {
     fn build(
@@ -70,20 +65,13 @@ impl ConstraintModelService for MultimodalConstraintService {
                     "while reading query for multimodal constraint model, {e}"
                 ))
             })?;
-        let constraints = model_config
-            .constraints
-            .unwrap_or_default()
-            .iter()
-            .map(Constraint::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
+        let constraints = model_config.build_constraints()?;
 
-        if constraints.is_empty() {
-            EMPTY_CONSTRAINTS_WARNING.call_once(|| {
-                log::warn!("encountered a query with no multimodal constraints! in multimodal graphs this can lead to intractable search areas.");
-            });
-        }
-
-        let model = MultimodalConstraintModel::new(self.engine.clone(), constraints);
+        let model = MultimodalConstraintModel::new(
+            self.engine.clone(),
+            constraints,
+            model_config.max_trip_legs,
+        );
         Ok(Arc::new(model))
     }
 }

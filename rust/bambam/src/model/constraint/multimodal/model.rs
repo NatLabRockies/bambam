@@ -14,13 +14,19 @@ use routee_compass_core::model::{
 pub struct MultimodalConstraintModel {
     pub engine: Arc<MultimodalConstraintEngine>,
     pub constraints: Vec<Constraint>,
+    pub max_trip_legs: NonZeroU64,
 }
 
 impl MultimodalConstraintModel {
-    pub fn new(engine: Arc<MultimodalConstraintEngine>, constraints: Vec<Constraint>) -> Self {
+    pub fn new(
+        engine: Arc<MultimodalConstraintEngine>,
+        constraints: Vec<Constraint>,
+        max_trip_legs: NonZeroU64,
+    ) -> Self {
         Self {
             engine,
             constraints,
+            max_trip_legs,
         }
     }
 
@@ -29,6 +35,7 @@ impl MultimodalConstraintModel {
     pub fn new_local(
         mode: &str,
         constraints: Vec<Constraint>,
+        max_trip_legs: NonZeroU64,
         modes: &[&str],
         route_ids: &[&str],
         use_route_ids: bool,
@@ -64,7 +71,7 @@ impl MultimodalConstraintModel {
             route_id_to_state: Arc::new(route_id_to_state),
         };
 
-        let mmm = MultimodalConstraintModel::new(Arc::new(engine), constraints);
+        let mmm = MultimodalConstraintModel::new(Arc::new(engine), constraints, max_trip_legs);
         Ok(mmm)
     }
 }
@@ -85,12 +92,17 @@ impl ConstraintModel for MultimodalConstraintModel {
     ) -> Result<bool, ConstraintModelError> {
         // if adding this edge would exceed max_trip_legs, we can skip running the constraints
         // and directly reject this edge.
-        let valid_leg_count = valid_trip_leg_count(
+        let valid_leg_count = state_ops::appending_edge_mode_is_valid(
             state,
             state_model,
             &self.engine.mode,
+            self.max_trip_legs,
             &self.engine.mode_to_state,
-        )?;
+        )
+        .map_err(|e| {
+            let msg = format!("in multimodal constraint model, {e}");
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
         if !valid_leg_count {
             return Ok(false);
         }
@@ -102,7 +114,7 @@ impl ConstraintModel for MultimodalConstraintModel {
                 state,
                 state_model,
                 &self.engine.mode_to_state,
-                self.engine.max_trip_legs,
+                self.max_trip_legs,
             )?;
             log::debug!(
                 "multimodal frontier is valid? '{valid}' for state at time: {:.2} minutes",
@@ -122,33 +134,6 @@ impl ConstraintModel for MultimodalConstraintModel {
     fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
         Ok(true)
     }
-}
-
-/// helper to check if adding this edge to the trip would exceed the maximum number of trip legs.
-fn valid_trip_leg_count(
-    state: &[StateVariable],
-    state_model: &StateModel,
-    edge_mode: &str,
-    max_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
-) -> Result<bool, ConstraintModelError> {
-    let max_legs_usize = max_legs.get() as usize;
-    // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
-    let active_mode = state_ops::get_active_leg_mode(state, state_model, max_legs, mode_to_state)
-        .map_err(|e| {
-        ConstraintModelError::ConstraintModelError(format!("while validating trip leg count, {e}"))
-    })?;
-    let n_existing_legs = state_ops::get_n_legs(state, state_model).map_err(|e| {
-        ConstraintModelError::ConstraintModelError(
-            (format!("while getting number of trip legs for this trip: {e}")),
-        )
-    })?;
-    let n_legs = match active_mode {
-        Some(active_mode) if active_mode != edge_mode => n_existing_legs + 1,
-        _ => n_existing_legs,
-    };
-    let is_valid = n_legs <= max_legs_usize;
-    Ok(is_valid)
 }
 
 #[cfg(test)]
@@ -512,9 +497,9 @@ mod test {
         let mfm = MultimodalConstraintModel::new_local(
             this_mode,
             constraints,
+            max_trip_legs,
             modes,
             route_ids,
-            max_trip_legs,
             true,
         )
         .expect("test invariant failed");

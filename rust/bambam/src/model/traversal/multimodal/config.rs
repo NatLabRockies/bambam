@@ -12,6 +12,4 @@ pub struct MultimodalTraversalConfig {
     /// all route ids available in multimodal search. this ordering will be used
     /// to generate an enumeration used in state modeling.
     pub route_ids_input_file: Option<String>,
-    /// for a given search, the limit to the number of mode transitions that can occur
-    pub max_trip_legs: NonZeroU64,
 }

@@ -56,7 +56,7 @@ impl TraversalModelService for MultimodalTraversalService {
         };
         let model = MultimodalTraversalModel::new(
             self.config.this_mode.clone(),
-            self.config.max_trip_legs,
+            query_config.max_trip_legs,
             mode_to_state,
             route_id_to_state,
         );

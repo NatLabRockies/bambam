@@ -27,6 +27,21 @@ pub fn active_leg_variable_config() -> StateVariableConfig {
     }
 }
 
+pub fn max_trip_legs_input_feature() -> InputFeature {
+    InputFeature::Custom {
+        name: "max_trip_legs".to_string(),
+        unit: "unsigned_integer".to_string(),
+    }
+}
+
+pub fn max_trip_legs_variable_config(max: u64) -> StateVariableConfig {
+    StateVariableConfig::Custom {
+        custom_type: "MaxTripLegs".to_string(),
+        value: CustomVariableConfig::UnsignedInteger { initial: max },
+        accumulator: false,
+    }
+}
+
 pub fn leg_mode_input_feature(leg_idx: LegIdx) -> InputFeature {
     InputFeature::Custom {
         name: fieldname::leg_mode_fieldname(leg_idx),

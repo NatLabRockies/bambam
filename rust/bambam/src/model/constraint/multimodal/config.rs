@@ -12,6 +12,4 @@ pub struct MultimodalConstraintConfig {
     /// all route ids available in multimodal search. this ordering will be used
     /// to generate an enumeration used in state modeling.
     pub route_ids_input_file: Option<String>,
-    /// maximum number of legs allowed in a trip
-    pub max_trip_legs: NonZeroU64,
 }

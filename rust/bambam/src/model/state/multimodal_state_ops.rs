@@ -67,11 +67,11 @@ pub fn appending_edge_mode_is_valid<'a>(
     state: &[StateVariable],
     state_model: &StateModel,
     leg_mode: &str,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &'a MultimodalStateMapping,
 ) -> Result<bool, StateModelError> {
-    let max_legs_usize = get_n_legs(state, state_model)?;
     // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
-    let active_mode = get_active_leg_mode(state, state_model, max_legs_usize, mode_to_state)
+    let active_mode = get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state)
         .map_err(|e| {
             StateModelError::RuntimeError(format!("while validating trip leg count, {e}"))
         })?;
@@ -84,6 +84,8 @@ pub fn appending_edge_mode_is_valid<'a>(
         Some(active_mode) if active_mode != leg_mode => n_existing_legs + 1,
         _ => n_existing_legs,
     };
+
+    let max_legs_usize = max_trip_legs.get() as usize;
     Ok(n_legs <= max_legs_usize)
 }
 

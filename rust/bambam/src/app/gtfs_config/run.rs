@@ -100,7 +100,6 @@ pub fn run(
     // grab configuration arguments to copy into each GTFS frontier model configuration
     let (mmfc, tlfc) = get_constraint_model_arguments(&compass_conf)?;
     let time_limit = tlfc.time_limit.clone();
-    let max_trip_legs = mmfc.max_trip_legs;
 
     log::info!("finding metadata files in {directory}");
     let read_dir = std::fs::read_dir(directory).map_err(|e| GtfsConfigError::ReadError {
@@ -175,14 +174,9 @@ pub fn run(
             &edges_metadata_path,
             &available_modes,
             &fq_route_ids_filepath,
-            max_trip_legs,
         )?;
-        let cm_conf = gtfs_constraint_model_config(
-            &time_limit,
-            &available_modes,
-            &fq_route_ids_filepath,
-            max_trip_legs,
-        )?;
+        let cm_conf =
+            gtfs_constraint_model_config(&time_limit, &available_modes, &fq_route_ids_filepath)?;
         conf_search.push(SearchConfig {
             traversal: tm_conf,
             constraint: cm_conf,
@@ -382,7 +376,6 @@ pub fn gtfs_traversal_model_config(
     edges_metadata: &str,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
-    max_trip_legs: NonZeroU64,
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let route_ids_input_file = Some(fq_route_ids_filepath.to_string_lossy().to_string());
     let dtc_conf = DistanceTraversalConfig {
@@ -399,7 +392,6 @@ pub fn gtfs_traversal_model_config(
         this_mode: "transit".to_string(),
         available_modes: available_modes.to_vec(),
         route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-        max_trip_legs,
     };
     let dtc = as_json_with_type_tag(&dtc_conf, "distance")?;
     let ttc = as_json_with_type_tag(&ttc_conf, "transit")?;
@@ -417,13 +409,11 @@ pub fn gtfs_constraint_model_config(
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
-    max_trip_legs: NonZeroU64,
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
         available_modes: available_modes.to_vec(),
         route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
-        max_trip_legs,
     };
     let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
     let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
