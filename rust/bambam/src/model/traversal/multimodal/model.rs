@@ -483,12 +483,10 @@ mod test {
         // ASSERTION 1: state has the expected length given the provided number of trip legs + modes
         let expected_len = {
             let active_leg = 1;
-            let route_id = 1;
             let input_features = 2; // edge_time, trip_time
             let leg_fields = 4; // mode, distance, time, route_id
             let mode_fields = 2;
             active_leg
-                + route_id
                 + input_features
                 + available_modes.len() * mode_fields
                 + max_trip_legs.get() as usize * leg_fields
