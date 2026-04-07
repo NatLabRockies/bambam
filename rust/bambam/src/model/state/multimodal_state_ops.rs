@@ -307,8 +307,8 @@ pub fn set_leg_route_id(
     state_model.set_custom_i64(state, &name, route_id_label)
 }
 
-/// sets the mode value for the given leg without first testing that the label maps to a value in
-/// a route id enumeration.
+/// sets the route id value for the given leg. executed without first testing that
+/// the label maps to a value in a route id enumeration.
 pub fn set_leg_route_id_raw(
     state: &mut [StateVariable],
     leg_idx: LegIdx,
