@@ -54,6 +54,7 @@ use uom::si::f64::{Energy, Length, Time};
 /// [[constraints]]
 /// type = "mode_distance_limit"
 /// values.drive = { limit = 0.33, unit = "miles", op = "min_exclusive" }
+/// ```
 ///
 /// ### Drive mode should not exceed 2 gallons of gas
 ///
@@ -61,7 +62,6 @@ use uom::si::f64::{Energy, Length, Time};
 /// [[constraints]]
 /// type = "mode_energy_limit"
 /// values.drive = { limit = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
-/// ``````
 /// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
