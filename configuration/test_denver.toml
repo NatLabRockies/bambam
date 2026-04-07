@@ -107,36 +107,9 @@ name = "walk"
 speed = 5.0
 speed_unit = "kph"
 
-# [[search.traversal.models]]
-# type = "fixed_speed"
-# name = "bike"
-# speed = 16.0
-# speed_unit = "kph"
-
-# [[search.traversal.models]]
-# type = "speed"
-# speed_table_input_file = "../denver_co/edges-posted-speed-enumerated.txt.gz"
-# speed_unit = "kph"
-
 [[search.traversal.models]]
 type = "time"
 time_unit = "minutes"
-
-# [[search.traversal.models]]
-# type = "turn_delay"
-# edge_heading_input_file = "../denver_co/edges-headings-enumerated.csv.gz"
-# [search.traversal.models.turn_delay_model]
-# type = "tabular_discrete"
-# time_unit = "seconds"
-# [search.traversal.models.turn_delay_model.table]
-# no_turn = 0.0
-# slight_right = 0.5
-# right = 1.0
-# sharp_right = 1.5
-# slight_left = 1.0
-# left = 2.5
-# sharp_left = 3.5
-# u_turn = 9.5
 
 [[search.traversal.models]]
 type = "multimodal"
@@ -181,51 +154,13 @@ value = "walk"
 type = "inject"
 format = "key_value"
 write_mode = "overwrite"
-key = "constraints"
+key = "grid_search"
 [[plugin.input_plugins.value._modes]]
 this_mode = "walk"
 available_modes = ["walk"]
 constraints = [
     { type = "time_limit", limit = 40.0, unit = "minutes" }
 ]
-
-# key = "grid_search"
-# [plugin.input_plugins.value]
-# mode = ["walk", "bike", "drive"]
-# modes = [{ mode = "walk", road_classes = [4, 5, 6, 7] }, { mode = "bike", road_classes = [4, 5, 6, 7] }, { mode = "drive", road_classes = [1, 2, 3, 4, 5, 6] }]
-# [[plugin.input_plugins]]
-# type = "inject"
-# format = "key_value"
-# write_mode = "overwrite"
-# key = "road_classes"
-# value = [2, 3, 4, 5, 6, 7]
-
-# [[plugin.input_plugins]]
-# type = "inject"
-# key = "start_time"
-# value = "08:00:00"
-# format = "key_value"
-# write_mode = "overwrite"
-
-# [[plugin.input_plugins]]
-# type = "inject"
-# key = "start_weekday"
-# value = "monday"
-# format = "key_value"
-# write_mode = "overwrite"
-
-# [[plugin.input_plugins]]
-# type = "grid_search"
-
-# [[plugin.input_plugins]]
-# type = "load_balancer"
-# [plugin.input_plugins.weight_heuristic]
-# type = "custom"
-# [plugin.input_plugins.weight_heuristic.custom_weight_type]
-# type = "categorical"
-# column_name = "mode"
-# default = 1
-# mapping = { "walk" = 1, "bike" = 10, "drive" = 100 }
 
 [[plugin.output_plugins]]
 type = "summary"
