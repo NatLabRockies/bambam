@@ -25,8 +25,7 @@ use uom::si::f64::{Length, Time};
 pub struct MultimodalTraversalModel {
     pub mode: String,
     pub max_trip_legs: NonZeroU64,
-    pub mode_to_state: Arc<MultimodalStateMapping>,
-    pub route_id_to_state: Arc<Option<MultimodalStateMapping>>,
+    pub mode_enumeration: Arc<MultimodalStateMapping>,
 }
 
 /// Applies the multimodal leg + mode-specific accumulator updates during
@@ -46,10 +45,8 @@ impl TraversalModel for MultimodalTraversalModel {
                 name: fieldname::EDGE_TIME.to_string(),
                 unit: None,
             },
+            variable::route_id_input_feature(),
         ];
-        if self.route_id_to_state.is_some() {
-            features.push(variable::route_id_input_feature());
-        }
         features
     }
 
@@ -74,25 +71,19 @@ impl TraversalModel for MultimodalTraversalModel {
             let config = variable::multimodal_time_variable_config(None);
             (name, config)
         });
+        let leg_route_id = (0..self.max_trip_legs.get()).map(|idx| {
+            let name = fieldname::leg_route_id_fieldname(idx);
+            let config = variable::route_id_variable_config();
+            (name, config)
+        });
 
-        let leg_route_id: Box<dyn Iterator<Item = (String, StateVariableConfig)>> =
-            if self.route_id_to_state.is_some() {
-                Box::new((0..self.max_trip_legs.get()).map(|idx| {
-                    let name = fieldname::leg_route_id_fieldname(idx);
-                    let config = variable::route_id_variable_config();
-                    (name, config)
-                }))
-            } else {
-                Box::new(std::iter::empty::<(String, StateVariableConfig)>())
-            };
-
-        let mode_dist = self.mode_to_state.get_categories().iter().map(|mode| {
+        let mode_dist = self.mode_enumeration.get_categories().iter().map(|mode| {
             let name = fieldname::mode_distance_fieldname(mode);
             let config = variable::multimodal_distance_variable_config(None);
             (name, config)
         });
 
-        let mode_time = self.mode_to_state.get_categories().iter().map(|mode| {
+        let mode_time = self.mode_enumeration.get_categories().iter().map(|mode| {
             let name = fieldname::mode_time_fieldname(mode);
             let config = variable::multimodal_time_variable_config(None);
             (name, config)
@@ -130,7 +121,7 @@ impl TraversalModel for MultimodalTraversalModel {
             state,
             state_model,
             &self.mode,
-            &self.mode_to_state,
+            &self.mode_enumeration,
             self.max_trip_legs,
         )?;
 
@@ -142,19 +133,10 @@ impl TraversalModel for MultimodalTraversalModel {
             state_model,
             &self.mode,
             leg_idx,
-            &self.mode_to_state,
+            &self.mode_enumeration,
             self.max_trip_legs,
         )?;
-        if let Some(route_id_to_state) = self.route_id_to_state.as_ref() {
-            ops::update_route_id(
-                state,
-                state_model,
-                &self.mode,
-                leg_idx,
-                route_id_to_state,
-                self.max_trip_legs,
-            )?;
-        }
+        ops::update_route_id(state, state_model, &self.mode, leg_idx, self.max_trip_legs)?;
         log::debug!(
             "finish multimodal traversal along edge {:?} for state at time: {:.2} minutes with tree size {}",
             (edge.edge_list_id, edge.edge_id),
@@ -187,14 +169,12 @@ impl MultimodalTraversalModel {
     pub fn new(
         mode: String,
         max_trip_legs: NonZeroU64,
-        mode_to_state: Arc<MultimodalStateMapping>,
-        route_id_to_state: Arc<Option<MultimodalStateMapping>>,
+        mode_enumeration: Arc<MultimodalStateMapping>,
     ) -> MultimodalTraversalModel {
         Self {
             mode,
             max_trip_legs,
-            mode_to_state,
-            route_id_to_state,
+            mode_enumeration,
         }
     }
 
@@ -204,9 +184,8 @@ impl MultimodalTraversalModel {
         mode: &str,
         max_trip_legs: NonZeroU64,
         modes: &[&str],
-        route_ids: &[&str],
     ) -> Result<MultimodalTraversalModel, StateModelError> {
-        let mode_to_state =
+        let mode_enumeration =
             MultimodalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
                 .map_err(|e| {
                 StateModelError::BuildError(format!(
@@ -214,29 +193,10 @@ impl MultimodalTraversalModel {
                 ))
             })?;
 
-        let route_id_to_state = match route_ids {
-            [] => None,
-            _ => {
-                let mapping = MultimodalMapping::new(
-                    &route_ids
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>(),
-                )
-                .map_err(|e| {
-                    StateModelError::BuildError(format!(
-                "while building MultimodalTripLegModel, failure constructing mode mapping: {e}"
-            ))
-                })?;
-                Some(mapping)
-            }
-        };
-
         let mmm = MultimodalTraversalModel::new(
             mode.to_string(),
             max_trip_legs,
-            Arc::new(mode_to_state),
-            Arc::new(route_id_to_state),
+            Arc::new(mode_enumeration),
         );
         Ok(mmm)
     }
@@ -254,17 +214,12 @@ impl MultimodalTraversalModel {
         for idx in (0..self.max_trip_legs.get()) {
             // re-map leg mode
             let mode_key = fieldname::leg_mode_fieldname(idx);
-            ops::apply_mapping_for_serialization(state_json, &mode_key, idx, &self.mode_to_state)?;
-
-            if let Some(route_id_to_state) = self.route_id_to_state.clone().as_ref() {
-                let route_key = fieldname::leg_route_id_fieldname(idx);
-                ops::apply_mapping_for_serialization(
-                    state_json,
-                    &route_key,
-                    idx,
-                    route_id_to_state,
-                )?;
-            }
+            ops::apply_mapping_for_serialization(
+                state_json,
+                &mode_key,
+                idx,
+                &self.mode_enumeration,
+            )?;
         }
 
         Ok(())
@@ -303,9 +258,8 @@ mod test {
     fn test_initialize_trip_access() {
         let test_mode = "walk";
         let max_trip_legs = NonZeroU64::new(1).unwrap();
-        let mtm =
-            MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"], &["A", "B", "C"])
-                .expect("test invariant failed, model constructor had error");
+        let mtm = MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"])
+            .expect("test invariant failed, model constructor had error");
         let state_model = StateModel::new(mtm.output_features());
         let route_id_to_state = MultimodalStateMapping::empty(); // no route ids
 
@@ -341,7 +295,7 @@ mod test {
         let test_mode = "walk";
         let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (mtm, test_tm, state_model, mut state) =
-            build_test_assets(&["walk"], &[], max_trip_legs, test_mode);
+            build_test_assets(&["walk"], max_trip_legs, test_mode);
 
         let t1 = mock_trajectory(0, 0, 0);
         let mut tree = SearchTree::default();
@@ -359,7 +313,7 @@ mod test {
             &state,
             &state_model,
             max_trip_legs,
-            &mtm.mode_to_state,
+            &mtm.mode_enumeration,
         )
         .expect("assertion 2 failed");
     }
@@ -369,9 +323,9 @@ mod test {
         // simulate two edge lists each with a mode-specific multimodal traversal model
         let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mtm_walk, test_walk, state_model, initial_state) =
-            build_test_assets(&["bike", "walk"], &[], max_trip_legs, "walk");
+            build_test_assets(&["bike", "walk"], max_trip_legs, "walk");
         let (mtm_bike, test_bike, _, _) =
-            build_test_assets(&["bike", "walk"], &[], max_trip_legs, "bike");
+            build_test_assets(&["bike", "walk"], max_trip_legs, "bike");
         let state_model = Arc::new(state_model);
 
         // assuming we can use mtm_walk and mtm_bike fields interchangeably
@@ -382,7 +336,8 @@ mod test {
         );
 
         let mut tree = SearchTree::default();
-        let lm = MultimodalLabelModel::new(mtm_walk.mode_to_state.as_ref().clone(), max_trip_legs);
+        let lm =
+            MultimodalLabelModel::new(mtm_walk.mode_enumeration.as_ref().clone(), max_trip_legs);
 
         // build state model and initial search state
         let cost_model = mock_cost_model(state_model.clone());
@@ -411,7 +366,7 @@ mod test {
             &et1.result_state,
             &state_model,
             max_trip_legs,
-            &mtm_walk.mode_to_state.clone(),
+            &mtm_walk.mode_enumeration.clone(),
         )
         .expect("assertion 1 failed");
 
@@ -443,7 +398,7 @@ mod test {
             &et2.result_state,
             &state_model,
             max_trip_legs,
-            &mtm_bike.mode_to_state,
+            &mtm_bike.mode_enumeration,
         )
         .expect("assertion 2 failed");
     }
@@ -454,9 +409,9 @@ mod test {
         // but, here, we limit trip legs to 1, so our trip should not be able to transition to bike
         let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (mtm_walk, test_walk, state_model, initial_state) =
-            build_test_assets(&["bike", "walk"], &[], max_trip_legs, "walk");
+            build_test_assets(&["bike", "walk"], max_trip_legs, "walk");
         let (mtm_bike, test_bike, _, _) =
-            build_test_assets(&["bike", "walk"], &[], max_trip_legs, "bike");
+            build_test_assets(&["bike", "walk"], max_trip_legs, "bike");
         let state_model = Arc::new(state_model);
 
         // build state model and initial search state
@@ -467,7 +422,8 @@ mod test {
         );
         let cost_model = mock_cost_model(state_model.clone());
         let mut tree = SearchTree::default();
-        let lm = MultimodalLabelModel::new(mtm_walk.mode_to_state.as_ref().clone(), max_trip_legs);
+        let lm =
+            MultimodalLabelModel::new(mtm_walk.mode_enumeration.as_ref().clone(), max_trip_legs);
 
         // the two trajectories concatenate together into the sequence
         // (0) -[0]-> (1) -[1]-> (2) -[2]-> (3)
@@ -520,7 +476,7 @@ mod test {
         let this_mode = "walk";
 
         let (tm, test_tm, state_model, state) =
-            build_test_assets(&available_modes, &["A", "B", "C"], max_trip_legs, this_mode);
+            build_test_assets(&available_modes, max_trip_legs, this_mode);
         let mapping = MultimodalStateMapping::empty(); // no route ids
 
         // as a head check, we can also inspect the serialized access state JSON in the logs
@@ -561,7 +517,7 @@ mod test {
         let max_trip_legs = NonZeroU64::new(1).unwrap();
         let this_mode = "walk";
         let (tm, test_tm, state_model, mut state) =
-            build_test_assets(&available_modes, &[], max_trip_legs, this_mode);
+            build_test_assets(&available_modes, max_trip_legs, this_mode);
         let tree = SearchTree::default();
 
         // mock up some edge_dist, edge_time values
@@ -607,7 +563,6 @@ mod test {
     ///   - state is the initial state built from the state_model
     fn build_test_assets(
         available_modes: &[&str],
-        available_route_ids: &[&str],
         max_trip_legs: NonZeroU64,
         this_mode: &str,
     ) -> (
@@ -617,13 +572,8 @@ mod test {
         Vec<StateVariable>,
     ) {
         let tm = Arc::new(
-            MultimodalTraversalModel::new_local(
-                this_mode,
-                max_trip_legs,
-                available_modes,
-                available_route_ids,
-            )
-            .expect("test invariant failed, model constructor had error"),
+            MultimodalTraversalModel::new_local(this_mode, max_trip_legs, available_modes)
+                .expect("test invariant failed, model constructor had error"),
         );
         let test_tm = TestTraversalModel::new(tm.clone())
             .expect("test invariant failed, unable to produce a test model");

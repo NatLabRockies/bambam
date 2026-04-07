@@ -10,7 +10,4 @@ pub struct MultimodalConstraintConfig {
     pub this_mode: String,
     /// modes that can be used on this trip
     pub available_modes: Vec<String>,
-    /// all route ids available in multimodal search. this ordering will be used
-    /// to generate an enumeration used in state modeling.
-    pub route_ids_input_file: Option<String>,
 }

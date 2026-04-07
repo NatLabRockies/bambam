@@ -85,14 +85,10 @@ pub fn update_route_id(
     state_model: &StateModel,
     mode: &str,
     leg_idx: LegIdx,
-    route_id_to_state: &MultimodalStateMapping,
     max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
     let route_id_label = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
-    let route_id_opt = route_id_to_state.get_categorical(route_id_label)?;
-    if let Some(route_id) = route_id_opt {
-        state_ops::set_leg_route_id(state, leg_idx, route_id, state_model, route_id_to_state)?;
-    }
+    state_ops::set_leg_route_id_raw(state, leg_idx, route_id_label, state_model)?;
     Ok(())
 }
 

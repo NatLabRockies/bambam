@@ -307,6 +307,18 @@ pub fn set_leg_route_id(
     state_model.set_custom_i64(state, &name, route_id_label)
 }
 
+/// sets the mode value for the given leg without first testing that the label maps to a value in
+/// a route id enumeration.
+pub fn set_leg_route_id_raw(
+    state: &mut [StateVariable],
+    leg_idx: LegIdx,
+    route_id_label: i64,
+    state_model: &StateModel,
+) -> Result<(), StateModelError> {
+    let name = fieldname::leg_route_id_fieldname(leg_idx);
+    state_model.set_custom_i64(state, &name, &route_id_label)
+}
+
 /// validates leg_idx values, which must be in range [0, max_trip_legs)
 pub fn validate_leg_idx(leg_idx: LegIdx, max_trip_legs: NonZeroU64) -> Result<(), StateModelError> {
     if leg_idx >= max_trip_legs.get() {

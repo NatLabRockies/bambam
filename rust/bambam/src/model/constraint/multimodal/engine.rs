@@ -6,5 +6,4 @@ use crate::model::{constraint::multimodal::Constraint, state::MultimodalStateMap
 pub struct MultimodalConstraintEngine {
     pub mode: String,
     pub mode_to_state: Arc<MultimodalStateMapping>,
-    pub route_id_to_state: Arc<Option<MultimodalStateMapping>>,
 }

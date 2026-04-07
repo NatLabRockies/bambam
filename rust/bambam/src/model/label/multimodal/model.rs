@@ -90,7 +90,7 @@ mod test {
     #[test]
     fn test_empty() {
         let max_trip_legs = NonZeroU64::new(1).unwrap();
-        let mtm = MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"], &[])
+        let mtm = MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"])
             .expect("test invariant failed");
         let state_model = StateModel::new(mtm.output_features());
         let state = state_model
@@ -102,7 +102,8 @@ mod test {
         let label = model
             .label_from_state(vertex_id, &state, &state_model)
             .expect("test failed");
-        let result = label_ops::get_mode_sequence(&label, &mtm.mode_to_state).expect("test failed");
+        let result =
+            label_ops::get_mode_sequence(&label, &mtm.mode_enumeration).expect("test failed");
         assert!(result.is_empty());
     }
 
@@ -114,7 +115,6 @@ mod test {
             "drive",
             max_trip_legs,
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
         )
         .expect("test invariant failed");
         let sm = StateModel::new(am.output_features());
@@ -123,7 +123,7 @@ mod test {
             &["drive", "transit", "walk"],
             &mut state,
             &sm,
-            &am.mode_to_state,
+            &am.mode_enumeration,
             max_trip_legs,
         );
 
@@ -134,7 +134,8 @@ mod test {
         let label = model
             .label_from_state(vertex_id, &state, &sm)
             .expect("test failed");
-        let result = label_ops::get_mode_sequence(&label, &am.mode_to_state).expect("test failed");
+        let result =
+            label_ops::get_mode_sequence(&label, &am.mode_enumeration).expect("test failed");
         assert_eq!(result, &["drive", "transit", "walk"]);
     }
 

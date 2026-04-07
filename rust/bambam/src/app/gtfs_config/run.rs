@@ -175,8 +175,7 @@ pub fn run(
             &available_modes,
             &fq_route_ids_filepath,
         )?;
-        let cm_conf =
-            gtfs_constraint_model_config(&time_limit, &available_modes, &fq_route_ids_filepath)?;
+        let cm_conf = gtfs_constraint_model_config(&time_limit, &available_modes)?;
         conf_search.push(SearchConfig {
             traversal: tm_conf,
             constraint: cm_conf,
@@ -391,7 +390,6 @@ pub fn gtfs_traversal_model_config(
     let mtc_conf = MultimodalTraversalConfig {
         this_mode: "transit".to_string(),
         available_modes: available_modes.to_vec(),
-        route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
     };
     let dtc = as_json_with_type_tag(&dtc_conf, "distance")?;
     let ttc = as_json_with_type_tag(&ttc_conf, "transit")?;
@@ -408,12 +406,10 @@ pub fn gtfs_traversal_model_config(
 pub fn gtfs_constraint_model_config(
     time_limit: &TimeLimitConfig,
     available_modes: &[String],
-    fq_route_ids_filepath: &Path,
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
         available_modes: available_modes.to_vec(),
-        route_ids_input_file: Some(fq_route_ids_filepath.to_string_lossy().to_string()),
     };
     let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
     let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
