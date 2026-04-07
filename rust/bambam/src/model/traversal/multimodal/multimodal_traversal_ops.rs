@@ -80,6 +80,9 @@ pub fn update_accumulators(
 }
 
 /// tests if route_id is set, and if so, copies it to the current trip leg.
+/// WARNING: uses the [StateModelError] `UnknownStateVariableName` as a NO-OP. this
+/// isn't ideal, but, routee compass does not provide a state_mode.contains_key()
+/// operation.
 pub fn update_route_id(
     state: &mut [StateVariable],
     state_model: &StateModel,
@@ -87,9 +90,13 @@ pub fn update_route_id(
     leg_idx: LegIdx,
     max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
-    let route_id_label = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
-    state_ops::set_leg_route_id_raw(state, leg_idx, route_id_label, state_model)?;
-    Ok(())
+    match state_model.get_custom_i64(state, bambam_state::ROUTE_ID) {
+        Ok(route_id_label) => {
+            state_ops::set_leg_route_id_raw(state, leg_idx, route_id_label, state_model)
+        }
+        Err(StateModelError::UnknownStateVariableName(_, _)) => Ok(()), // no route_id to copy
+        Err(e) => Err(e),
+    }
 }
 
 /// helper function for applying the label/categorical mapping in the
