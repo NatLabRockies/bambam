@@ -163,12 +163,12 @@ impl TryFrom<&ConstraintConfig> for Constraint {
     fn try_from(value: &ConstraintConfig) -> Result<Self, Self::Error> {
         use ConstraintConfig as MFCC;
         match value {
-            MFCC::AllowedModes { allowed_modes } => {
-                let modes = allowed_modes.iter().cloned().collect::<HashSet<_>>();
+            MFCC::AllowedModes { values } => {
+                let modes = values.iter().cloned().collect::<HashSet<_>>();
                 Ok(Self::AllowedModes(modes))
             }
-            MFCC::ModeCounts { mode_counts } => {
-                let counts = mode_counts
+            MFCC::ModeCounts { values } => {
+                let counts = values
                     .iter()
                     .map(|(k, v)| {
                         let v_usize: usize = v.get().try_into().map_err(|e| {
@@ -181,33 +181,27 @@ impl TryFrom<&ConstraintConfig> for Constraint {
                     .collect::<Result<HashMap<_, _>, _>>()?;
                 Ok(Self::ModeCounts(counts))
             }
-            MFCC::ExactSequences { exact_sequences } => {
+            MFCC::ExactSequences { values } => {
                 let mut trie = SubSequenceTrie::new();
-                for seq in exact_sequences.iter() {
+                for seq in values.iter() {
                     trie.insert_sequence(seq.clone());
                 }
                 Ok(Self::ExactSequences(trie))
             }
-            MFCC::ModeDistanceLimit {
-                mode_distance_limit,
-            } => Ok(Self::ModeDistanceLimit {
-                mode_distance_limit: mode_distance_limit.clone(),
+            MFCC::ModeDistanceLimit { values } => Ok(Self::ModeDistanceLimit {
+                mode_distance_limit: values.clone(),
             }),
-            MFCC::ModeTimeLimit { mode_time_limit } => Ok(Self::ModeTimeLimit {
-                mode_time_limit: mode_time_limit.clone(),
+            MFCC::ModeTimeLimit { values } => Ok(Self::ModeTimeLimit {
+                mode_time_limit: values.clone(),
             }),
             // MFCC::ModeEnergyLimit { mode_energy_limit } => Ok(Self::ModeEnergyLimit {
             //     mode_energy_limit: mode_energy_limit.clone(),
             // }),
-            MFCC::ModeLegDistanceLimit {
-                mode_leg_distance_limit,
-            } => Ok(Self::ModeLegDistanceLimit {
-                mode_leg_distance_limit: mode_leg_distance_limit.clone(),
+            MFCC::ModeLegDistanceLimit { values } => Ok(Self::ModeLegDistanceLimit {
+                mode_leg_distance_limit: values.clone(),
             }),
-            MFCC::ModeLegTimeLimit {
-                mode_leg_time_limit,
-            } => Ok(Self::ModeLegTimeLimit {
-                mode_leg_time_limit: mode_leg_time_limit.clone(),
+            MFCC::ModeLegTimeLimit { values } => Ok(Self::ModeLegTimeLimit {
+                mode_leg_time_limit: values.clone(),
             }),
             // MFCC::ModeLegEnergyLimit {
             //     mode_leg_energy_limit,

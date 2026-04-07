@@ -22,74 +22,79 @@ use uom::si::f64::{Energy, Length, Time};
 /// ## Walk mode should not be used for more than a half of a mile, total
 ///
 /// ```toml
-/// mode_distance_limit.walk = { limit = 0.5, unit = "miles" }
+/// type = "mode_distance_limit"
+/// values.walk = { limit = 0.5, unit = "miles" }
 /// ```
 ///
 /// ## Walk mode can only be used in the first or third leg of a trip
 /// which may include a middle leg in either bike or drive mode.
 ///
 /// ```toml
-/// exact_sequences = [["walk", "bike", "walk"], ["walk", "drive", "walk"]]
+/// type = "exact_sequences"
+/// values = [["walk", "bike", "walk"], ["walk", "drive", "walk"]]
 /// ```
 ///
 /// ### Walk mode should not exceed 5m on first leg of trip and 20m total
 ///
 /// ```toml
 /// [[constraints]]
-/// mode_leg_time_limit.walk = { leg.type = "first", constraint = { limit = 5.0, unit = "minutes" } }
+/// type = "mode_leg_time_limit"
+/// values.walk = { leg.type = "first", constraint = { limit = 5.0, unit = "minutes" } }
 /// [[constraints]]
-/// mode_time_limit.walk = { limit = 20.0, unit = "minutes" }
+/// type = "mode_time_limit"
+/// values.walk = { limit = 20.0, unit = "minutes" }
 /// ```
 ///
 /// ### Drive mode legs should never be shorter than 5 minutes or 0.33 miles
 ///
 /// ```toml
 /// [[constraints]]
-/// mode_time_limit.drive = { limit = 5.0, unit = "minutes", op = "min_exclusive" }
+/// type = "mode_time_limit"
+/// values.drive = { limit = 5.0, unit = "minutes", op = "min_exclusive" }
 /// [[constraints]]
-/// mode_distance_limit.drive = { limit = 0.33, unit = "miles", op = "min_exclusive" }
+/// type = "mode_distance_limit"
+/// values.drive = { limit = 0.33, unit = "miles", op = "min_exclusive" }
 ///
 /// ### Drive mode should not exceed 2 gallons of gas
 ///
 /// ```toml
 /// [[constraints]]
-/// mode_energy_limit.drive = { limit = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
+/// type = "mode_energy_limit"
+/// values.drive = { limit = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
 /// ``````
 /// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(untagged)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConstraintConfig {
     /// Restrict routes to only use allowed transportation modes.
-    AllowedModes { allowed_modes: Vec<String> },
+    AllowedModes { values: Vec<String> },
     /// Limit the number of times each mode can be used in a route.
-    ModeCounts {
-        mode_counts: HashMap<String, NonZeroU64>,
-    },
+    ModeCounts { values: HashMap<String, NonZeroU64> },
     /// Require routes to follow one of the specified mode sequences.
-    ExactSequences { exact_sequences: Vec<Vec<String>> },
+    ExactSequences { values: Vec<Vec<String>> },
     /// Set maximum distance limits for each transportation mode.
     ModeDistanceLimit {
-        mode_distance_limit: HashMap<String, DistanceConstraint>,
+        values: HashMap<String, DistanceConstraint>,
     },
     /// Set maximum time limits for each transportation mode.
     ModeTimeLimit {
-        mode_time_limit: HashMap<String, TimeConstraint>,
+        values: HashMap<String, TimeConstraint>,
     },
     // /// Set maximum energy limits for each transportation mode.
     // ModeEnergyLimit {
-    //     mode_energy_limit: HashMap<String, EnergyConstraint>,
+    //     values: HashMap<String, EnergyConstraint>,
     // },
     /// Set distance limits for specific modes on specific trip legs.
     ModeLegDistanceLimit {
-        mode_leg_distance_limit: HashMap<String, ModeLegDistanceConstraint>,
+        values: HashMap<String, ModeLegDistanceConstraint>,
     },
     /// Set time limits for specific modes on specific trip legs.
     ModeLegTimeLimit {
-        mode_leg_time_limit: HashMap<String, ModeLegTimeConstraint>,
+        values: HashMap<String, ModeLegTimeConstraint>,
     },
     // /// Set energy limits for specific modes on specific trip legs.
     // ModeLegEnergyLimit {
-    //     mode_leg_energy_limit: HashMap<String, ModeLegEnergyConstraint>,
+    //     values: HashMap<String, ModeLegEnergyConstraint>,
     // },
 }
 
