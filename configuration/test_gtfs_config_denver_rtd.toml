@@ -42,14 +42,14 @@ traversal.models = [
     { type = "distance", distance_unit = "miles" }, 
     { type = "fixed_speed", name = "walk", speed = 5.0, speed_unit = "kph" },
     { type = "time", time_unit = "minutes" },
-    { type = "multimodal", this_mode = "walk", available_modes = ["walk", "transit"], available_route_ids = [], use_route_ids = false, max_trip_legs = 5 }
+    { type = "multimodal", this_mode = "walk", available_modes = ["walk", "transit"] }
 ]
 
 frontier.type = "combined"
 frontier.models = [
     # { type = "road_class", road_class_input_file = "boulder_co/edges-road-class-enumerated.txt.gz" },
     { type = "time_limit", time_limit = { time = 40.0, time_unit = "minutes" }},
-    { type = "multimodal", this_mode = "walk", available_modes = ["walk", "transit"], available_route_ids = [], use_route_ids = false, max_trip_legs = 5 }
+    { type = "multimodal", this_mode = "walk", available_modes = ["walk", "transit"] }
 ]
 
 ###
