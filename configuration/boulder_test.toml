@@ -19,6 +19,7 @@ matching_type = ["point", "vertex_id", "edge_id"]
 
 [algorithm]
 type = "a*"
+termination_behavior = "allow_tree_termination"
 
 # cut off searches that exceed these termination policies. 
 [termination]

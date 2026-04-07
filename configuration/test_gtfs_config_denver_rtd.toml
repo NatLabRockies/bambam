@@ -17,6 +17,7 @@ matching_type = ["point", "vertex_id", "edge_id"]
 
 [algorithm]
 type = "a*"
+termination_behavior = "allow_tree_termination"
 
 [label]
 type = "multimodal"
