@@ -1,4 +1,5 @@
 use std::num::NonZeroU64;
+use std::sync::OnceLock;
 
 use crate::model::state::{
     fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalStateMapping,
@@ -79,6 +80,12 @@ pub fn update_accumulators(
     Ok(())
 }
 
+/// this hack is used because StateModel::contains_key expects a &String, which would require
+/// a new string allocation each time it is invoked here. to avoid this, we store a static [OnceLock]'d
+/// String and reference it in the call once initialized. this should be removed once things are updated
+/// on routee-compass-core, see <https://github.com/NatLabRockies/routee-compass/pull/493>.
+static ROUTE_ID_STRING: OnceLock<String> = OnceLock::new();
+
 /// tests if route_id is set, and if so, copies it to the current trip leg.
 pub fn update_route_id(
     state: &mut [StateVariable],
@@ -87,7 +94,8 @@ pub fn update_route_id(
     leg_idx: LegIdx,
     max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
-    if state_model.contains_key(&bambam_state::ROUTE_ID.to_string()) {
+    let route_id_key = ROUTE_ID_STRING.get_or_init(|| bambam_state::ROUTE_ID.to_string());
+    if state_model.contains_key(route_id_key) {
         let route_id_label = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
         state_ops::set_leg_route_id_raw(state, leg_idx, route_id_label, state_model)
     } else {
