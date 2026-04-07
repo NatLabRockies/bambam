@@ -8,9 +8,6 @@ pub use routee_compass_core::model::traversal::default::fieldname::*;
 /// the id of the active leg. zero if no leg is active. 1+ are leg identifiers.
 pub const ACTIVE_LEG: &str = "active_leg";
 
-/// the maximum number of trip legs allowed in this search
-pub const MAX_LEGS: &str = "max_legs";
-
 /// the state variable name containing the mode for a given leg id
 pub fn leg_mode_fieldname(leg_idx: LegIdx) -> String {
     leg_fieldname(leg_idx, "mode")
