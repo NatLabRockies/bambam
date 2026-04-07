@@ -10,12 +10,20 @@ use crate::model::constraint::multimodal::{Constraint, ConstraintConfig};
 pub struct MultimodalConstraintModelQuery {
     /// constraints to apply when in this mode. without constraints, the multimodal search
     /// space quickly grows intractable and will produce unrealistic behaviors.
-    pub constraints: Option<Vec<ConstraintConfig>>,
+    constraints: Option<Vec<ConstraintConfig>>,
     /// each mode transition results in a new trip leg. this value restricts
     /// the number of allowed mode transitions. this is both a domain-specific
     /// configuration value to limit to realistic mode usage and also an algorithmic
     /// configuration value as space complexity grows k^n for k modes, n legs.
+    ///
+    /// default value: 1 trip leg (unimodal trip).
+    #[serde(default = "unimodal_trip")]
     pub max_trip_legs: NonZeroU64,
+}
+
+/// use 1 trip leg by default.
+pub fn unimodal_trip() -> NonZeroU64 {
+    NonZeroU64::MIN
 }
 
 /// tracks whether to log (once) the warning about empty constraints on queries.

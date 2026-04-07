@@ -17,5 +17,13 @@ pub struct MultimodalTraversalQuery {
     /// the number of allowed mode transitions. this is both a domain-specific
     /// configuration value to limit to realistic mode usage and also an algorithmic
     /// configuration value as space complexity grows k^n for k modes, n legs.
+    ///
+    /// default value: 1 trip leg (unimodal trip).
+    #[serde(default = "unimodal_trip")]
     pub max_trip_legs: NonZeroU64,
+}
+
+/// use 1 trip leg by default.
+pub fn unimodal_trip() -> NonZeroU64 {
+    NonZeroU64::MIN
 }
