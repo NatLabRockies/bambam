@@ -33,8 +33,8 @@ impl MultimodalConstraintModelQuery {
     pub fn build_constraints(&self) -> Result<Vec<Constraint>, ConstraintModelError> {
         let constraints = self
             .constraints
-            .as_ref()
-            .unwrap_or(&vec![])
+            .as_deref()
+            .unwrap_or(&[])
             .iter()
             .map(Constraint::try_from)
             .collect::<Result<Vec<_>, _>>()?;
