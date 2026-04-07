@@ -63,12 +63,12 @@ pub fn get_n_legs(
 
 /// a constraint model action, this tests if the addition of a single edge mode breaks the limit on trip legs
 /// set during configuration. this is determined based on a reading of the constraint model.
-pub fn appending_edge_mode_is_valid<'a>(
+pub fn appending_edge_mode_is_valid(
     state: &[StateVariable],
     state_model: &StateModel,
     leg_mode: &str,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &'a MultimodalStateMapping,
+    mode_to_state: &MultimodalStateMapping,
 ) -> Result<bool, StateModelError> {
     // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
     let active_mode = get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state)
