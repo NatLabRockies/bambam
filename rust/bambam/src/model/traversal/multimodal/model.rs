@@ -36,7 +36,7 @@ impl TraversalModel for MultimodalTraversalModel {
     }
 
     fn input_features(&self) -> Vec<InputFeature> {
-        let mut features = vec![
+        vec![
             InputFeature::Distance {
                 name: fieldname::EDGE_DISTANCE.to_string(),
                 unit: None,
@@ -45,9 +45,7 @@ impl TraversalModel for MultimodalTraversalModel {
                 name: fieldname::EDGE_TIME.to_string(),
                 unit: None,
             },
-            variable::route_id_input_feature(),
-        ];
-        features
+        ]
     }
 
     fn output_features(&self) -> Vec<(String, StateVariableConfig)> {
