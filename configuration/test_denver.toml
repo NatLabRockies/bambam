@@ -152,8 +152,7 @@ format = "key_value"
 write_mode = "overwrite"
 key = "grid_search"
 [[plugin.input_plugins.value._modes]]
-this_mode = "walk"
-available_modes = ["walk"]
+trip_mode = "walk"
 constraints = [
     { type = "time_limit", limit = 40.0, unit = "minutes" }
 ]
