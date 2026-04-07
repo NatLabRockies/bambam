@@ -128,10 +128,6 @@ type = "multimodal"
 this_mode = "walk"
 available_modes = ["walk"]
 
-[[search.constraint.models]]
-type = "time_limit"
-time_limit = { time = 40.0, time_unit = "minutes" }
-
 [[plugin.input_plugins]]
 type = "grid"
 extent_format = "wkt"
