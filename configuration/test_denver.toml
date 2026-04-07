@@ -162,6 +162,13 @@ constraints = [
     { type = "time_limit", limit = 40.0, unit = "minutes" }
 ]
 
+[[plugin.input_plugins]]
+type = "inject"
+format = "key_value"
+write_mode = "overwrite"
+key = "max_trip_legs"
+value = 1
+
 [[plugin.output_plugins]]
 type = "summary"
 
