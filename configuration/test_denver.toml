@@ -176,6 +176,19 @@ format = "key_value"
 write_mode = "overwrite"
 key = "mode"
 value = "walk"
+
+[[plugin.input_plugins]]
+type = "inject"
+format = "key_value"
+write_mode = "overwrite"
+key = "constraints"
+[[plugin.input_plugins.value._modes]]
+this_mode = "walk"
+available_modes = ["walk"]
+constraints = [
+    { type = "time_limit", limit = 40.0, unit = "minutes" }
+]
+
 # key = "grid_search"
 # [plugin.input_plugins.value]
 # mode = ["walk", "bike", "drive"]

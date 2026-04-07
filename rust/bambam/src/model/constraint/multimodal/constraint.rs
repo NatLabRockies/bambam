@@ -11,6 +11,7 @@ use crate::model::state::{
 };
 use bambam_core::model::{bambam_field, bambam_state};
 use routee_compass_core::model::state::StateModelError;
+use routee_compass_core::model::traversal::default::fieldname;
 use routee_compass_core::model::{
     constraint::ConstraintModelError,
     network::Edge,
@@ -33,6 +34,10 @@ pub enum Constraint {
     ModeCounts(HashMap<String, usize>),
     /// Require routes to follow one of the specified mode sequences.
     ExactSequences(SubSequenceTrie),
+    /// Set distance limit for the trip.
+    DistanceConstraint(DistanceConstraint),
+    /// Set time limit for the trip.
+    TimeConstraint(TimeConstraint),
     /// Set maximum distance limits for each transportation mode.
     ModeDistanceLimit {
         mode_distance_limit: HashMap<String, DistanceConstraint>,
@@ -95,6 +100,10 @@ impl Constraint {
                 mode_to_state,
                 edge_mode,
             ),
+
+            MFC::DistanceConstraint(limit) => validate_trip_distance(state, state_model, limit),
+
+            MFC::TimeConstraint(limit) => validate_trip_time(state, state_model, limit),
 
             MFC::ModeDistanceLimit {
                 mode_distance_limit,
@@ -188,6 +197,8 @@ impl TryFrom<&ConstraintConfig> for Constraint {
                 }
                 Ok(Self::ExactSequences(trie))
             }
+            MFCC::DistanceConstraint(c) => Ok(Self::DistanceConstraint(c.clone())),
+            MFCC::TimeConstraint(c) => Ok(Self::TimeConstraint(c.clone())),
             MFCC::ModeDistanceLimit { values } => Ok(Self::ModeDistanceLimit {
                 mode_distance_limit: values.clone(),
             }),
@@ -274,6 +285,42 @@ fn validate_mode_sequences(
     }
     let is_match = trie.contains(&modes);
     Ok(is_match)
+}
+
+fn validate_trip_distance(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    limit: &DistanceConstraint,
+) -> ConstraintResult {
+    let dist: Length = state_model
+        .get_distance(state, fieldname::TRIP_DISTANCE)
+        .map_err(|e| {
+            let msg = format!(
+                "while retrieving '{}' from state: {e}",
+                fieldname::TRIP_DISTANCE
+            );
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
+    let valid = limit.test(dist, false);
+    Ok(valid)
+}
+
+fn validate_trip_time(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    limit: &TimeConstraint,
+) -> ConstraintResult {
+    let time: Time = state_model
+        .get_time(state, fieldname::TRIP_TIME)
+        .map_err(|e| {
+            let msg = format!(
+                "while retrieving '{}' from state: {e}",
+                fieldname::TRIP_TIME
+            );
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
+    let valid = limit.test(time, false);
+    Ok(valid)
 }
 
 /// runs the constraint model validation logic for mode distance constraints

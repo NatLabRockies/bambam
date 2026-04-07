@@ -72,6 +72,15 @@ pub enum ConstraintConfig {
     ModeCounts { values: HashMap<String, NonZeroU64> },
     /// Require routes to follow one of the specified mode sequences.
     ExactSequences { values: Vec<Vec<String>> },
+    /// Set distance limit for the trip.
+    #[serde(rename = "distance_limit")]
+    DistanceConstraint(DistanceConstraint),
+    /// Set time limit for the trip.
+    #[serde(rename = "time_limit")]
+    TimeConstraint(TimeConstraint),
+    // /// Set maximum time limit for the trip.
+    // #[serde(rename = "energy_limit")]
+    // EnergyConstraint,
     /// Set maximum distance limits for each transportation mode.
     ModeDistanceLimit {
         values: HashMap<String, DistanceConstraint>,
