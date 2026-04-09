@@ -5,7 +5,8 @@ use crate::model::traversal::transit::transit_ops;
 use crate::model::traversal::transit::{engine::TransitTraversalEngine, schedule::Departure};
 use bambam_core::model::bambam_state;
 use chrono::{Duration, NaiveDate, NaiveDateTime};
-use routee_compass_core::model::traversal::TraversalModelError;
+use routee_compass_core::model::state::{StateModel, StateVariable};
+use routee_compass_core::model::traversal::{EdgeTraversalContext, TraversalModelError};
 use routee_compass_core::model::{
     state::StateVariableConfig,
     traversal::{default::fieldname, TraversalModel},
@@ -101,16 +102,10 @@ impl TraversalModel for TransitTraversalModel {
 
     fn traverse_edge(
         &self,
-        trajectory: (
-            &routee_compass_core::model::network::Vertex,
-            &routee_compass_core::model::network::Edge,
-            &routee_compass_core::model::network::Vertex,
-        ),
-        state: &mut Vec<routee_compass_core::model::state::StateVariable>,
-        tree: &routee_compass_core::algorithm::search::SearchTree,
-        state_model: &routee_compass_core::model::state::StateModel,
+        ctx: &EdgeTraversalContext,
+        state: &mut Vec<StateVariable>,
+        state_model: &StateModel,
     ) -> Result<(), routee_compass_core::model::traversal::TraversalModelError> {
-        let current_edge_id = trajectory.1.edge_id;
         let current_route_id = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
         let current_datetime =
             transit_ops::get_current_time(&self.start_datetime, state, state_model)?;
@@ -122,7 +117,7 @@ impl TraversalModel for TransitTraversalModel {
         // transit frontier model, so "infinity" must solve the same problem.
         let (next_route, next_departure) = self
             .engine
-            .get_next_departure(current_edge_id.as_usize(), &current_datetime)?;
+            .get_next_departure(ctx.edge.edge_id.as_usize(), &current_datetime)?;
         let next_departure_route_id = next_route;
 
         // update the state. a bunch of features are modified here.

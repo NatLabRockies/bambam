@@ -67,10 +67,6 @@ impl LabelModel for MultimodalLabelModel {
 
         Ok(label)
     }
-
-    fn compare(&self, prev: &Label, next: &Label) -> Result<std::cmp::Ordering, LabelModelError> {
-        Ok(std::cmp::Ordering::Equal)
-    }
 }
 
 #[cfg(test)]

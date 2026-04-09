@@ -1,7 +1,7 @@
 use routee_compass_core::{
     algorithm::search::SearchTree,
     model::{
-        network::{Edge, Vertex},
+        network::Vertex,
         state::{InputFeature, StateModel, StateVariable, StateVariableConfig},
         traversal::{EdgeTraversalContext, TraversalModel, TraversalModelError},
     },
