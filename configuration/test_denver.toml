@@ -19,6 +19,7 @@ mode = "request.mode"
 runtime = "search_runtime"
 ram_mb = "search_result_size_mib"
 error = "error"
+tree_size = "tree_size_count"
 
 opps_entertainment_total = "opportunity_totals.entertainment"
 opps_retail_total = "opportunity_totals.retail"
