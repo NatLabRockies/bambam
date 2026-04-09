@@ -17,7 +17,7 @@ lon = "request.origin_x"
 lat = "request.origin_y"
 mode = "request.mode"
 runtime = "search_runtime"
-error = "error"
+error = { optional = "error" }
 tree_size = "tree_size_count"
 
 opps_entertainment_total = "opportunity_totals.entertainment"
@@ -26,6 +26,11 @@ opps_healthcare_total = "opportunity_totals.healthcare"
 opps_services_total = "opportunity_totals.services"
 opps_food_total = "opportunity_totals.food"
 opps_jobs_total = "opportunity_totals.jobs"
+
+opps_count_10 = "aggregate_opportunities.10.n_destinations"
+opps_count_20 = "aggregate_opportunities.20.n_destinations"
+opps_count_30 = "aggregate_opportunities.30.n_destinations"
+opps_count_40 = "aggregate_opportunities.40.n_destinations"
 
 opps_entertainment_10 = "aggregate_opportunities.10.opportunities.entertainment"
 opps_retail_10 = "aggregate_opportunities.10.opportunities.retail"
