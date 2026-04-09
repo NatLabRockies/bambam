@@ -691,7 +691,7 @@ mod tests {
         let mut row = BambamOutputRow::new(&mut value);
         let cost = TraversalCost {
             objective_cost: Cost::new(42.0),
-            total_cost: Cost::new(42.0),
+            edge_cost: Cost::new(42.0),
         };
         {
             let mut dis = row.disaggregate().unwrap();
@@ -702,7 +702,7 @@ mod tests {
             let dis = row.disaggregate().unwrap();
             let result = dis.get_cost().unwrap();
             assert_eq!(&result.objective_cost, &cost.objective_cost);
-            assert_eq!(&result.total_cost, &cost.total_cost);
+            assert_eq!(&result.edge_cost, &cost.edge_cost);
         }
     }
 }
