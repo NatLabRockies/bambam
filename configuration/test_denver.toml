@@ -17,7 +17,6 @@ lon = "request.origin_x"
 lat = "request.origin_y"
 mode = "request.mode"
 runtime = "search_runtime"
-ram_mb = "search_result_size_mib"
 error = "error"
 tree_size = "tree_size_count"
 
