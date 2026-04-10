@@ -144,7 +144,7 @@ pub enum LimitOperation {
 }
 
 /// Distance constraint value with associated unit.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct DistanceConstraint {
     pub limit: Length,
     pub unit: DistanceUnit,
@@ -153,7 +153,7 @@ pub struct DistanceConstraint {
 }
 
 /// Time constraint value with associated unit.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct TimeConstraint {
     pub limit: Time,
     pub unit: TimeUnit,
@@ -162,7 +162,7 @@ pub struct TimeConstraint {
 }
 
 /// Energy constraint value with associated unit.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct EnergyConstraint {
     pub limit: Energy,
     pub unit: EnergyUnit,
@@ -230,6 +230,77 @@ impl LimitOperation {
             LimitOperation::MaxInclusive => value <= limit,
             LimitOperation::MaxExclusive => value < limit,
         }
+    }
+}
+
+impl<'de> Deserialize<'de> for DistanceConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawConstraint {
+            limit: f64,
+            unit: DistanceUnit,
+            #[serde(default)]
+            op: LimitOperation,
+        }
+
+        let raw = RawConstraint::deserialize(deserializer)?;
+        let limit = raw.unit.to_uom(raw.limit);
+        Ok(DistanceConstraint {
+            limit,
+            unit: raw.unit,
+            op: raw.op,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for TimeConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawConstraint {
+            limit: f64,
+            unit: TimeUnit,
+            #[serde(default)]
+            op: LimitOperation,
+        }
+
+        let raw = RawConstraint::deserialize(deserializer)?;
+        let limit = raw.unit.to_uom(raw.limit);
+        Ok(TimeConstraint {
+            limit,
+            unit: raw.unit,
+            op: raw.op,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for EnergyConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawConstraint {
+            limit: f64,
+            unit: EnergyUnit,
+            variable: EnergyStateVariable,
+            #[serde(default)]
+            op: LimitOperation,
+        }
+
+        let raw = RawConstraint::deserialize(deserializer)?;
+        let limit = raw.unit.to_uom(raw.limit);
+        Ok(EnergyConstraint {
+            limit,
+            unit: raw.unit,
+            variable: raw.variable,
+            op: raw.op,
+        })
     }
 }
 
