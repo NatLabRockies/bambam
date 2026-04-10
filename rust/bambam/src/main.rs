@@ -4,9 +4,6 @@ use routee_compass::app::cli::cli_args::CliArgs;
 use routee_compass::app::compass::CompassBuilderInventory;
 inventory::submit! { builders::BUILDER_REGISTRATION }
 
-// Import the library to ensure inventory registrations in lib.rs are included
-#[allow(unused_imports)]
-
 fn main() {
     env_logger::init();
 

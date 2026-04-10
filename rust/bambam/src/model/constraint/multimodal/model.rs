@@ -1,10 +1,11 @@
 use std::num::NonZeroU64;
 use std::sync::Arc;
 
+use crate::model::constraint::multimodal::Constraint;
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
-use crate::model::state::{MultimodalMapping, MultimodalStateMapping};
-use crate::model::{constraint::multimodal::Constraint, state::multimodal_state_ops as state_ops};
-use bambam_core::model::state::LegIdx;
+use bambam_core::model::state::{
+    multimodal_state_ops as state_ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
+};
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
     network::Edge,
@@ -13,11 +14,21 @@ use routee_compass_core::model::{
 
 pub struct MultimodalConstraintModel {
     pub engine: Arc<MultimodalConstraintEngine>,
+    pub constraints: Vec<Constraint>,
+    pub max_trip_legs: NonZeroU64,
 }
 
 impl MultimodalConstraintModel {
-    pub fn new(engine: Arc<MultimodalConstraintEngine>) -> Self {
-        Self { engine }
+    pub fn new(
+        engine: Arc<MultimodalConstraintEngine>,
+        constraints: Vec<Constraint>,
+        max_trip_legs: NonZeroU64,
+    ) -> Self {
+        Self {
+            engine,
+            constraints,
+            max_trip_legs,
+        }
     }
 
     /// builds a new [`MultimodalConstraintModel`] from its data dependencies only.
@@ -25,10 +36,8 @@ impl MultimodalConstraintModel {
     pub fn new_local(
         mode: &str,
         constraints: Vec<Constraint>,
-        modes: &[&str],
-        route_ids: &[&str],
         max_trip_legs: NonZeroU64,
-        use_route_ids: bool,
+        modes: &[&str],
     ) -> Result<Self, ConstraintModelError> {
         let mode_to_state =
             MultimodalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
@@ -38,32 +47,12 @@ impl MultimodalConstraintModel {
                 ))
             })?;
 
-        let route_id_to_state = match route_ids {
-            [] => None,
-            _ => {
-                let mapping = MultimodalMapping::new(
-                    &route_ids
-                        .iter()
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>(),
-                )
-                .map_err(|e| {
-                    ConstraintModelError::BuildError(format!(
-                "while building MultimodalConstraintModel, failure constructing mode mapping: {e}"
-            ))
-                })?;
-                Some(mapping)
-            }
-        };
         let engine = MultimodalConstraintEngine {
             mode: mode.to_string(),
-            constraints,
             mode_to_state: Arc::new(mode_to_state),
-            route_id_to_state: Arc::new(route_id_to_state),
-            max_trip_legs,
         };
 
-        let mmm = MultimodalConstraintModel::new(Arc::new(engine));
+        let mmm = MultimodalConstraintModel::new(Arc::new(engine), constraints, max_trip_legs);
         Ok(mmm)
     }
 }
@@ -84,32 +73,38 @@ impl ConstraintModel for MultimodalConstraintModel {
     ) -> Result<bool, ConstraintModelError> {
         // if adding this edge would exceed max_trip_legs, we can skip running the constraints
         // and directly reject this edge.
-        let valid_leg_count = valid_trip_leg_count(
+        let valid_leg_count = state_ops::appending_edge_mode_is_valid(
             state,
             state_model,
             &self.engine.mode,
-            self.engine.max_trip_legs,
+            self.max_trip_legs,
             &self.engine.mode_to_state,
-        )?;
+        )
+        .map_err(|e| {
+            let msg = format!("in multimodal constraint model, {e}");
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
         if !valid_leg_count {
             return Ok(false);
         }
 
-        for constraint in self.engine.constraints.iter() {
+        for constraint in self.constraints.iter() {
             let valid = constraint.valid_frontier(
                 &self.engine.mode,
                 edge,
                 state,
                 state_model,
                 &self.engine.mode_to_state,
-                self.engine.max_trip_legs,
+                self.max_trip_legs,
             )?;
             log::debug!(
-                "multimodal frontier is valid? '{valid}' for state at time: {:.2} minutes",
+                "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
+                (edge.edge_list_id, edge.edge_id),
+                state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
                 state_model
                     .get_time(state, "trip_time")
                     .unwrap_or_default()
-                    .get::<uom::si::time::minute>()
+                    .get::<uom::si::time::minute>(),
             );
             if !valid {
                 return Ok(false);
@@ -122,33 +117,6 @@ impl ConstraintModel for MultimodalConstraintModel {
     fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
         Ok(true)
     }
-}
-
-/// helper to check if adding this edge to the trip would exceed the maximum number of trip legs.
-fn valid_trip_leg_count(
-    state: &[StateVariable],
-    state_model: &StateModel,
-    edge_mode: &str,
-    max_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
-) -> Result<bool, ConstraintModelError> {
-    let max_legs_usize = max_legs.get() as usize;
-    // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
-    let active_mode = state_ops::get_active_leg_mode(state, state_model, max_legs, mode_to_state)
-        .map_err(|e| {
-        ConstraintModelError::ConstraintModelError(format!("while validating trip leg count, {e}"))
-    })?;
-    let n_existing_legs = state_ops::get_n_legs(state, state_model).map_err(|e| {
-        ConstraintModelError::ConstraintModelError(
-            (format!("while getting number of trip legs for this trip: {e}")),
-        )
-    })?;
-    let n_legs = match active_mode {
-        Some(active_mode) if active_mode != edge_mode => n_existing_legs + 1,
-        _ => n_existing_legs,
-    };
-    let is_valid = n_legs <= max_legs_usize;
-    Ok(is_valid)
 }
 
 #[cfg(test)]
@@ -171,16 +139,16 @@ mod test {
         constraint::multimodal::{
             model::MultimodalConstraintModel, sequence_trie::SubSequenceTrie, Constraint,
         },
-        state::{multimodal_state_ops as state_ops, MultimodalStateMapping},
         traversal::multimodal::MultimodalTraversalModel,
     };
+    use bambam_core::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
 
     #[test]
     fn test_valid_max_trip_legs_empty_state() {
         // testing validitity of an initial state using constraint "max trip legs = 1"
         let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (mam, mfm, state_model, state) =
-            test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
+            test_setup(vec![], "walk", &["walk", "bike"], max_trip_legs);
 
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
 
@@ -196,12 +164,12 @@ mod test {
         // testing validitity of a state with one leg using constraint "max trip legs = 2"
         let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mam, mfm, state_model, mut state) =
-            test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
+            test_setup(vec![], "walk", &["walk", "bike"], max_trip_legs);
 
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
 
         // assign one leg to walk mode
-        state_ops::set_leg_mode(&mut state, 0, "walk", &state_model, &mam.mode_to_state)
+        state_ops::set_leg_mode(&mut state, 0, "walk", &state_model, &mam.mode_enumeration)
             .expect("test invariant failed");
         state_ops::increment_active_leg_idx(&mut state, &state_model, max_trip_legs)
             .expect("test invariant failed");
@@ -218,7 +186,7 @@ mod test {
         // testing validitity of a state with two legs using constraint "max trip legs = 1"
         let max_trip_legs = NonZeroU64::new(2).unwrap();
         let (mam, mfm, state_model, mut state) =
-            test_setup(vec![], "walk", &["walk", "bike"], &[], max_trip_legs);
+            test_setup(vec![], "walk", &["walk", "bike"], max_trip_legs);
 
         // assign one leg to walk mode
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
@@ -226,7 +194,7 @@ mod test {
             &["walk", "bike"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -251,7 +219,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -259,7 +226,7 @@ mod test {
             &["walk", "drive", "walk"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -292,7 +259,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -300,7 +266,7 @@ mod test {
             &["walk", "bike", "walk", "drive"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -323,7 +289,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -331,7 +296,7 @@ mod test {
             &["walk", "transit", "walk"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -361,7 +326,6 @@ mod test {
             vec![mode_constraint],
             "drive",
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -369,7 +333,7 @@ mod test {
             &["walk", "transit", "walk"],
             &mut state,
             &state_model,
-            &mtm.mode_to_state,
+            &mtm.mode_enumeration,
             max_trip_legs,
         );
 
@@ -397,7 +361,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -432,7 +395,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -440,7 +402,7 @@ mod test {
             &["walk", "transit"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -471,7 +433,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "drive", "tnc", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -482,7 +443,7 @@ mod test {
             &["walk", "transit"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -498,7 +459,6 @@ mod test {
         constraints: Vec<Constraint>,
         this_mode: &str,
         modes: &[&str],
-        route_ids: &[&str],
         max_trip_legs: NonZeroU64,
     ) -> (
         MultimodalTraversalModel,
@@ -506,18 +466,12 @@ mod test {
         StateModel,
         Vec<StateVariable>,
     ) {
-        let mtm = MultimodalTraversalModel::new_local(this_mode, max_trip_legs, modes, &[])
+        let mtm = MultimodalTraversalModel::new_local(this_mode, max_trip_legs, modes)
             .expect("test invariant failed");
         let state_model = StateModel::new(mtm.output_features());
-        let mfm = MultimodalConstraintModel::new_local(
-            this_mode,
-            constraints,
-            modes,
-            route_ids,
-            max_trip_legs,
-            true,
-        )
-        .expect("test invariant failed");
+        let mfm =
+            MultimodalConstraintModel::new_local(this_mode, constraints, max_trip_legs, modes)
+                .expect("test invariant failed");
         let state = state_model
             .initial_state(None)
             .expect("test invariant failed");
@@ -552,7 +506,6 @@ mod test {
             vec![mode_constraint],
             "walk", // Start with bike mode to avoid walk
             &["walk", "bike"],
-            &[],
             max_trip_legs,
         );
 
@@ -576,7 +529,6 @@ mod test {
             vec![mode_constraint],
             "drive",
             &["walk", "bike", "drive"], // drive is not in the limits
-            &[],
             max_trip_legs,
         );
 
@@ -597,7 +549,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike"],
-            &[],
             max_trip_legs,
         );
 
@@ -605,7 +556,7 @@ mod test {
             &["walk"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -626,7 +577,7 @@ mod test {
             "walk", "bike", "drive", "tnc", "transit", "eBike", "eVTOL", "airplane", "ferry",
         ];
         let (mam, mfm, state_model, state) =
-            test_setup(vec![mode_constraint], "walk", &modes, &[], max_trip_legs);
+            test_setup(vec![mode_constraint], "walk", &modes, max_trip_legs);
 
         for edge_list_id in (0..modes.len()) {
             let edge = Edge::new(
@@ -654,7 +605,6 @@ mod test {
             vec![mode_constraint],
             "walk",            // lowercase
             &["walk", "Walk"], // Include both cases in modes
-            &[],
             max_trip_legs,
         );
 
@@ -677,7 +627,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -685,7 +634,7 @@ mod test {
             &["bike"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -707,7 +656,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike"],
-            &[],
             max_trip_legs,
         );
 
@@ -734,7 +682,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike", "transit"],
-            &[],
             max_trip_legs,
         );
 
@@ -742,7 +689,7 @@ mod test {
             &["walk", "transit"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -766,13 +713,13 @@ mod test {
             ])),
         ];
         let (mam, mfm, state_model, mut state) =
-            test_setup(constraints, "walk", &["walk", "bike"], &[], max_trip_legs);
+            test_setup(constraints, "walk", &["walk", "bike"], max_trip_legs);
 
         inject_trip_legs(
             &["walk"],
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -796,13 +743,13 @@ mod test {
             Constraint::ExactSequences(trie),
         ];
         let (bike_mtm, bike_mfm, state_model, mut state) =
-            test_setup(constraints, "bike", &["walk", "bike"], &[], max_trip_legs);
+            test_setup(constraints, "bike", &["walk", "bike"], max_trip_legs);
 
         inject_trip_legs(
             &["walk"],
             &mut state,
             &state_model,
-            &bike_mtm.mode_to_state,
+            &bike_mtm.mode_enumeration,
             max_trip_legs,
         );
 
@@ -825,7 +772,6 @@ mod test {
             vec![mode_constraint],
             "walk",
             &["walk", "bike"],
-            &[],
             max_trip_legs,
         );
 
@@ -837,7 +783,7 @@ mod test {
             &large_sequence,
             &mut state,
             &state_model,
-            &mam.mode_to_state,
+            &mam.mode_enumeration,
             max_trip_legs,
         );
 
@@ -854,14 +800,14 @@ mod test {
         // Test transition from valid state to invalid state when adding a new mode
         let max_trip_legs = NonZeroU64::new(1).unwrap();
         let (bike_mtm, bike_mfm, state_model, mut state) =
-            test_setup(vec![], "bike", &["walk", "bike"], &[], max_trip_legs);
+            test_setup(vec![], "bike", &["walk", "bike"], max_trip_legs);
 
         // Set up state with exactly 1 leg (at the limit)
         inject_trip_legs(
             &["walk"],
             &mut state,
             &state_model,
-            &bike_mtm.mode_to_state,
+            &bike_mtm.mode_enumeration,
             max_trip_legs,
         );
 

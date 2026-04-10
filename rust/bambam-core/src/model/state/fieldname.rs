@@ -23,6 +23,11 @@ pub fn leg_time_fieldname(leg_idx: LegIdx) -> String {
     leg_fieldname(leg_idx, "time")
 }
 
+/// the state variable name containing the energy for a given leg id
+pub fn leg_energy_fieldname(leg_idx: LegIdx) -> String {
+    leg_fieldname(leg_idx, "energy")
+}
+
 /// the state variable name containing the route id for a given leg id
 pub fn leg_route_id_fieldname(leg_idx: LegIdx) -> String {
     leg_fieldname(leg_idx, "route_id")

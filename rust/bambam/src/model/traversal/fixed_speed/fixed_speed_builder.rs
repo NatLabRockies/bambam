@@ -15,7 +15,7 @@ impl TraversalModelBuilder for FixedSpeedBuilder {
     ) -> Result<Arc<dyn TraversalModelService>, TraversalModelError> {
         let config: FixedSpeedConfig = serde_json::from_value(parameters.clone()).map_err(|e| {
             TraversalModelError::BuildError(format!(
-                "failure reading fixed traversal configuration: {e}",
+                "failure reading fixed speed traversal model configuration: {e}",
             ))
         })?;
         let service = FixedSpeedModel::new(Arc::new(config));

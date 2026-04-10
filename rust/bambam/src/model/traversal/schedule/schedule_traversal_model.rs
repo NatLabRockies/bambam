@@ -42,9 +42,9 @@ impl TraversalModel for ScheduleTraversalModel {
         )]
     }
 
-    fn traverse_edge(
+    fn estimate_traversal(
         &self,
-        _trajectory: (&Vertex, &Edge, &Vertex),
+        _od: (&Vertex, &Vertex),
         _state: &mut Vec<StateVariable>,
         _tree: &SearchTree,
         _state_model: &routee_compass_core::model::state::StateModel,
@@ -52,12 +52,11 @@ impl TraversalModel for ScheduleTraversalModel {
         todo!()
     }
 
-    fn estimate_traversal(
+    fn traverse_edge(
         &self,
-        _od: (&Vertex, &Vertex),
-        _state: &mut Vec<StateVariable>,
-        _tree: &SearchTree,
-        _state_model: &routee_compass_core::model::state::StateModel,
+        ctx: &routee_compass_core::model::traversal::EdgeTraversalContext,
+        state: &mut Vec<StateVariable>,
+        state_model: &routee_compass_core::model::state::StateModel,
     ) -> Result<(), TraversalModelError> {
         todo!()
     }

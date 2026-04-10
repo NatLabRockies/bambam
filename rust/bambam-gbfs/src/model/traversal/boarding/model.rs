@@ -1,9 +1,9 @@
 use routee_compass_core::{
     algorithm::search::SearchTree,
     model::{
-        network::{Edge, Vertex},
+        network::Vertex,
         state::{InputFeature, StateModel, StateVariable, StateVariableConfig},
-        traversal::{TraversalModel, TraversalModelError},
+        traversal::{EdgeTraversalContext, TraversalModel, TraversalModelError},
     },
 };
 
@@ -23,16 +23,6 @@ impl TraversalModel for BoardingTraversalModel {
         todo!()
     }
 
-    fn traverse_edge(
-        &self,
-        _trajectory: (&Vertex, &Edge, &Vertex),
-        _state: &mut Vec<StateVariable>,
-        _tree: &SearchTree,
-        _state_model: &StateModel,
-    ) -> Result<(), TraversalModelError> {
-        todo!()
-    }
-
     fn estimate_traversal(
         &self,
         _od: (&Vertex, &Vertex),
@@ -42,5 +32,14 @@ impl TraversalModel for BoardingTraversalModel {
     ) -> Result<(), TraversalModelError> {
         // this can be skipped if we aren't trying to use A*.
         Ok(())
+    }
+
+    fn traverse_edge(
+        &self,
+        _ctx: &EdgeTraversalContext,
+        _state: &mut Vec<StateVariable>,
+        _state_model: &StateModel,
+    ) -> Result<(), TraversalModelError> {
+        todo!()
     }
 }
