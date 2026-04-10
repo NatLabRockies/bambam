@@ -9,7 +9,7 @@ use routee_compass_core::model::{
     state::{StateModel, StateVariable},
 };
 
-use crate::model::state::{
+use bambam_core::model::state::{
     multimodal_state_ops as ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
 };
 
@@ -80,9 +80,9 @@ mod test {
     use crate::model::label::multimodal::{
         multimodal_label_ops as label_ops, MultimodalLabelModel,
     };
-    use crate::model::state::MultimodalMapping;
-    use crate::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
     use crate::model::traversal::multimodal::MultimodalTraversalModel;
+    use bambam_core::model::state::MultimodalMapping;
+    use bambam_core::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
     #[test]
     fn test_empty() {
         let max_trip_legs = NonZeroU64::new(1).unwrap();

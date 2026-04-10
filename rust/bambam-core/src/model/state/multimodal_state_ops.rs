@@ -1,7 +1,9 @@
-use crate::model::state::{LegIdx, MultimodalStateMapping};
+use std::{f64::consts::PI, num::NonZeroU64};
+
+use crate::model::state::{LegIdx, MultimodalMapping, MultimodalStateMapping};
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
-use uom::si::f64::{Length, Time};
+use uom::si::f64::{Energy, Length, Time};
 
 use super::fieldname;
 
@@ -14,7 +16,7 @@ pub fn get_active_leg_idx(
     if leg_i64 < 0 {
         Ok(None)
     } else {
-        let leg_u64 = leg_i64.try_into().map_err(|_e| {
+        let leg_u64 = leg_i64.try_into().map_err(|e| {
             StateModelError::RuntimeError(format!(
                 "internal error: while getting active trip leg, unable to parse {leg_i64} as a u64"
             ))
@@ -28,7 +30,7 @@ pub fn get_active_leg_idx(
 pub fn get_active_leg_mode<'a>(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &'a MultimodalStateMapping,
 ) -> Result<Option<&'a str>, StateModelError> {
     match get_active_leg_idx(state, state_model)? {
@@ -49,7 +51,7 @@ pub fn get_n_legs(
     match get_active_leg_idx(state, state_model)? {
         None => Ok(0),
         Some(leg_idx) => {
-            let count: usize = (leg_idx + 1).try_into().map_err(|_e| {
+            let count: usize = (leg_idx + 1).try_into().map_err(|e| {
                 StateModelError::RuntimeError(format!(
                     "internal error: unable to convert leg index {leg_idx} from u64 into usize"
                 ))
@@ -57,6 +59,34 @@ pub fn get_n_legs(
             Ok(count)
         }
     }
+}
+
+/// a constraint model action, this tests if the addition of a single edge mode breaks the limit on trip legs
+/// set during configuration. this is determined based on a reading of the constraint model.
+pub fn appending_edge_mode_is_valid(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    leg_mode: &str,
+    max_trip_legs: NonZeroU64,
+    mode_to_state: &MultimodalStateMapping,
+) -> Result<bool, StateModelError> {
+    // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
+    let active_mode = get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state)
+        .map_err(|e| {
+            StateModelError::RuntimeError(format!("while validating trip leg count, {e}"))
+        })?;
+    let n_existing_legs = get_n_legs(state, state_model).map_err(|e| {
+        StateModelError::RuntimeError(
+            (format!("while getting number of trip legs for this trip: {e}")),
+        )
+    })?;
+    let n_legs = match active_mode {
+        Some(active_mode) if active_mode != leg_mode => n_existing_legs + 1,
+        _ => n_existing_legs,
+    };
+
+    let max_legs_usize = max_trip_legs.get() as usize;
+    Ok(n_legs <= max_legs_usize)
 }
 
 /// report if any trip data has been recorded for the given trip leg.
@@ -78,7 +108,7 @@ pub fn get_leg_mode_label(
     state: &[StateVariable],
     leg_idx: LegIdx,
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
 ) -> Result<Option<i64>, StateModelError> {
     validate_leg_idx(leg_idx, max_trip_legs)?;
     let name = fieldname::leg_mode_fieldname(leg_idx);
@@ -96,7 +126,7 @@ pub fn get_existing_leg_mode<'a>(
     state: &[StateVariable],
     leg_idx: LegIdx,
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &'a MultimodalStateMapping,
 ) -> Result<&'a str, StateModelError> {
     let label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
@@ -131,6 +161,15 @@ pub fn get_leg_time(
 ) -> Result<Time, StateModelError> {
     let name = fieldname::leg_time_fieldname(leg_idx);
     state_model.get_time(state, &name)
+}
+
+pub fn get_leg_energy(
+    state: &[StateVariable],
+    leg_idx: LegIdx,
+    state_model: &StateModel,
+) -> Result<Energy, StateModelError> {
+    let name = fieldname::leg_energy_fieldname(leg_idx);
+    state_model.get_energy(state, &name)
 }
 
 pub fn get_leg_route_id<'a>(
@@ -168,11 +207,11 @@ pub fn get_mode_time(
 pub fn get_mode_label_sequence(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
 ) -> Result<Vec<i64>, StateModelError> {
     let mut labels: Vec<i64> = vec![];
 
-    for leg_idx in 0..max_trip_legs {
+    for leg_idx in (0..max_trip_legs.get()) {
         let mode_label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
         match mode_label_opt {
             None => break,
@@ -190,7 +229,7 @@ pub fn get_mode_label_sequence(
 pub fn get_mode_sequence(
     state: &[StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
     mode_to_state: &MultimodalStateMapping,
 ) -> Result<Vec<String>, StateModelError> {
     let mut modes: Vec<String> = vec![];
@@ -211,7 +250,7 @@ pub fn get_mode_sequence(
 pub fn increment_active_leg_idx(
     state: &mut [StateVariable],
     state_model: &StateModel,
-    max_trip_legs: LegIdx,
+    max_trip_legs: NonZeroU64,
 ) -> Result<LegIdx, StateModelError> {
     // get the index of the next leg
     let next_leg_idx_u64 = match get_active_leg_idx(state, state_model)? {
@@ -223,7 +262,7 @@ pub fn increment_active_leg_idx(
         None => 0,
     };
     // as an i64, to match the storage format
-    let next_leg_idx: i64 = next_leg_idx_u64.try_into().map_err(|_e| {
+    let next_leg_idx: i64 = next_leg_idx_u64.try_into().map_err(|e| {
         StateModelError::RuntimeError(format!(
             "internal error: while getting active trip leg, unable to parse {next_leg_idx_u64} as a i64"
         ))
@@ -268,9 +307,21 @@ pub fn set_leg_route_id(
     state_model.set_custom_i64(state, &name, route_id_label)
 }
 
+/// sets the route id value for the given leg. executed without first testing that
+/// the label maps to a value in a route id enumeration.
+pub fn set_leg_route_id_raw(
+    state: &mut [StateVariable],
+    leg_idx: LegIdx,
+    route_id_label: i64,
+    state_model: &StateModel,
+) -> Result<(), StateModelError> {
+    let name = fieldname::leg_route_id_fieldname(leg_idx);
+    state_model.set_custom_i64(state, &name, &route_id_label)
+}
+
 /// validates leg_idx values, which must be in range [0, max_trip_legs)
-pub fn validate_leg_idx(leg_idx: LegIdx, max_trip_legs: LegIdx) -> Result<(), StateModelError> {
-    if leg_idx >= max_trip_legs {
+pub fn validate_leg_idx(leg_idx: LegIdx, max_trip_legs: NonZeroU64) -> Result<(), StateModelError> {
+    if leg_idx >= max_trip_legs.get() {
         Err(StateModelError::RuntimeError(format!(
             "invalid leg id {leg_idx} >= max leg id {max_trip_legs}"
         )))
@@ -289,7 +340,7 @@ pub fn error_inactive_state_traversal(
         |e| json!({"message": "unable to serialize state!", "error": format!("{e}")}),
     );
     let next_string = serde_json::to_string_pretty(&next_json)
-        .unwrap_or_else(|_e| String::from("<unable to serialize state!>"));
+        .unwrap_or_else(|e| String::from("<unable to serialize state!>"));
     StateModelError::RuntimeError(format!(
         "attempting multimodal traversal with state that has no active leg: {next_string}"
     ))

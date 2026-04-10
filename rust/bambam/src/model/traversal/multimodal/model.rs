@@ -1,5 +1,5 @@
 use super::multimodal_traversal_ops as ops;
-use crate::model::state::{
+use bambam_core::model::state::{
     fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
     MultimodalMapping, MultimodalStateMapping,
 };
@@ -225,12 +225,10 @@ impl MultimodalTraversalModel {
 #[cfg(test)]
 mod test {
     use super::MultimodalTraversalModel;
-    use crate::model::{
-        label::multimodal::MultimodalLabelModel,
-        state::{
-            fieldname, multimodal_state_ops as state_ops, variable, LegIdx, MultimodalMapping,
-            MultimodalStateMapping,
-        },
+    use crate::model::label::multimodal::MultimodalLabelModel;
+    use bambam_core::model::state::{
+        fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalMapping,
+        MultimodalStateMapping,
     };
     use routee_compass_core::model::{
         cost::{cost_model_service::CostModelService, CostConstraint, CostModel, VehicleCostRate},

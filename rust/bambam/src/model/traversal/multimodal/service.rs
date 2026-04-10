@@ -6,12 +6,10 @@ use routee_compass_core::{
 };
 use serde_json::Value;
 
-use crate::model::{
-    state::{MultimodalMapping, MultimodalStateMapping},
-    traversal::multimodal::{
-        MultimodalTraversalConfig, MultimodalTraversalModel, MultimodalTraversalQuery,
-    },
+use crate::model::traversal::multimodal::{
+    MultimodalTraversalConfig, MultimodalTraversalModel, MultimodalTraversalQuery,
 };
+use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
 
 pub struct MultimodalTraversalService {
     pub config: MultimodalTraversalConfig,

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::model::state::variable::EMPTY;
 use crate::model::traversal::transit::transit_ops;
 use crate::model::traversal::transit::{engine::TransitTraversalEngine, schedule::Departure};
 use bambam_core::model::bambam_state;
+use bambam_core::model::state::variable;
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use routee_compass_core::model::state::{StateModel, StateVariable};
 use routee_compass_core::model::traversal::{EdgeTraversalContext, TraversalModelError};
@@ -72,7 +72,7 @@ impl TraversalModel for TransitTraversalModel {
                 String::from(bambam_state::ROUTE_ID),
                 StateVariableConfig::Custom {
                     custom_type: "RouteId".to_string(),
-                    value: EMPTY,
+                    value: variable::EMPTY,
                     accumulator: true,
                 },
             ),

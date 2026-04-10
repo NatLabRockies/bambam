@@ -6,7 +6,7 @@ use crate::model::constraint::multimodal::{
     multimodal_frontier_ops as ops, ConstraintConfig, DistanceConstraint, EnergyConstraint,
     TimeConstraint,
 };
-use crate::model::state::{
+use bambam_core::model::state::{
     multimodal_state_ops as state_ops, MultimodalMapping, MultimodalStateMapping,
 };
 use bambam_core::model::{bambam_field, bambam_state};

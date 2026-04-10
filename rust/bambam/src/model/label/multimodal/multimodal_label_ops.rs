@@ -1,6 +1,6 @@
 use routee_compass_core::model::label::{label_model_error::LabelModelError, Label};
 
-use crate::model::state::{MultimodalMapping, MultimodalStateMapping};
+use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
 
 /// use the configuration of this label model to retrieve the state's
 pub fn get_mode_sequence<'a>(

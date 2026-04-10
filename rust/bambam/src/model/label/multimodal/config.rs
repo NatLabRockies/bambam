@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::state::LegIdx;
+use bambam_core::model::state::LegIdx;
 
 /// configuration for the multimodal labeling model. this type is deserialized from the
 /// config [label] section and set as defaults for the label model. at query time, this

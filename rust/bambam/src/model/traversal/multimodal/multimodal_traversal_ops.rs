@@ -1,10 +1,10 @@
 use std::num::NonZeroU64;
 use std::sync::OnceLock;
 
-use crate::model::state::{
+use bambam_core::model::bambam_state;
+use bambam_core::model::state::{
     fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalStateMapping,
 };
-use bambam_core::model::bambam_state;
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
 use uom::si::f64::{Length, Time};

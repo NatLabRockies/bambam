@@ -8,13 +8,11 @@ use routee_compass_core::{
     util::fs::{read_decoders, read_utils},
 };
 
-use crate::model::{
-    constraint::multimodal::{
-        model::MultimodalConstraintModel, Constraint, MultimodalConstraintConfig,
-        MultimodalConstraintEngine, MultimodalConstraintModelQuery,
-    },
-    state::{MultimodalMapping, MultimodalStateMapping},
+use crate::model::constraint::multimodal::{
+    model::MultimodalConstraintModel, Constraint, MultimodalConstraintConfig,
+    MultimodalConstraintEngine, MultimodalConstraintModelQuery,
 };
+use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
 
 pub struct MultimodalConstraintService {
     pub engine: Arc<MultimodalConstraintEngine>,

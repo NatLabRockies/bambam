@@ -1,10 +1,11 @@
 use std::num::NonZeroU64;
 use std::sync::Arc;
 
+use crate::model::constraint::multimodal::Constraint;
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
-use crate::model::state::{MultimodalMapping, MultimodalStateMapping};
-use crate::model::{constraint::multimodal::Constraint, state::multimodal_state_ops as state_ops};
-use bambam_core::model::state::LegIdx;
+use bambam_core::model::state::{
+    multimodal_state_ops as state_ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
+};
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
     network::Edge,
@@ -136,9 +137,9 @@ mod test {
         constraint::multimodal::{
             model::MultimodalConstraintModel, sequence_trie::SubSequenceTrie, Constraint,
         },
-        state::{multimodal_state_ops as state_ops, MultimodalStateMapping},
         traversal::multimodal::MultimodalTraversalModel,
     };
+    use bambam_core::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
 
     #[test]
     fn test_valid_max_trip_legs_empty_state() {

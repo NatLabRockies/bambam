@@ -7,16 +7,14 @@ use std::{
     sync::Arc,
 };
 
-use crate::model::{
-    state::{MultimodalMapping, MultimodalStateMapping},
-    traversal::transit::{
-        config::TransitTraversalConfig,
-        metadata::{self, GtfsArchiveMetadata},
-        schedule::{Departure, Schedule},
-        schedule_loading_policy::{self, ScheduleLoadingPolicy},
-        transit_ops,
-    },
+use crate::model::traversal::transit::{
+    config::TransitTraversalConfig,
+    metadata::{self, GtfsArchiveMetadata},
+    schedule::{Departure, Schedule},
+    schedule_loading_policy::{self, ScheduleLoadingPolicy},
+    transit_ops,
 };
+use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
 use chrono::{NaiveDate, NaiveDateTime};
 use flate2::bufread::GzDecoder;
 use routee_compass_core::{model::traversal::TraversalModelError, util::fs::read_utils};
