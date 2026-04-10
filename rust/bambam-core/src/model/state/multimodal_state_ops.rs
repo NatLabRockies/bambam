@@ -76,9 +76,9 @@ pub fn appending_edge_mode_is_valid(
             StateModelError::RuntimeError(format!("while validating trip leg count, {e}"))
         })?;
     let n_existing_legs = get_n_legs(state, state_model).map_err(|e| {
-        StateModelError::RuntimeError(
-            format!("while getting number of trip legs for this trip: {e}") ,
-        )
+        StateModelError::RuntimeError(format!(
+            "while getting number of trip legs for this trip: {e}"
+        ))
     })?;
     let n_legs = match active_mode {
         Some(active_mode) if active_mode != leg_mode => n_existing_legs + 1,
@@ -211,7 +211,7 @@ pub fn get_mode_label_sequence(
 ) -> Result<Vec<i64>, StateModelError> {
     let mut labels: Vec<i64> = vec![];
 
-    for leg_idx in 0..max_trip_legs.get()  {
+    for leg_idx in 0..max_trip_legs.get() {
         let mode_label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
         match mode_label_opt {
             None => break,
