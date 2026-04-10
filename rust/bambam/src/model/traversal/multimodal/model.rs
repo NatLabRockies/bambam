@@ -103,8 +103,9 @@ impl TraversalModel for MultimodalTraversalModel {
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         log::debug!(
-            "begin multimodal traversal along edge {:?} for state at time: {:.2} minutes with tree size {}",
+            "begin multimodal traversal along edge {:?} with active_leg {}, trip_time: {:.2} minutes with tree size {}",
             (ctx.edge.edge_list_id, ctx.edge.edge_id),
+            state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
             state_model
                 .get_time(state, "trip_time")
                 .unwrap_or_default()
@@ -134,8 +135,9 @@ impl TraversalModel for MultimodalTraversalModel {
         )?;
         ops::update_route_id(state, state_model, &self.mode, leg_idx, self.max_trip_legs)?;
         log::debug!(
-            "finish multimodal traversal along edge {:?} for state at time: {:.2} minutes with tree size {}",
+            "finish multimodal traversal along edge {:?} with active_leg {}, trip_time: {:.2} minutes with tree size {}",
             (ctx.edge.edge_list_id, ctx.edge.edge_id),
+            state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
             state_model
                 .get_time(state, "trip_time")
                 .unwrap_or_default()

@@ -98,11 +98,13 @@ impl ConstraintModel for MultimodalConstraintModel {
                 self.max_trip_legs,
             )?;
             log::debug!(
-                "multimodal frontier is valid? '{valid}' for state at time: {:.2} minutes",
+                "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
+                (edge.edge_list_id, edge.edge_id),
+                state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
                 state_model
                     .get_time(state, "trip_time")
                     .unwrap_or_default()
-                    .get::<uom::si::time::minute>()
+                    .get::<uom::si::time::minute>(),
             );
             if !valid {
                 return Ok(false);

@@ -320,6 +320,10 @@ fn validate_trip_time(
             ConstraintModelError::ConstraintModelError(msg)
         })?;
     let valid = limit.test(time, false);
+    log::debug!(
+        "validating trip_time with time {:.2} minutes against limit {limit:?}. valid? {valid}",
+        time.get::<uom::si::time::minute>(),
+    );
     Ok(valid)
 }
 
