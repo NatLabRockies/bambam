@@ -173,7 +173,7 @@ type = "summary"
 
 [[plugin.output_plugins]]
 type = "traversal"
-tree = "geojson"
+tree = "geo_json"
 
 [[plugin.output_plugins]]
 type = "bambam"
