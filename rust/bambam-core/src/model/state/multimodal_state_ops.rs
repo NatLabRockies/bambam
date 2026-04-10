@@ -1,6 +1,6 @@
-use std::{f64::consts::PI, num::NonZeroU64};
+use std::num::NonZeroU64;
 
-use crate::model::state::{LegIdx, MultimodalMapping, MultimodalStateMapping};
+use crate::model::state::{LegIdx, MultimodalStateMapping};
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
 use uom::si::f64::{Energy, Length, Time};
@@ -16,7 +16,7 @@ pub fn get_active_leg_idx(
     if leg_i64 < 0 {
         Ok(None)
     } else {
-        let leg_u64 = leg_i64.try_into().map_err(|e| {
+        let leg_u64 = leg_i64.try_into().map_err(|_e| {
             StateModelError::RuntimeError(format!(
                 "internal error: while getting active trip leg, unable to parse {leg_i64} as a u64"
             ))
@@ -51,7 +51,7 @@ pub fn get_n_legs(
     match get_active_leg_idx(state, state_model)? {
         None => Ok(0),
         Some(leg_idx) => {
-            let count: usize = (leg_idx + 1).try_into().map_err(|e| {
+            let count: usize = (leg_idx + 1).try_into().map_err(|_e| {
                 StateModelError::RuntimeError(format!(
                     "internal error: unable to convert leg index {leg_idx} from u64 into usize"
                 ))
@@ -77,7 +77,7 @@ pub fn appending_edge_mode_is_valid(
         })?;
     let n_existing_legs = get_n_legs(state, state_model).map_err(|e| {
         StateModelError::RuntimeError(
-            (format!("while getting number of trip legs for this trip: {e}")),
+            format!("while getting number of trip legs for this trip: {e}") ,
         )
     })?;
     let n_legs = match active_mode {
@@ -211,7 +211,7 @@ pub fn get_mode_label_sequence(
 ) -> Result<Vec<i64>, StateModelError> {
     let mut labels: Vec<i64> = vec![];
 
-    for leg_idx in (0..max_trip_legs.get()) {
+    for leg_idx in 0..max_trip_legs.get()  {
         let mode_label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
         match mode_label_opt {
             None => break,
@@ -262,7 +262,7 @@ pub fn increment_active_leg_idx(
         None => 0,
     };
     // as an i64, to match the storage format
-    let next_leg_idx: i64 = next_leg_idx_u64.try_into().map_err(|e| {
+    let next_leg_idx: i64 = next_leg_idx_u64.try_into().map_err(|_e| {
         StateModelError::RuntimeError(format!(
             "internal error: while getting active trip leg, unable to parse {next_leg_idx_u64} as a i64"
         ))
@@ -340,7 +340,7 @@ pub fn error_inactive_state_traversal(
         |e| json!({"message": "unable to serialize state!", "error": format!("{e}")}),
     );
     let next_string = serde_json::to_string_pretty(&next_json)
-        .unwrap_or_else(|e| String::from("<unable to serialize state!>"));
+        .unwrap_or_else(|_e| String::from("<unable to serialize state!>"));
     StateModelError::RuntimeError(format!(
         "attempting multimodal traversal with state that has no active leg: {next_string}"
     ))
