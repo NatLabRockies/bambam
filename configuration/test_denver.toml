@@ -7,6 +7,13 @@ type = "combined"
 
 [[system.response_output_policy.policies]]
 type = "file"
+filename = "test-denver-result.json"
+[system.response_output_policy.policies.format]
+type = "json"
+newline_delimited = false
+
+[[system.response_output_policy.policies]]
+type = "file"
 filename = "test-denver-result.csv"
 [system.response_output_policy.policies.format]
 type = "csv"
@@ -158,8 +165,15 @@ write_mode = "overwrite"
 key = "max_trip_legs"
 value = 1
 
+[[plugin.input_plugins]]
+type = "grid_search"
+
 [[plugin.output_plugins]]
 type = "summary"
+
+[[plugin.output_plugins]]
+type = "traversal"
+tree = "geojson"
 
 [[plugin.output_plugins]]
 type = "bambam"
