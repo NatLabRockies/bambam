@@ -52,17 +52,6 @@ impl TraversalModel for TripArrivalDelayModel {
         )]
     }
 
-    fn traverse_edge(
-        &self,
-        trajectory: (&Vertex, &Edge, &Vertex),
-        state: &mut Vec<StateVariable>,
-        _tree: &SearchTree,
-        state_model: &StateModel,
-    ) -> Result<(), TraversalModelError> {
-        let (_, _, destination) = trajectory;
-        add_delay_time(destination, state, state_model, self.0.clone())
-    }
-
     fn estimate_traversal(
         &self,
         od: (&Vertex, &Vertex),
@@ -72,6 +61,15 @@ impl TraversalModel for TripArrivalDelayModel {
     ) -> Result<(), TraversalModelError> {
         let (_, destination) = od;
         add_delay_time(destination, state, state_model, self.0.clone())
+    }
+
+    fn traverse_edge(
+        &self,
+        ctx: &routee_compass_core::model::traversal::EdgeTraversalContext,
+        state: &mut Vec<StateVariable>,
+        state_model: &StateModel,
+    ) -> Result<(), TraversalModelError> {
+        add_delay_time(ctx.dst, state, state_model, self.0.clone())
     }
 }
 

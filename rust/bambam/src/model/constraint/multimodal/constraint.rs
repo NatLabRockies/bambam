@@ -6,11 +6,12 @@ use crate::model::constraint::multimodal::{
     multimodal_frontier_ops as ops, ConstraintConfig, DistanceConstraint, EnergyConstraint,
     TimeConstraint,
 };
-use crate::model::state::{
+use bambam_core::model::state::{
     multimodal_state_ops as state_ops, MultimodalMapping, MultimodalStateMapping,
 };
 use bambam_core::model::{bambam_field, bambam_state};
 use routee_compass_core::model::state::StateModelError;
+use routee_compass_core::model::traversal::default::fieldname;
 use routee_compass_core::model::{
     constraint::ConstraintModelError,
     network::Edge,
@@ -33,6 +34,10 @@ pub enum Constraint {
     ModeCounts(HashMap<String, usize>),
     /// Require routes to follow one of the specified mode sequences.
     ExactSequences(SubSequenceTrie),
+    /// Set distance limit for the trip.
+    DistanceConstraint(DistanceConstraint),
+    /// Set time limit for the trip.
+    TimeConstraint(TimeConstraint),
     /// Set maximum distance limits for each transportation mode.
     ModeDistanceLimit {
         mode_distance_limit: HashMap<String, DistanceConstraint>,
@@ -95,6 +100,10 @@ impl Constraint {
                 mode_to_state,
                 edge_mode,
             ),
+
+            MFC::DistanceConstraint(limit) => validate_trip_distance(state, state_model, limit),
+
+            MFC::TimeConstraint(limit) => validate_trip_time(state, state_model, limit),
 
             MFC::ModeDistanceLimit {
                 mode_distance_limit,
@@ -163,12 +172,12 @@ impl TryFrom<&ConstraintConfig> for Constraint {
     fn try_from(value: &ConstraintConfig) -> Result<Self, Self::Error> {
         use ConstraintConfig as MFCC;
         match value {
-            MFCC::AllowedModes { allowed_modes } => {
-                let modes = allowed_modes.iter().cloned().collect::<HashSet<_>>();
+            MFCC::AllowedModes { values } => {
+                let modes = values.iter().cloned().collect::<HashSet<_>>();
                 Ok(Self::AllowedModes(modes))
             }
-            MFCC::ModeCounts { mode_counts } => {
-                let counts = mode_counts
+            MFCC::ModeCounts { values } => {
+                let counts = values
                     .iter()
                     .map(|(k, v)| {
                         let v_usize: usize = v.get().try_into().map_err(|e| {
@@ -181,33 +190,29 @@ impl TryFrom<&ConstraintConfig> for Constraint {
                     .collect::<Result<HashMap<_, _>, _>>()?;
                 Ok(Self::ModeCounts(counts))
             }
-            MFCC::ExactSequences { exact_sequences } => {
+            MFCC::ExactSequences { values } => {
                 let mut trie = SubSequenceTrie::new();
-                for seq in exact_sequences.iter() {
+                for seq in values.iter() {
                     trie.insert_sequence(seq.clone());
                 }
                 Ok(Self::ExactSequences(trie))
             }
-            MFCC::ModeDistanceLimit {
-                mode_distance_limit,
-            } => Ok(Self::ModeDistanceLimit {
-                mode_distance_limit: mode_distance_limit.clone(),
+            MFCC::DistanceConstraint(c) => Ok(Self::DistanceConstraint(c.clone())),
+            MFCC::TimeConstraint(c) => Ok(Self::TimeConstraint(c.clone())),
+            MFCC::ModeDistanceLimit { values } => Ok(Self::ModeDistanceLimit {
+                mode_distance_limit: values.clone(),
             }),
-            MFCC::ModeTimeLimit { mode_time_limit } => Ok(Self::ModeTimeLimit {
-                mode_time_limit: mode_time_limit.clone(),
+            MFCC::ModeTimeLimit { values } => Ok(Self::ModeTimeLimit {
+                mode_time_limit: values.clone(),
             }),
             // MFCC::ModeEnergyLimit { mode_energy_limit } => Ok(Self::ModeEnergyLimit {
             //     mode_energy_limit: mode_energy_limit.clone(),
             // }),
-            MFCC::ModeLegDistanceLimit {
-                mode_leg_distance_limit,
-            } => Ok(Self::ModeLegDistanceLimit {
-                mode_leg_distance_limit: mode_leg_distance_limit.clone(),
+            MFCC::ModeLegDistanceLimit { values } => Ok(Self::ModeLegDistanceLimit {
+                mode_leg_distance_limit: values.clone(),
             }),
-            MFCC::ModeLegTimeLimit {
-                mode_leg_time_limit,
-            } => Ok(Self::ModeLegTimeLimit {
-                mode_leg_time_limit: mode_leg_time_limit.clone(),
+            MFCC::ModeLegTimeLimit { values } => Ok(Self::ModeLegTimeLimit {
+                mode_leg_time_limit: values.clone(),
             }),
             // MFCC::ModeLegEnergyLimit {
             //     mode_leg_energy_limit,
@@ -280,6 +285,46 @@ fn validate_mode_sequences(
     }
     let is_match = trie.contains(&modes);
     Ok(is_match)
+}
+
+fn validate_trip_distance(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    limit: &DistanceConstraint,
+) -> ConstraintResult {
+    let dist: Length = state_model
+        .get_distance(state, fieldname::TRIP_DISTANCE)
+        .map_err(|e| {
+            let msg = format!(
+                "while retrieving '{}' from state: {e}",
+                fieldname::TRIP_DISTANCE
+            );
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
+    let valid = limit.test(dist, false);
+    Ok(valid)
+}
+
+fn validate_trip_time(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    limit: &TimeConstraint,
+) -> ConstraintResult {
+    let time: Time = state_model
+        .get_time(state, fieldname::TRIP_TIME)
+        .map_err(|e| {
+            let msg = format!(
+                "while retrieving '{}' from state: {e}",
+                fieldname::TRIP_TIME
+            );
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
+    let valid = limit.test(time, false);
+    log::debug!(
+        "validating trip_time with time {:.2} minutes against limit {limit:?}. valid? {valid}",
+        time.get::<uom::si::time::minute>(),
+    );
+    Ok(valid)
 }
 
 /// runs the constraint model validation logic for mode distance constraints

@@ -6,7 +6,8 @@ use routee_compass_core::model::{
     traversal::TraversalModelError,
 };
 
-use crate::model::{state::fieldname, traversal::transit::Departure};
+use crate::model::traversal::transit::Departure;
+use bambam_core::model::state::fieldname;
 
 /// composes the start time and the current trip_time into a new datetime value.
 pub fn get_current_time(
@@ -71,7 +72,7 @@ mod tests {
     };
     use uom::si::f64::Time;
 
-    use crate::model::state::fieldname;
+    use bambam_core::model::state::fieldname;
 
     fn mock_state(time: Time, state_model: &StateModel) -> Vec<StateVariable> {
         let mut state = state_model

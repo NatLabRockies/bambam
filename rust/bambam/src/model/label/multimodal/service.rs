@@ -1,7 +1,5 @@
-use crate::model::{
-    label::multimodal::{MultimodalLabelConfig, MultimodalLabelModel},
-    state::{LegIdx, MultimodalMapping},
-};
+use crate::model::label::multimodal::{MultimodalLabelConfig, MultimodalLabelModel};
+use bambam_core::model::state::{LegIdx, MultimodalMapping};
 use routee_compass_core::model::{
     label::{
         label_model_error::LabelModelError, label_model_service::LabelModelService, Label,
