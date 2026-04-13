@@ -84,13 +84,13 @@ pub enum App {
         /// file to write resulting opportunities dataset, designed to be a tabular
         /// opportunity input to bambam.
         output_filename: String,
-        /// column name containing WKT geometry. cannot be used when x|y columns are specified.
-        #[arg(long)]
-        x_column: Option<String>,
         /// column name containing x coordinates. cannot be used when "geometry_column" is specified.
         #[arg(long)]
-        y_column: Option<String>,
+        x_column: Option<String>,
         /// column name containing y coordinates. cannot be used when "geometry_column" is specified.
+        #[arg(long)]
+        y_column: Option<String>,
+        /// column name containing WKT geometry. cannot be used when x|y columns are specified.
         #[arg(long)]
         geometry_column: Option<String>,
 
@@ -101,11 +101,11 @@ pub enum App {
         // /// optional column name containing activity counts. if omitted, counts each row as 1 opportunity.
         #[arg(long)]
         count_column: Option<String>,
-        /// mapping from column name to activity type as comma-delimited string of "col->acts" statements, where
-        /// "col" is the source column name, and "acts" is a hyphen-delminited non-empty list of target activity categories.
-        /// example: "CNS07->retail-jobs,CNS16->healthcare-jobs,CNS05->jobs"
+        /// mapping from category name to activity type as comma-delimited string of "cat->acts" statements, where
+        /// "cat" is the source category name, and "acts" is a hyphen-delimited non-empty list of target activity categories.
+        /// wrap the entire argument in double-quotes. example: "CNS07->retail-jobs,CNS16->healthcare-jobs,CNS05->jobs"
         #[arg(long)]
-        column_mapping: String,
+        category_mapping: String,
         // // / comma-delimited list of categories to keep
         // #[arg(long)]
         // activity_categories: String,
@@ -123,13 +123,13 @@ pub enum App {
         /// file to write resulting opportunities dataset, designed to be a tabular
         /// opportunity input to bambam.
         output_filename: String,
-        /// column name containing WKT geometry. cannot be used when x|y columns are specified.
-        #[arg(long)]
-        x_column: Option<String>,
         /// column name containing x coordinates. cannot be used when "geometry_column" is specified.
         #[arg(long)]
-        y_column: Option<String>,
+        x_column: Option<String>,
         /// column name containing y coordinates. cannot be used when "geometry_column" is specified.
+        #[arg(long)]
+        y_column: Option<String>,
+        /// column name containing WKT geometry. cannot be used when x|y columns are specified.
         #[arg(long)]
         geometry_column: Option<String>,
         /// mapping from column name to activity type as comma-delimited string of "col->acts" statements, where
@@ -250,14 +250,14 @@ impl App {
                 y_column,
                 category_column,
                 count_column,
-                column_mapping,
+                category_mapping,
             } => {
                 let geometry_format = oppvec::GeometryFormat::new(
                     geometry_column.as_ref(),
                     x_column.as_ref(),
                     y_column.as_ref(),
                 )?;
-                let category_mapping = oppvec_ops::create_mapping(column_mapping)?;
+                let category_mapping = oppvec_ops::create_mapping(category_mapping)?;
                 log::debug!(
                     "category mapping:\n{}",
                     serde_json::to_string_pretty(&category_mapping).unwrap_or_default()
