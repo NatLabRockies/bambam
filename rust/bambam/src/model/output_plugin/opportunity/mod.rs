@@ -30,4 +30,4 @@ use geo::Geometry;
 pub type OpportunityDataset = Vec<(Geometry<f32>, Vec<f64>)>;
 
 /// for each Place, a mask of activity types at that location
-pub type PlaceActivityMask = Vec<(Geometry<f32>, Vec<bool>)>;
+pub type GeoActivityMask = Vec<(Geometry<f32>, Vec<bool>)>;

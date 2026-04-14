@@ -1,4 +1,4 @@
-use crate::model::output_plugin::opportunity::OpportunityDataset;
+use crate::model::output_plugin::opportunity::{GeoActivityMask, OpportunityDataset};
 use bambam_omf::collection::{
     Bbox, BuildingsRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
     PlacesRecord,
@@ -169,7 +169,7 @@ impl OvertureOpportunityCollectionModel {
     fn collect_places_opportunities(
         &self,
         activity_types: &[String],
-    ) -> Result<Vec<(Geometry<f32>, Vec<bool>)>, OvertureMapsCollectionError> {
+    ) -> Result<GeoActivityMask, OvertureMapsCollectionError> {
         let uri = match self.release_version {
             ReleaseVersion::Latest => self.collector.get_latest_release()?,
             ReleaseVersion::Monthly { .. } => self.release_version.to_string(),
@@ -232,7 +232,7 @@ impl OvertureOpportunityCollectionModel {
         &self,
         activity_types: &[String],
         buildings_activity_mappings: &HashMap<String, Vec<String>>,
-    ) -> Result<Vec<(Geometry<f32>, Vec<bool>)>, OvertureMapsCollectionError> {
+    ) -> Result<GeoActivityMask, OvertureMapsCollectionError> {
         // Build the taxonomy model from the mapping by transforming the vectors into HashSets
         let buildings_taxonomy_model = TaxonomyModel::from_mapping(
             buildings_activity_mappings

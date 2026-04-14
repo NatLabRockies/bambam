@@ -22,7 +22,7 @@ pub struct TimeDelayLookup {
 impl TimeDelayLookup {
     /// helper function for finding delays from graph vertices. in the case of multiple overlapping
     /// delay polygons, the first is selected.
-    pub fn get_delay_for_vertex<'a>(&self, lookup_vertex: &Vertex) -> Option<Time> {
+    pub fn get_delay_for_vertex(&self, lookup_vertex: &Vertex) -> Option<Time> {
         let g = geo::Geometry::Point(geo::Point(lookup_vertex.coordinate.0));
         self.find_first_delay(&g)
     }

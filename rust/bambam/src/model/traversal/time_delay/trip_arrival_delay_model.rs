@@ -76,7 +76,7 @@ impl TraversalModel for TripArrivalDelayModel {
 /// at the end of each edge, write down the arrival delay to use if this location is treated as a destination
 fn add_delay_time(
     destination: &Vertex,
-    state: &mut Vec<StateVariable>,
+    state: &mut [StateVariable],
     state_model: &StateModel,
     lookup: Arc<TimeDelayLookup>,
 ) -> Result<(), TraversalModelError> {
