@@ -159,6 +159,14 @@ pub fn run(
             let opp_file_str = opportunities_compass_file.to_string_lossy();
             format!("failure opening output file {opp_file_str}: {e}")
         })?;
+    let header = activity_types_lookup
+        .iter()
+        .sorted_by_key(|(_, idx)| *idx)
+        .map(|(name, _)| name.clone())
+        .collect_vec();
+    writer
+        .write_record(&header)
+        .map_err(|e| format!("failure writing CSV header: {e}"))?;
     let n_output_rows = result.len();
     let write_iter = tqdm!(
         result.into_iter().enumerate(),
