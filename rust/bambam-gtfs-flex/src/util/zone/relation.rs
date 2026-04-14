@@ -1,12 +1,21 @@
-use chrono::TimeDelta;
+use chrono::NaiveTime;
 
 use super::{ZoneError, ZoneId, ZoneRecord};
 
-/// note:
-/// you know, the zone times for type 3 are time delta values (hh:mm:ss).
-/// in order to know what day of the year the relation is supported for,
-/// we probably need to look up the Trip via trip_id, then use the calendar
-/// things to look up a date match via the service_id.
+/// A directed travel relation between GTFS-Flex zones.
+///
+/// # Date invariant
+///
+/// All `ZonalRelation` values are constructed from records that have already been
+/// filtered to a single service date by the GTFS-Flex preprocessor
+/// (`flex_processor::process_gtfs_flex_bundle`). That step joins `calendar.txt`
+/// and `calendar_dates.txt` against the requested date and writes only the
+/// active trips to the `valid-zones.csv` output. By the time a `ZonalRelation`
+/// is built, the date-of-service question is fully resolved.
+///
+/// The only remaining time variability is the intra-day pickup/drop-off window
+/// stored in `ToZoneScheduled`. `valid_time` checks that window against the
+/// wall-clock component of the current datetime; the date component is ignored.
 #[derive(Clone, Debug)]
 pub enum ZonalRelation {
     SelfLoop(ZoneId),
@@ -15,8 +24,8 @@ pub enum ZonalRelation {
     },
     ToZoneScheduled {
         dst_zone_id: ZoneId,
-        start_time: TimeDelta,
-        end_time: TimeDelta,
+        start_time: NaiveTime,
+        end_time: NaiveTime,
     },
 }
 
@@ -29,6 +38,19 @@ impl ZonalRelation {
             ZonalRelation::SelfLoop(zone_id) => zone_id,
             ZonalRelation::ToZone { dst_zone_id } => dst_zone_id,
             ZonalRelation::ToZoneScheduled { dst_zone_id, .. } => dst_zone_id,
+        }
+    }
+
+    /// tests if the provided datetime is valid for this particular [ZonalRelation]
+    pub fn valid_time(&self, current_time: &NaiveTime) -> bool {
+        match self {
+            ZonalRelation::ToZoneScheduled {
+                start_time,
+                end_time,
+                ..
+            } => start_time <= current_time && current_time < end_time,
+            // without a scheduled time range, the time is valid by default
+            _ => true,
         }
     }
 }

@@ -12,8 +12,11 @@ use routee_compass_core::{
     util::{fs::read_utils, geo::PolygonalRTree},
 };
 
+/// top-level API for working with GTFS-Flex zonal data.
 pub struct ZoneLookup {
+    /// graph of relations between zones.
     pub graph: ZoneGraph,
+    /// spatial lookup from the road network into the zone graph.
     pub rtree: PolygonalRTree<f32, ZoneId>,
 }
 

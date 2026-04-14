@@ -1,4 +1,4 @@
-use chrono::TimeDelta;
+use chrono::NaiveTime;
 use serde::{Deserialize, Serialize};
 
 use super::ZoneId;
@@ -18,8 +18,8 @@ pub struct ZoneRecord {
     pub dst_zone_id: Option<ZoneId>,
     /// time that the pickup/drop-off window begins for this trip
     #[serde(rename = "start_pickup_drop_off_window")]
-    pub start_time: Option<TimeDelta>,
+    pub start_time: Option<NaiveTime>,
     /// time that the pickup/drop-off window concludes for this trip
     #[serde(rename = "end_pickup_drop_off_window")]
-    pub end_time: Option<TimeDelta>,
+    pub end_time: Option<NaiveTime>,
 }

@@ -20,10 +20,24 @@ type ZoneGraphImpl = HashMap<ZoneId, HashMap<ZoneId, ZonalRelation>>;
 impl ZoneGraph {
     pub fn valid_departure(
         &self,
-        _src_zone_id: &ZoneId,
-        _current_time: &NaiveDateTime,
+        src_zone_id: &ZoneId,
+        current_datetime: &NaiveDateTime,
     ) -> Result<bool, ZoneError> {
-        todo!()
+        // find zone-to-zone trips starting from src_zone_id. the object at the end
+        // of the relation holds the time range data which we use to validate.
+        let relations = match self.0.get(src_zone_id) {
+            Some(r) => r,
+            None => return Ok(false),
+        };
+
+        for relation in relations.values() {
+            let time = current_datetime.time();
+            if !relation.valid_time(&time) {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 
     /// confirms that this zone-to-zone trip exists in our zonal graph.
