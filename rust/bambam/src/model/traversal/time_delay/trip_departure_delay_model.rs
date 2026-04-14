@@ -89,7 +89,7 @@ impl TraversalModel for TripDepartureDelayModel {
 /// if trip is departing from the origin, apply the trip departure delay.
 fn add_delay_time(
     origin: &Vertex,
-    state: &mut Vec<StateVariable>,
+    state: &mut [StateVariable],
     state_model: &StateModel,
     lookup: Arc<TimeDelayLookup>,
 ) -> Result<(), TraversalModelError> {

@@ -45,7 +45,7 @@ fn replace_delimiter(value: &Option<String>, delimiter: &'static str) -> Option<
         .map(|v| v.replace(OsmNodeData::VALUE_DELIMITER, delimiter))
 }
 
-fn join_ids(value: &Vec<OsmNodeId>, delimiter: &'static str) -> Option<String> {
+fn join_ids(value: &[OsmNodeId], delimiter: &'static str) -> Option<String> {
     match value[..] {
         [] => None,
         _ => {

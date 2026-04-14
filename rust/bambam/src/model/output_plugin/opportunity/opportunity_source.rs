@@ -1,3 +1,5 @@
+use crate::model::output_plugin::opportunity::OpportunityDataset;
+
 use super::{
     source::lodes::lodes_ops,
     source::overture_opportunity_collection_model::OvertureOpportunityCollectionModel,
@@ -59,7 +61,7 @@ impl OpportunitySource {
     pub fn generate_dataset(
         &self,
         activity_types: &[String],
-    ) -> Result<Vec<(Geometry<f32>, Vec<f64>)>, String> {
+    ) -> Result<OpportunityDataset, String> {
         match self {
             OpportunitySource::OvertureMapsPlaces {
                 collector_config,

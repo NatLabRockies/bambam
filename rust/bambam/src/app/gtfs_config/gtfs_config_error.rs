@@ -1,13 +1,13 @@
 #[derive(thiserror::Error, Debug)]
 pub enum GtfsConfigError {
     #[error("failed reading '{filepath}': {error}")]
-    ReadError { filepath: String, error: String },
+    ReadFailure { filepath: String, error: String },
     #[error("{0}")]
-    RunError(String),
+    RunFailure(String),
     #[error("{0}")]
     InternalError(String),
     #[error("{msg}: {source}")]
-    ConfigReadError {
+    ConfigReadFailure {
         msg: String,
         source: config::ConfigError,
     },

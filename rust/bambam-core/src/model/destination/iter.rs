@@ -30,7 +30,7 @@ pub fn new_destinations_iterator<'a>(
     };
 
     let tree_destinations = tree.iter().filter_map(move |(label, branch)| {
-        filter_map_branch(label, branch, bin_range, destination_filter, state_model)
+        filter_map_branch(&label, branch, bin_range, destination_filter, state_model)
     });
 
     Box::new(tree_destinations)
