@@ -106,10 +106,12 @@ impl Intersects<Geometry<f32>> for OsmNodeData {
 
 impl From<&osmpbf::elements::Node<'_>> for OsmNodeData {
     fn from(node: &osmpbf::elements::Node) -> Self {
-        let mut out = OsmNodeData::default();
-        out.osmid = OsmNodeId(node.id());
-        out.x = node.lon() as f32;
-        out.y = node.lat() as f32;
+        let mut out = OsmNodeData {
+            osmid: OsmNodeId(node.id()),
+            x: node.lon() as f32,
+            y: node.lat() as f32,
+            ..Default::default()
+        };
         for (k, v) in node.tags() {
             match k {
                 "highway" => out.highway = Some(String::from(v)),
@@ -128,10 +130,12 @@ impl From<&osmpbf::elements::Node<'_>> for OsmNodeData {
 
 impl From<&osmpbf::dense::DenseNode<'_>> for OsmNodeData {
     fn from(node: &osmpbf::dense::DenseNode<'_>) -> Self {
-        let mut out = OsmNodeData::default();
-        out.osmid = OsmNodeId(node.id());
-        out.x = node.lon() as f32;
-        out.y = node.lat() as f32;
+        let mut out = OsmNodeData {
+            osmid: OsmNodeId(node.id()),
+            x: node.lon() as f32,
+            y: node.lat() as f32,
+            ..Default::default()
+        };
         for (k, v) in node.tags() {
             match k {
                 "highway" => out.highway = Some(String::from(v)),

@@ -9,9 +9,8 @@ cache
 .venv
 uv.lock
 
-# test paths
+# test path conventions
 configuration/test_gtfs_config_boulder_gtfs.toml
-denver_co/
-boulder_co/
-denver_rtd/
+denver_*
+boulder_*
 out/

@@ -7,9 +7,9 @@ use super::GtfsFlexParams;
 use routee_compass_core::{
     algorithm::search::SearchTree,
     model::{
-        network::{Edge, Vertex},
+        network::Vertex,
         state::{InputFeature, StateModel, StateVariable, StateVariableConfig},
-        traversal::{TraversalModel, TraversalModelError},
+        traversal::{EdgeTraversalContext, TraversalModel, TraversalModelError},
     },
 };
 
@@ -41,9 +41,8 @@ impl TraversalModel for GtfsFlexModel {
 
     fn traverse_edge(
         &self,
-        _trajectory: (&Vertex, &Edge, &Vertex),
+        _ctx: &EdgeTraversalContext,
         _state: &mut Vec<StateVariable>,
-        _tree: &SearchTree,
         _state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         todo!()

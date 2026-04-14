@@ -159,7 +159,7 @@ impl OpportunityModel {
         &self,
         origin_label: &Label,
         search_tree_branch: &SearchTreeNode,
-        si: &SearchInstance,
+        _si: &SearchInstance,
     ) -> Result<Vec<(OpportunityRowId, Vec<f64>)>, OutputPluginError> {
         match self {
             OpportunityModel::Tabular {
@@ -237,7 +237,7 @@ impl OpportunityModel {
                 for model in models.iter() {
                     let vector_length = model.vector_length();
                     let matches = model
-                        .collect_destination_opportunities(origin_label, search_tree_branch, si)?
+                        .collect_destination_opportunities(origin_label, search_tree_branch, _si)?
                         .into_iter()
                         .collect::<HashMap<_, _>>();
 
@@ -281,8 +281,8 @@ impl OpportunityModel {
 
 /// sums all counts into a global total for each category
 fn activity_totals(
-    activity_types: &Vec<String>,
-    activity_counts: &Vec<Vec<f64>>,
+    activity_types: &[String],
+    activity_counts: &[Vec<f64>],
 ) -> Result<HashMap<String, f64>, String> {
     let mut sums = vec![0.0; activity_types.len()];
     for row in activity_counts {
@@ -298,8 +298,8 @@ fn activity_totals(
         }
     }
     let result = activity_types
-        .clone()
-        .into_iter()
+        .iter()
+        .cloned()
         .zip(sums)
         .collect::<HashMap<_, _>>();
     Ok(result)

@@ -33,7 +33,7 @@ pub enum OpportunityModelConfig {
     ///
     /// # Fields
     /// - `vertex_input_file`: Path to CSV file containing the input vertices for the Opportunity Model.
-    /// Should match the CSV file used for constructing the traversal model graph.
+    ///   Should match the CSV file used for constructing the traversal model graph.
     /// - `opportunity_source`: Variant of [`OpportunitySource`] describing the API to be used for opportunity collection
     /// - `activity_column_names`: Vector of String identifiers for the types of activities. E.g., ["food", "healthcare"]
     /// - `table_orientation`: Variant of [`OpportunityTableOrientation`] describing how to attach opportunities to graph elements

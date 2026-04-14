@@ -1,6 +1,6 @@
 use std::{collections::HashMap, num::NonZeroU64};
 
-use crate::model::state::{
+use bambam_core::model::state::{
     multimodal_state_ops as state_ops, MultimodalMapping, MultimodalStateMapping,
 };
 use itertools::Itertools;

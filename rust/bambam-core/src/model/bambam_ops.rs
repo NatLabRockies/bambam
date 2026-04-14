@@ -37,7 +37,7 @@ pub fn collect_destinations<'a>(
 
     let tree_destinations = tree
         .iter()
-        .filter_map(move |(label, branch)| apply_predicate(label, branch, time_bin, state_model));
+        .filter_map(move |(label, branch)| apply_predicate(&label, branch, time_bin, state_model));
 
     Box::new(tree_destinations)
 }
@@ -145,7 +145,7 @@ pub fn get_reachability_time(
     state_model: &StateModel,
 ) -> Result<Time, StateModelError> {
     let trip_time = state_model.get_time(state, bambam_state::TRIP_TIME)?;
-    let has_delay = state_model.contains_key(&bambam_state::TRIP_ARRIVAL_DELAY.to_string());
+    let has_delay = state_model.contains_key(bambam_state::TRIP_ARRIVAL_DELAY);
     let arrival_delay = if has_delay {
         state_model.get_time(state, bambam_state::TRIP_ARRIVAL_DELAY)?
     } else {

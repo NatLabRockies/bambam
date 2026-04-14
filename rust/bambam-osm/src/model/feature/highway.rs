@@ -3,7 +3,7 @@ use std::{fmt::Display, str::FromStr};
 use serde::{Deserialize, Serialize};
 
 /// model for OSM Highway keys. see <https://wiki.openstreetmap.org/wiki/Key:highway#Highway> for details.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, PartialOrd, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum Highway {
     // 7 main tags
@@ -274,6 +274,12 @@ impl FromStr for Highway {
             "turningloop" => Ok(Highway::TurningLoop),
             other => Ok(Highway::Other(other.to_string())),
         }
+    }
+}
+
+impl PartialOrd for Highway {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 

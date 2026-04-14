@@ -1,5 +1,5 @@
 use crate::model::output_plugin::opportunity::{
-    opportunity_source::OpportunitySource, study_region::StudyRegion,
+    opportunity_source::OpportunitySource, study_region::StudyRegion, OpportunityDataset,
 };
 use bamcensus::app::lodes_tiger;
 use bamcensus_core::model::identifier::{Geoid, GeoidType};
@@ -25,7 +25,7 @@ pub fn collect_lodes_opportunities(
     data_granularity: &Option<GeoidType>,
     activity_types: &[String],
     activity_mapping: &HashMap<WacSegment, Vec<String>>,
-) -> Result<Vec<(Geometry<f32>, Vec<f64>)>, String> {
+) -> Result<OpportunityDataset, String> {
     // download LODES data paired with TIGER/Lines geometries
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
