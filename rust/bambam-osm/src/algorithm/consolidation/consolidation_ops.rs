@@ -27,9 +27,9 @@ use std::sync::Mutex;
 ///
 /// * `graph`      - the original graph data from the .pbf file
 /// * `tolerance`  - edge-connected endpoints within this distance threshold are merged
-///  into a new graph vertex by their centroid
+///   into a new graph vertex by their centroid
 /// * `ignore_osm_parsing_errors` - if true, do not fail if a maxspeed or other attribute is not
-///  valid wrt the OpenStreetMaps documentation
+///   valid wrt the OpenStreetMaps documentation
 pub fn consolidate_graph(
     graph: &mut OsmGraph,
     tolerance: uom::si::f64::Length,

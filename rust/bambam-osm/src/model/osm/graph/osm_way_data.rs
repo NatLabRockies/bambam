@@ -39,11 +39,13 @@ impl OsmWayData {
     pub const VALUE_DELIMITER: &'static str = "#";
 
     pub fn new(way: &osmpbf::elements::Way) -> OsmWayData {
-        let mut out = OsmWayData::default();
-        out.osmid = OsmWayId(way.id());
+        let mut out = OsmWayData {
+            osmid: OsmWayId(way.id()),
+            nodes: way.refs().map(OsmNodeId).collect_vec(),
+            ..Default::default()
+        };
 
         // as in osmnx.graph._convert_path, remove duplicates in the node path (by identity function)
-        out.nodes = way.refs().map(OsmNodeId).collect_vec();
         out.nodes.dedup();
         if out.nodes.is_empty() {
             log::warn!(
@@ -206,16 +208,10 @@ impl OsmWayData {
         // "rule 2" is the "bidirectional" OSMNX network type (aka undirected), doesn't apply for us
         // "rule 3" checks the oneway tag
         if let Some(oneway) = &self.oneway {
-            match oneway.as_str().trim() {
-                "yes" => true,
-                "true" => true,
-                "1" => true,
-                "-1" => true,
-                "reverse" => true,
-                "T" => true,
-                "F" => true,
-                _ => false,
-            }
+            matches!(
+                oneway.as_str().trim(),
+                "yes" | "true" | "1" | "-1" | "reverse" | "T" | "F"
+            )
         } else if let Some(junction) = &self.junction {
             // "rule 4" states that "roundabouts are also one-way but are not explicitly tagged as such"
             junction.as_str().trim() == "roundabout"
@@ -228,12 +224,7 @@ impl OsmWayData {
     pub fn is_reverse(&self) -> bool {
         // python: `"oneway" in attrs and attrs["oneway"] in reversed_values`
         if let Some(oneway) = &self.oneway {
-            match oneway.as_str() {
-                "-1" => true,
-                "reverse" => true,
-                "T" => true,
-                _ => false,
-            }
+            matches!(oneway.as_str(), "-1" | "reverse" | "T")
         } else {
             false
         }

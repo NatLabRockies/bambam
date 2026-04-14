@@ -109,13 +109,7 @@ impl WayAttributesForWCI {
         };
 
         let speed: i32 = match geo_data.data.maxspeed.clone() {
-            Some(speed_str) => {
-                if let Ok(parsed_speed) = speed_str.parse::<i32>() {
-                    parsed_speed
-                } else {
-                    0
-                }
-            }
+            Some(speed_str) => speed_str.parse::<i32>().unwrap_or_default(),
             None => {
                 // look at neighbors, weighted average
                 let mut speeds = vec![];
@@ -252,9 +246,7 @@ fn walk_eligible(
 ) -> bool {
     let this_highway: Highway = geo_data.data.highway.clone();
 
-    if sidewalk {
-        return true;
-    } else if foot {
+    if sidewalk || foot {
         return true;
     } else if matches!(
         this_highway,

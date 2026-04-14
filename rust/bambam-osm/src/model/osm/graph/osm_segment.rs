@@ -6,7 +6,7 @@ use crate::model::feature::highway::Highway;
 
 use super::OsmWayId;
 
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, Ord)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq)]
 pub struct OsmSegment {
     pub way_id: OsmWayId,
     pub highway: Option<Highway>,
@@ -50,6 +50,12 @@ impl PartialOrd for OsmSegment {
             (Some(_), None) => Some(O::Greater),
             (Some(a), Some(b)) => Some(a.cmp(b)),
         }
+    }
+}
+
+impl Ord for OsmSegment {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
     }
 }
 

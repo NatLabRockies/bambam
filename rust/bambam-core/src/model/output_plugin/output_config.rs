@@ -7,7 +7,8 @@ use crate::model::{
 };
 use serde::{Deserialize, Serialize};
 
-///
+/// configures the granularity and algorithmic parameters for generating and
+/// recording opportunities.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "format", rename_all = "snake_case")]
 pub enum BambamOutputConfig {

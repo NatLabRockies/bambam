@@ -41,8 +41,8 @@ impl OpportunityFormat {
     /// A JSON object representing these opportunities
     pub fn serialize_opportunities(
         &self,
-        opportunities: &Vec<(OpportunityRowId, DestinationOpportunity)>,
-        activity_types: &Vec<String>,
+        opportunities: &[(OpportunityRowId, DestinationOpportunity)],
+        activity_types: &[String],
     ) -> Result<serde_json::Value, OutputPluginError> {
         match self {
             OpportunityFormat::Aggregate => {
