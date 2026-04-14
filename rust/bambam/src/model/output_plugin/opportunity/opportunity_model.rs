@@ -298,7 +298,7 @@ fn activity_totals(
         }
     }
     let result = activity_types
-        .into_iter()
+        .iter()
         .cloned()
         .zip(sums)
         .collect::<HashMap<_, _>>();
