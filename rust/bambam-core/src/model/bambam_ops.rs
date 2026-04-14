@@ -37,7 +37,7 @@ pub fn collect_destinations<'a>(
 
     let tree_destinations = tree
         .iter()
-        .filter_map(move |(label, branch)| apply_predicate(label, branch, time_bin, state_model));
+        .filter_map(move |(label, branch)| apply_predicate(&label, branch, time_bin, state_model));
 
     Box::new(tree_destinations)
 }
