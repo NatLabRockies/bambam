@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::model::constraint::multimodal::Constraint;
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
 use bambam_core::model::state::{
-    multimodal_state_ops as state_ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
+    multimodal_state_ops as state_ops, LegIdx, CategoricalMapping, CategoricalStateMapping,
 };
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
@@ -40,7 +40,7 @@ impl MultimodalConstraintModel {
         modes: &[&str],
     ) -> Result<Self, ConstraintModelError> {
         let mode_to_state =
-            MultimodalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
+            CategoricalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
                 .map_err(|e| {
                 ConstraintModelError::BuildError(format!(
                     "while building local MultimodalConstraintModel, failure constructing mode mapping: {e}"
@@ -141,7 +141,7 @@ mod test {
         },
         traversal::multimodal::MultimodalTraversalModel,
     };
-    use bambam_core::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
+    use bambam_core::model::state::{multimodal_state_ops as state_ops, CategoricalStateMapping};
 
     #[test]
     fn test_valid_max_trip_legs_empty_state() {
@@ -483,7 +483,7 @@ mod test {
         legs: &[&str],
         state: &mut [StateVariable],
         state_model: &StateModel,
-        mode_to_state: &MultimodalStateMapping,
+        mode_to_state: &CategoricalStateMapping,
         max_trip_legs: NonZeroU64,
     ) {
         for (leg_idx, mode) in legs.iter().enumerate() {

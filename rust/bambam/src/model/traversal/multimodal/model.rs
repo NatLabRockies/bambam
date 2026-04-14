@@ -1,7 +1,7 @@
 use super::multimodal_traversal_ops as ops;
 use bambam_core::model::state::{
     fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
-    MultimodalMapping, MultimodalStateMapping,
+    CategoricalMapping, CategoricalStateMapping,
 };
 use itertools::Itertools;
 use routee_compass_core::{
@@ -25,7 +25,7 @@ use uom::si::f64::{Length, Time};
 pub struct MultimodalTraversalModel {
     pub mode: String,
     pub max_trip_legs: NonZeroU64,
-    pub mode_enumeration: Arc<MultimodalStateMapping>,
+    pub mode_enumeration: Arc<CategoricalStateMapping>,
 }
 
 /// Applies the multimodal leg + mode-specific accumulator updates during
@@ -167,7 +167,7 @@ impl MultimodalTraversalModel {
     pub fn new(
         mode: String,
         max_trip_legs: NonZeroU64,
-        mode_enumeration: Arc<MultimodalStateMapping>,
+        mode_enumeration: Arc<CategoricalStateMapping>,
     ) -> MultimodalTraversalModel {
         Self {
             mode,
@@ -184,7 +184,7 @@ impl MultimodalTraversalModel {
         modes: &[&str],
     ) -> Result<MultimodalTraversalModel, StateModelError> {
         let mode_enumeration =
-            MultimodalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
+            CategoricalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
                 .map_err(|e| {
                 StateModelError::BuildError(format!(
                     "while building MultimodalTripLegModel, failure constructing mode mapping: {e}"
@@ -229,8 +229,8 @@ mod test {
     use super::MultimodalTraversalModel;
     use crate::model::label::multimodal::MultimodalLabelModel;
     use bambam_core::model::state::{
-        fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalMapping,
-        MultimodalStateMapping,
+        fieldname, multimodal_state_ops as state_ops, LegIdx, CategoricalMapping,
+        CategoricalStateMapping,
     };
     use routee_compass_core::model::{
         cost::{cost_model_service::CostModelService, CostConstraint, CostModel, VehicleCostRate},
@@ -260,7 +260,7 @@ mod test {
         let mtm = MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"])
             .expect("test invariant failed, model constructor had error");
         let state_model = StateModel::new(mtm.output_features());
-        let route_id_to_state = MultimodalStateMapping::empty(); // no route ids
+        let route_id_to_state = CategoricalStateMapping::empty(); // no route ids
 
         let mut state = state_model
             .initial_state(None)
@@ -491,7 +491,7 @@ mod test {
 
         let (tm, test_tm, state_model, state) =
             build_test_assets(&available_modes, max_trip_legs, this_mode);
-        let mapping = MultimodalStateMapping::empty(); // no route ids
+        let mapping = CategoricalStateMapping::empty(); // no route ids
 
         // as a head check, we can also inspect the serialized access state JSON in the logs
         print_state(&state, &state_model);
@@ -681,7 +681,7 @@ mod test {
         state: &[StateVariable],
         state_model: &StateModel,
         max_trip_legs: NonZeroU64,
-        mode_to_state: &MultimodalStateMapping,
+        mode_to_state: &CategoricalStateMapping,
     ) -> Result<(), String> {
         let active_leg_opt = state_ops::get_active_leg_idx(state, state_model)
             .expect("failure getting active leg index");

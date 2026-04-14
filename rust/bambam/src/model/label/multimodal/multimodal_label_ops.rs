@@ -1,11 +1,11 @@
 use routee_compass_core::model::label::{label_model_error::LabelModelError, Label};
 
-use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
+use bambam_core::model::state::{CategoricalMapping, CategoricalStateMapping};
 
 /// use the configuration of this label model to retrieve the state's
 pub fn get_mode_sequence<'a>(
     label: &Label,
-    mode_to_state: &'a MultimodalStateMapping,
+    mode_to_state: &'a CategoricalStateMapping,
 ) -> Result<Vec<&'a str>, LabelModelError> {
     match label {
         Label::VertexWithU8StateVec { vertex_id, state } => {

@@ -1,5 +1,5 @@
 use crate::model::label::multimodal::{MultimodalLabelConfig, MultimodalLabelModel};
-use bambam_core::model::state::{LegIdx, MultimodalMapping};
+use bambam_core::model::state::{LegIdx, CategoricalMapping};
 use routee_compass_core::model::{
     label::{
         label_model_error::LabelModelError, label_model_service::LabelModelService, Label,
@@ -29,7 +29,7 @@ impl LabelModelService for MultimodalLabelService {
             })?;
         let max_trip_legs = self.get_max_trip_legs(&optional_conf)?;
         let modes = self.get_modes(&optional_conf)?;
-        let mapping = MultimodalMapping::new(modes)?;
+        let mapping = CategoricalMapping::new(modes)?;
         let model = MultimodalLabelModel::new(mapping, max_trip_legs);
         Ok(Arc::new(model))
     }

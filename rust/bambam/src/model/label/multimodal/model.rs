@@ -10,19 +10,19 @@ use routee_compass_core::model::{
 };
 
 use bambam_core::model::state::{
-    multimodal_state_ops as ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
+    multimodal_state_ops as ops, LegIdx, CategoricalMapping, CategoricalStateMapping,
 };
 
 /// builds trip leg mode sequences into the tree labels.
 /// does not impose a pareto domination scheme over the space of valid trips.
 pub struct MultimodalLabelModel {
-    mode_to_state: MultimodalStateMapping,
+    mode_to_state: CategoricalStateMapping,
     max_trip_legs: NonZeroU64,
 }
 
 impl MultimodalLabelModel {
     pub fn new(
-        mode_to_state: MultimodalStateMapping,
+        mode_to_state: CategoricalStateMapping,
         max_trip_legs: NonZeroU64,
     ) -> MultimodalLabelModel {
         MultimodalLabelModel {
@@ -81,8 +81,8 @@ mod test {
         multimodal_label_ops as label_ops, MultimodalLabelModel,
     };
     use crate::model::traversal::multimodal::MultimodalTraversalModel;
-    use bambam_core::model::state::MultimodalMapping;
-    use bambam_core::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
+    use bambam_core::model::state::CategoricalMapping;
+    use bambam_core::model::state::{multimodal_state_ops as state_ops, CategoricalStateMapping};
     #[test]
     fn test_empty() {
         let max_trip_legs = NonZeroU64::new(1).unwrap();
@@ -93,7 +93,7 @@ mod test {
             .initial_state(None)
             .expect("test invariant failed");
         let vertex_id = VertexId(0);
-        let model = MultimodalLabelModel::new(MultimodalMapping::empty(), max_trip_legs);
+        let model = MultimodalLabelModel::new(CategoricalMapping::empty(), max_trip_legs);
 
         let label = model
             .label_from_state(vertex_id, &state, &state_model)
@@ -124,7 +124,7 @@ mod test {
         );
 
         let vertex_id = VertexId(0);
-        let model = MultimodalLabelModel::new(MultimodalMapping::empty(), max_trip_legs);
+        let model = MultimodalLabelModel::new(CategoricalMapping::empty(), max_trip_legs);
 
         // TEST
         let label = model
@@ -139,7 +139,7 @@ mod test {
         legs: &[&str],
         state: &mut [StateVariable],
         state_model: &StateModel,
-        mode_to_state: &MultimodalStateMapping,
+        mode_to_state: &CategoricalStateMapping,
         max_trip_legs: NonZeroU64,
     ) {
         for (leg_idx, mode) in legs.iter().enumerate() {
