@@ -285,6 +285,6 @@ impl PartialOrd for Highway {
 
 impl Ord for Highway {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+        self.hierarchy().cmp(&other.hierarchy())
     }
 }
