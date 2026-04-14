@@ -245,10 +245,7 @@ fn walk_eligible(
     foot: bool,
 ) -> bool {
     let this_highway: Highway = geo_data.data.highway.clone();
-
-    if sidewalk || foot {
-        return true;
-    } else if matches!(
+    let walk_highway_tag = matches!(
         this_highway,
         Highway::Residential
             | Highway::Unclassified
@@ -263,7 +260,10 @@ fn walk_eligible(
             | Highway::Corridor
             | Highway::Path
             | Highway::Elevator
-    ) {
+    );
+    let is_walk_eligible = sidewalk || foot || walk_highway_tag;
+
+    if is_walk_eligible {
         return true;
     } else {
         // check for adjacent sidewalks
