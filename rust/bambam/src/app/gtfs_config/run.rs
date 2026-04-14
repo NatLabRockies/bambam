@@ -73,7 +73,7 @@ pub fn run(
     // we are modifying the `[[graph.edge_list]]` and `[[search]]` sections.
     let mut compass_conf: CompassAppConfig =
         CompassAppConfig::try_from(Path::new(base_config_filepath)).map_err(|e| {
-            GtfsConfigError::ReadError {
+            GtfsConfigError::ReadFailure {
                 filepath: base_config_filepath.to_string(),
                 error: e.to_string(),
             }
@@ -102,7 +102,7 @@ pub fn run(
     let time_limit = tlfc.time_limit.clone();
 
     log::info!("finding metadata files in {directory}");
-    let read_dir = std::fs::read_dir(directory).map_err(|e| GtfsConfigError::ReadError {
+    let read_dir = std::fs::read_dir(directory).map_err(|e| GtfsConfigError::ReadFailure {
         filepath: directory.to_string(),
         error: e.to_string(),
     })?;
@@ -112,7 +112,7 @@ pub fn run(
     let metadata_files: Vec<DirEntry> = read_dir
         .filter(|entry| entry_matches_pattern(entry, &metadata_file_pattern))
         .try_collect()
-        .map_err(|e| GtfsConfigError::ReadError {
+        .map_err(|e| GtfsConfigError::ReadFailure {
             filepath: directory.to_string(),
             error: e.to_string(),
         })?;
@@ -132,7 +132,7 @@ pub fn run(
     entries.sort_by_cached_key(|e| e.edge_list_id);
 
     let Some(first_gtfs_edge_list_id) = entries.first().map(|e| e.edge_list_id) else {
-        return Err(GtfsConfigError::RunError(format!(
+        return Err(GtfsConfigError::RunFailure(format!(
             "no metadata files found in directory {directory}"
         )));
     };
@@ -188,20 +188,20 @@ pub fn run(
     compass_conf.mapping.geometry = OneOrMany::Many(conf_geometries);
 
     let result_conf = toml::to_string_pretty(&compass_conf).map_err(|e| {
-        GtfsConfigError::RunError(format!(
+        GtfsConfigError::RunFailure(format!(
             "failed to convert temporary configuration back to TOML string: {e}"
         ))
     })?;
 
     let conf_dir = Path::new(&base_config_filepath).parent().ok_or_else(|| {
-        GtfsConfigError::RunError(
+        GtfsConfigError::RunFailure(
             "base_config_filepath argument is invalid, has no 'parent'.".to_string(),
         )
     })?;
     let mut out_filename = Path::new(base_config_filepath)
         .file_stem()
         .ok_or_else(|| {
-            GtfsConfigError::RunError(format!(
+            GtfsConfigError::RunFailure(format!(
                 "base config filepath '{base_config_filepath}' has no file stem!"
             ))
         })?
@@ -211,7 +211,7 @@ pub fn run(
 
     let out_filepath = conf_dir.join(out_filename);
     std::fs::write(&out_filepath, &result_conf).map_err(|e| {
-        GtfsConfigError::RunError(format!(
+        GtfsConfigError::RunFailure(format!(
             "failure writing to {}: {e}",
             out_filepath.to_string_lossy()
         ))
@@ -244,12 +244,14 @@ fn write_fq_route_id_file(
     ) {
         for route_id in fq_route_ids.into_iter() {
             writer.serialize(&route_id).map_err(|e| {
-                GtfsConfigError::RunError(format!("failed writing to {FQ_ROUTE_IDS_FILENAME}: {e}"))
+                GtfsConfigError::RunFailure(format!(
+                    "failed writing to {FQ_ROUTE_IDS_FILENAME}: {e}"
+                ))
             })?;
         }
         Ok(file_path)
     } else {
-        Err(GtfsConfigError::RunError(String::from(
+        Err(GtfsConfigError::RunFailure(String::from(
             "unable to create write operation for fully-qualified route ids file",
         )))
     }
@@ -262,9 +264,9 @@ pub fn get_constraint_model_arguments(
     base_conf: &CompassAppConfig,
 ) -> Result<(MultimodalConstraintConfig, TimeLimitConstraintConfig), GtfsConfigError> {
     if let Some((edge_list_id, search)) = base_conf.search.iter().enumerate().next() {
-        let models = search.constraint.get("models").ok_or_else(|| GtfsConfigError::RunError(format!("key 'models' missing from traversal model configuration in edge list {edge_list_id}")))?;
+        let models = search.constraint.get("models").ok_or_else(|| GtfsConfigError::RunFailure(format!("key 'models' missing from traversal model configuration in edge list {edge_list_id}")))?;
         let models_vec = models.as_array().ok_or_else(|| {
-            GtfsConfigError::RunError(format!(
+            GtfsConfigError::RunFailure(format!(
                 "traversal model key 'models' in edge list {edge_list_id} is not an array"
             ))
         })?;
@@ -274,7 +276,7 @@ pub fn get_constraint_model_arguments(
             "multimodal",
         )
         .map_err(|e| {
-            GtfsConfigError::RunError(format!("while getting constraint model arguments, {e}"))
+            GtfsConfigError::RunFailure(format!("while getting constraint model arguments, {e}"))
         })?;
         let tlfc: TimeLimitConstraintConfig = find_expected_config(
             models_vec,
@@ -282,12 +284,12 @@ pub fn get_constraint_model_arguments(
             "time_limit",
         )
         .map_err(|e| {
-            GtfsConfigError::RunError(format!("while getting constraint model arguments, {e}"))
+            GtfsConfigError::RunFailure(format!("while getting constraint model arguments, {e}"))
         })?;
 
         return Ok((mmfc, tlfc));
     }
-    Err(GtfsConfigError::RunError(String::from(
+    Err(GtfsConfigError::RunFailure(String::from(
         "no constraint model found in configuration with multimodal arguments",
     )))
 }
@@ -311,12 +313,12 @@ where
             }
         })
         .ok_or_else(|| {
-            GtfsConfigError::RunError(format!(
+            GtfsConfigError::RunFailure(format!(
                 "edge list {edge_list_id} has no '{expected_name}' model"
             ))
         })?;
     let result: T = serde_json::from_value(model_conf.clone()).map_err(|e| {
-        GtfsConfigError::RunError(format!(
+        GtfsConfigError::RunFailure(format!(
             "failed to parse '{expected_name}' model config for edge list {edge_list_id}: {e}. JSON:\n{}",
             serde_json::to_string_pretty(model_conf).unwrap_or_default()
         ))
@@ -332,11 +334,11 @@ pub fn get_available_modes(base_conf: &CompassAppConfig) -> Result<Vec<String>, 
         .label
         .get("modes")
         .ok_or_else(|| {
-            GtfsConfigError::RunError("label model does not have a 'modes' key".to_string())
+            GtfsConfigError::RunFailure("label model does not have a 'modes' key".to_string())
         })?
         .as_array()
         .ok_or_else(|| {
-            GtfsConfigError::RunError(
+            GtfsConfigError::RunFailure(
                 "label model 'modes' key does not have an array value".to_string(),
             )
         })?
@@ -344,7 +346,7 @@ pub fn get_available_modes(base_conf: &CompassAppConfig) -> Result<Vec<String>, 
         .enumerate()
         .map(|(idx, v)| {
             let v_str = v.as_str().ok_or_else(|| {
-                GtfsConfigError::RunError(format!(
+                GtfsConfigError::RunFailure(format!(
                     "label model '.modes[{idx}]' value is not a string"
                 ))
             })?;
@@ -361,10 +363,10 @@ pub fn get_metadata_vec(
 ) -> Result<Vec<String>, GtfsConfigError> {
     let vec_of_values = metadata
         .get(key)
-        .ok_or_else(|| GtfsConfigError::RunError(format!("metadata missing '{key}' key")))?;
+        .ok_or_else(|| GtfsConfigError::RunFailure(format!("metadata missing '{key}' key")))?;
     let vec_of_strings: Vec<String> =
         serde_json::from_value(vec_of_values.clone()).map_err(|e| {
-            GtfsConfigError::RunError(format!("metadata '{key}' is not an array of string: {e}"))
+            GtfsConfigError::RunFailure(format!("metadata '{key}' is not an array of string: {e}"))
         })?;
     Ok(vec_of_strings)
 }
@@ -447,36 +449,38 @@ impl GtfsEdgeListEntry {
         let metadata_filename = metadata_filename(edge_list_id);
         let metadata_filepath = path.join(metadata_filename);
         if !&edges_filepath.is_file() {
-            Err(GtfsConfigError::ReadError {
+            Err(GtfsConfigError::ReadFailure {
                 filepath: edges_filepath.to_string_lossy().to_string(),
                 error: "file not found".to_string(),
             })
         } else if !&schedules_filepath.is_file() {
-            Err(GtfsConfigError::ReadError {
+            Err(GtfsConfigError::ReadFailure {
                 filepath: schedules_filepath.to_string_lossy().to_string(),
                 error: "file not found".to_string(),
             })
         } else if !&geometries_filepath.is_file() {
-            Err(GtfsConfigError::ReadError {
+            Err(GtfsConfigError::ReadFailure {
                 filepath: geometries_filepath.to_string_lossy().to_string(),
                 error: "file not found".to_string(),
             })
         } else if !&metadata_filepath.is_file() {
-            Err(GtfsConfigError::ReadError {
+            Err(GtfsConfigError::ReadFailure {
                 filepath: metadata_filepath.to_string_lossy().to_string(),
                 error: "file not found".to_string(),
             })
         } else {
             let metadata_string = std::fs::read_to_string(&metadata_filepath).map_err(|e| {
-                GtfsConfigError::ReadError {
+                GtfsConfigError::ReadFailure {
                     filepath: metadata_filepath.to_string_lossy().to_string(),
                     error: e.to_string(),
                 }
             })?;
             let metadata: serde_json::Value =
-                serde_json::from_str(&metadata_string).map_err(|e| GtfsConfigError::ReadError {
-                    filepath: metadata_filepath.to_string_lossy().to_string(),
-                    error: e.to_string(),
+                serde_json::from_str(&metadata_string).map_err(|e| {
+                    GtfsConfigError::ReadFailure {
+                        filepath: metadata_filepath.to_string_lossy().to_string(),
+                        error: e.to_string(),
+                    }
                 })?;
             let entry = GtfsEdgeListEntry {
                 edge_list_id,
@@ -511,8 +515,7 @@ fn get_edge_list_id(entry: &DirEntry, pat: &Regex) -> Result<EdgeListId, GtfsCon
     let filename = filename_os.to_string_lossy();
     let pat_match = pat
         .captures(&filename)
-        .map(|g| g.get(1)) // capture group 0 is the entire match, group 1 is just the edge list id
-        .flatten()
+        .and_then(|g| g.get(1))
         .ok_or_else(|| {
             GtfsConfigError::InternalError(format!(
                 "while extracting EdgeListId, file {filename} does not match pattern"

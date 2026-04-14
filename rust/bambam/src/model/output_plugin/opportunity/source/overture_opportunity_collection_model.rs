@@ -1,3 +1,4 @@
+use crate::model::output_plugin::opportunity::OpportunityDataset;
 use bambam_omf::collection::{
     Bbox, BuildingsRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
     PlacesRecord,
@@ -87,7 +88,7 @@ impl OvertureOpportunityCollectionModel {
     pub fn collect(
         &self,
         activity_types: &[String],
-    ) -> Result<Vec<(Geometry<f32>, Vec<f64>)>, OvertureMapsCollectionError> {
+    ) -> Result<OpportunityDataset, OvertureMapsCollectionError> {
         // Collect raw opportunities
         let mut places_opportunities = self.collect_places_opportunities(activity_types)?;
 
@@ -163,6 +164,8 @@ impl OvertureOpportunityCollectionModel {
             .collect())
     }
 
+    /// collect the places where opportunities can be found along with a mask
+    /// for matching activity types per location.
     fn collect_places_opportunities(
         &self,
         activity_types: &[String],

@@ -279,7 +279,7 @@ impl FromStr for Highway {
 
 impl PartialOrd for Highway {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.hierarchy().partial_cmp(&other.hierarchy())
+        Some(self.cmp(other))
     }
 }
 

@@ -23,3 +23,11 @@ pub use opportunity_record::OpportunityRecord;
 pub use opportunity_source::OpportunitySource;
 pub use opportunity_spatial_row::OpportunitySpatialRow;
 pub use study_region::StudyRegion;
+
+use geo::Geometry;
+
+/// for each geometry, a list of activity counts.
+pub type OpportunityDataset = Vec<(Geometry<f32>, Vec<f64>)>;
+
+/// for each Place, a mask of activity types at that location
+pub type PlaceActivityMask = Vec<(Geometry<f32>, Vec<bool>)>;

@@ -60,7 +60,7 @@ impl MultimodalConstraintModel {
 impl ConstraintModel for MultimodalConstraintModel {
     /// confirms that, upon reaching this edge,
     ///   - we have not exceeded any mode-specific distance, time or energy limit
-    /// confirms that, if we add this edge,
+    ///     confirms that, if we add this edge,
     ///   - we have not exceeded max trip legs
     ///   - we have not exceeded max mode counts
     ///   - our trip still matches any exact mode sequences

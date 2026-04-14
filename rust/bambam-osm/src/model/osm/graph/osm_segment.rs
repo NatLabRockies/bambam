@@ -43,19 +43,19 @@ impl PartialEq for OsmSegment {
 impl PartialOrd for OsmSegment {
     /// defers to the ordering of the highway values if available.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        use std::cmp::Ordering as O;
-        match (&self.highway, &other.highway) {
-            (None, None) => None,
-            (None, Some(_)) => Some(O::Less),
-            (Some(_), None) => Some(O::Greater),
-            (Some(a), Some(b)) => Some(a.cmp(b)),
-        }
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for OsmSegment {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap_or(std::cmp::Ordering::Equal)
+        use std::cmp::Ordering as O;
+        match (&self.highway, &other.highway) {
+            (None, None) => O::Equal,
+            (None, Some(_)) => O::Less,
+            (Some(_), None) => O::Greater,
+            (Some(a), Some(b)) => a.cmp(b),
+        }
     }
 }
 
