@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    model::{feature, traversal::flex::ops},
+    model::{feature, ops},
     util::zone::{ZoneId, ZoneLookup},
 };
 
