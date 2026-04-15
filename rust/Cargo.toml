@@ -52,11 +52,11 @@ rand = "0.10.0"
 rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
-routee-compass = { version = "0.19.0" }
-routee-compass-core = { version = "0.19.0" }
-routee-compass-macros = { version = "0.19.0" }
-routee-compass-powertrain = { version = "0.19.0" }
-routee-compass-py = { version = "0.19.0" }
+routee-compass = { version = "0.19.0", git = "https://github.com/NatLabRockies/routee-compass", rev = "fdb2eb3" }
+routee-compass-core = { version = "0.19.0", git = "https://github.com/NatLabRockies/routee-compass", rev = "fdb2eb3" }
+routee-compass-macros = { version = "0.19.0", git = "https://github.com/NatLabRockies/routee-compass", rev = "fdb2eb3" }
+routee-compass-powertrain = { version = "0.19.0", git = "https://github.com/NatLabRockies/routee-compass", rev = "fdb2eb3" }
+routee-compass-py = { version = "0.19.0", git = "https://github.com/NatLabRockies/routee-compass", rev = "fdb2eb3" }
 rstar = { version = "0.12.2" }
 serde = { version = "1.0.160", features = ["derive"] }
 serde_arrow = { version = "0.14.0", features = ["arrow-58"] }
