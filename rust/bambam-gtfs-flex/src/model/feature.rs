@@ -1,7 +1,7 @@
 pub mod fieldname {
     //! the state variable fieldnames used in GTFS-Flex routing
 
-    pub const TRIP_SRC_ZONE_ID: &str = "trip_src_zone_id";
+    pub const LEG_SRC_ZONE_ID: &str = "leg_src_zone_id";
     pub const EDGE_IS_GTFS_FLEX_DESTINATION: &str = "edge_is_gtfs_flex_destination";
     pub const EDGE_POOLING_DELAY: &str = "edge_pooling_delay";
 }

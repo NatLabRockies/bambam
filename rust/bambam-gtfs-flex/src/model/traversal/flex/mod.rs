@@ -4,6 +4,7 @@ mod model;
 mod params;
 mod service;
 
+pub mod ops;
 pub use builder::GtfsFlexBuilder;
 pub use config::GtfsFlexConfig;
 pub use model::GtfsFlexModel;

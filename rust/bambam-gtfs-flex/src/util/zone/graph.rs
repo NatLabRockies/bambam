@@ -18,6 +18,17 @@ pub struct ZoneGraph(ZoneGraphImpl);
 type ZoneGraphImpl = HashMap<ZoneId, HashMap<ZoneId, ZonalRelation>>;
 
 impl ZoneGraph {
+    /// get the complete collection of [ZoneId]s that have relations in this graph.
+    /// the keys of the inner hashmap cover all zones that exist.
+    pub fn keys<'a>(&'a self) -> Box<dyn Iterator<Item = &ZoneId> + 'a> {
+        Box::new(self.0.keys())
+    }
+
+    /// get the relations from some source [ZoneId], if they exist.
+    pub fn get<'a>(&'a self, src_zone_id: &ZoneId) -> Option<&HashMap<ZoneId, ZonalRelation>> {
+        self.0.get(src_zone_id)
+    }
+
     pub fn valid_departure(
         &self,
         src_zone_id: &ZoneId,

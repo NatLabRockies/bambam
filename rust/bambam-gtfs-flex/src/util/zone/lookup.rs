@@ -21,6 +21,20 @@ pub struct ZoneLookup {
 }
 
 impl ZoneLookup {
+    /// look up the [ZoneId] that intersects with some [Vertex]. assumes that
+    /// the first overlapping [ZoneId] is correct.
+    pub fn get_zone_for_vertex(&self, vertex: &Vertex) -> Result<Option<ZoneId>, String> {
+        let point = geo::Point(vertex.coordinate.0.clone());
+        let query = geo::Geometry::Point(point);
+        let result = self
+            .rtree
+            .intersection(&query)?
+            .next()
+            .map(|n| &n.data)
+            .cloned();
+        Ok(result)
+    }
+
     /// is it valid to begin a trip in this zone at this time?
     pub fn valid_departure(
         &self,
