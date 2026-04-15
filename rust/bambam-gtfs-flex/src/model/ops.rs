@@ -1,6 +1,6 @@
 use bambam_core::model::state::{
     fieldname,
-    variable::{EMPTY_CATEGORICAL_VALUE, EMPTY_VARIABLE_CONFIG},
+    variable::EMPTY_CATEGORICAL_VALUE,
     CategoricalMapping,
 };
 use chrono::{NaiveDateTime, Timelike};
@@ -33,7 +33,7 @@ pub fn src_zone_id_set(
     state_model: &StateModel,
 ) -> Result<bool, TraversalModelError> {
     let label = state_model.get_custom_i64(state, feature::fieldname::LEG_SRC_ZONE_ID)?;
-    return Ok(label != EMPTY_CATEGORICAL_VALUE);
+    Ok(label != EMPTY_CATEGORICAL_VALUE)
 }
 
 /// inspect the trip state for a source zone id, and if found, return it, otherwise None.

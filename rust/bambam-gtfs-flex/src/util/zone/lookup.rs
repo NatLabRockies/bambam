@@ -24,7 +24,7 @@ impl ZoneLookup {
     /// look up the [ZoneId] that intersects with some [Vertex]. assumes that
     /// the first overlapping [ZoneId] is correct.
     pub fn get_zone_for_vertex(&self, vertex: &Vertex) -> Result<Option<ZoneId>, String> {
-        let point = geo::Point(vertex.coordinate.0.clone());
+        let point = geo::Point(vertex.coordinate.0);
         let query = geo::Geometry::Point(point);
         let result = self
             .rtree
