@@ -10,7 +10,7 @@ use routee_compass_core::model::{
 };
 
 use bambam_core::model::state::{
-    multimodal_state_ops as ops, LegIdx, CategoricalMapping, CategoricalStateMapping,
+    multimodal_state_ops as ops, CategoricalMapping, CategoricalStateMapping, LegIdx,
 };
 
 /// builds trip leg mode sequences into the tree labels.

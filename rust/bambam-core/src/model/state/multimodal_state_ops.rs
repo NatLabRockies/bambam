@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use crate::model::state::{LegIdx, CategoricalStateMapping};
+use crate::model::state::{CategoricalStateMapping, LegIdx};
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
 use uom::si::f64::{Energy, Length, Time};

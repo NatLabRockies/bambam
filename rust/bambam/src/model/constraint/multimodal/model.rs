@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::model::constraint::multimodal::Constraint;
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
 use bambam_core::model::state::{
-    multimodal_state_ops as state_ops, LegIdx, CategoricalMapping, CategoricalStateMapping,
+    multimodal_state_ops as state_ops, CategoricalMapping, CategoricalStateMapping, LegIdx,
 };
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},

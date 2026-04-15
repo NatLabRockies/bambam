@@ -1,7 +1,7 @@
 use super::multimodal_traversal_ops as ops;
 use bambam_core::model::state::{
-    fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
-    CategoricalMapping, CategoricalStateMapping,
+    fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable,
+    CategoricalMapping, CategoricalStateMapping, LegIdx,
 };
 use itertools::Itertools;
 use routee_compass_core::{
@@ -186,10 +186,10 @@ impl MultimodalTraversalModel {
         let mode_enumeration =
             CategoricalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
                 .map_err(|e| {
-                StateModelError::BuildError(format!(
+                    StateModelError::BuildError(format!(
                     "while building MultimodalTripLegModel, failure constructing mode mapping: {e}"
                 ))
-            })?;
+                })?;
 
         let mmm = MultimodalTraversalModel::new(
             mode.to_string(),
@@ -229,8 +229,8 @@ mod test {
     use super::MultimodalTraversalModel;
     use crate::model::label::multimodal::MultimodalLabelModel;
     use bambam_core::model::state::{
-        fieldname, multimodal_state_ops as state_ops, LegIdx, CategoricalMapping,
-        CategoricalStateMapping,
+        fieldname, multimodal_state_ops as state_ops, CategoricalMapping, CategoricalStateMapping,
+        LegIdx,
     };
     use routee_compass_core::model::{
         cost::{cost_model_service::CostModelService, CostConstraint, CostModel, VehicleCostRate},
