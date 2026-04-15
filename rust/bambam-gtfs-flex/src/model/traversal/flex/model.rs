@@ -70,8 +70,7 @@ impl TraversalModel for GtfsFlexModel {
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         // determine if we need to inject a source zone id into the state vector.
-        let departing_gtfs_flex_trip =
-            !state_model.contains_key(feature::fieldname::LEG_SRC_ZONE_ID);
+        let departing_gtfs_flex_trip = ops::src_zone_id_unset(state, state_model)?;
         if departing_gtfs_flex_trip {
             inject_src_zone_id(state, state_model, ctx.dst, self)?;
         }

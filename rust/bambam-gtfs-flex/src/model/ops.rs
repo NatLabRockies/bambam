@@ -1,4 +1,8 @@
-use bambam_core::model::state::{fieldname, CategoricalMapping};
+use bambam_core::model::state::{
+    fieldname,
+    variable::{EMPTY_CATEGORICAL_VALUE, EMPTY_VARIABLE_CONFIG},
+    CategoricalMapping,
+};
 use chrono::{NaiveDateTime, Timelike};
 use routee_compass_core::model::{
     state::{StateModel, StateModelError, StateVariable},
@@ -23,16 +27,25 @@ pub fn create_current_datetime(
     })
 }
 
+/// quickly confirm if the state vector's leg src zone id is unset/empty.
+pub fn src_zone_id_unset(
+    state: &[StateVariable],
+    state_model: &StateModel,
+) -> Result<bool, TraversalModelError> {
+    let label = state_model.get_custom_i64(state, feature::fieldname::LEG_SRC_ZONE_ID)?;
+    return Ok(label == EMPTY_CATEGORICAL_VALUE);
+}
+
 /// inspect the trip state for a source zone id, and if found, return it, otherwise None.
 pub fn get_src_zone_id<'a>(
     state: &[StateVariable],
     state_model: &StateModel,
     mapping: &'a CategoricalMapping<ZoneId, i64>,
 ) -> Result<Option<&'a ZoneId>, StateModelError> {
-    if !state_model.contains_key(feature::fieldname::LEG_SRC_ZONE_ID) {
+    let label = state_model.get_custom_i64(state, feature::fieldname::LEG_SRC_ZONE_ID)?;
+    if label == EMPTY_CATEGORICAL_VALUE {
         return Ok(None);
     }
-    let label = state_model.get_custom_i64(state, feature::fieldname::LEG_SRC_ZONE_ID)?;
     let zone_id = mapping.get_categorical(label)?.ok_or_else(|| {
         StateModelError::RuntimeError(format!(
             "label {label} has no corresponding ZoneId in mapping"
