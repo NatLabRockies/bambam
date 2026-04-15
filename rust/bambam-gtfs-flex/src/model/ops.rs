@@ -28,12 +28,12 @@ pub fn create_current_datetime(
 }
 
 /// quickly confirm if the state vector's leg src zone id is unset/empty.
-pub fn src_zone_id_unset(
+pub fn src_zone_id_set(
     state: &[StateVariable],
     state_model: &StateModel,
 ) -> Result<bool, TraversalModelError> {
     let label = state_model.get_custom_i64(state, feature::fieldname::LEG_SRC_ZONE_ID)?;
-    return Ok(label == EMPTY_CATEGORICAL_VALUE);
+    return Ok(label != EMPTY_CATEGORICAL_VALUE);
 }
 
 /// inspect the trip state for a source zone id, and if found, return it, otherwise None.
