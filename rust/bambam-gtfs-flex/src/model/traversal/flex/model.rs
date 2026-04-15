@@ -13,7 +13,7 @@ use routee_compass_core::{
     model::{
         network::Vertex,
         state::{InputFeature, StateModel, StateVariable, StateVariableConfig},
-        traversal::{EdgeTraversalContext, TraversalModel, TraversalModelError},
+        traversal::{EdgeFrontierContext, TraversalModel, TraversalModelError},
     },
 };
 
@@ -65,13 +65,13 @@ impl TraversalModel for GtfsFlexModel {
 
     fn traverse_edge(
         &self,
-        ctx: &EdgeTraversalContext,
+        ctx: &EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         // determine if we need to inject a source zone id into the state vector.
-        let departing_gtfs_flex_trip = ops::src_zone_id_unset(state, state_model)?;
-        if departing_gtfs_flex_trip {
+        let existing_gtfs_flex_trip = !ops::src_zone_id_set(state, state_model)?;
+        if existing_gtfs_flex_trip {
             inject_src_zone_id(state, state_model, ctx.dst, self)?;
         }
 

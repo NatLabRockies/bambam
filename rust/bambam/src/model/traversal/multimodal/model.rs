@@ -10,7 +10,7 @@ use routee_compass_core::{
         label::Label,
         network::{Edge, Vertex, VertexId},
         state::{InputFeature, StateModel, StateModelError, StateVariable, StateVariableConfig},
-        traversal::{EdgeTraversalContext, TraversalModel, TraversalModelError},
+        traversal::{EdgeFrontierContext, TraversalModel, TraversalModelError},
     },
 };
 use serde_json::json;
@@ -98,7 +98,7 @@ impl TraversalModel for MultimodalTraversalModel {
 
     fn traverse_edge(
         &self,
-        ctx: &EdgeTraversalContext,
+        ctx: &EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
@@ -236,7 +236,7 @@ mod test {
         cost::{cost_model_service::CostModelService, CostConstraint, CostModel, VehicleCostRate},
         label::Label,
         network::VertexId,
-        traversal::EdgeTraversalContext,
+        traversal::EdgeFrontierContext,
     };
     use routee_compass_core::{
         algorithm::search::{EdgeTraversal, SearchTree},
@@ -299,7 +299,7 @@ mod test {
         let l = Label::Vertex(VertexId(0));
         let (src, edge, dst) = mock_trajectory(0, 0, 0);
         let tree = SearchTree::default();
-        let ctx = EdgeTraversalContext::new(&l, &src, &edge, &dst, &tree);
+        let ctx = EdgeFrontierContext::new(&l, &src, &edge, &dst, &tree);
 
         mtm.traverse_edge(&ctx, &mut state, &state_model)
             .expect("access failed");
@@ -350,11 +350,11 @@ mod test {
         let l0 = Label::Vertex(VertexId(0));
         let (v0, e0, v1) = mock_trajectory(0, 0, 0);
         let mut tree = SearchTree::default();
-        let ctx1 = EdgeTraversalContext::new(&l0, &v0, &e0, &v1, &tree);
+        let ctx1 = EdgeFrontierContext::new(&l0, &v0, &e0, &v1, &tree);
 
         // traverse walk edge
         let et1 = EdgeTraversal::new_local(
-            ctx1,
+            &ctx1,
             &initial_state,
             &state_model,
             test_walk.as_ref(),
@@ -386,10 +386,10 @@ mod test {
         let l1 = Label::Vertex(VertexId(1));
         let (v1, e1, v2) = mock_trajectory(1, 1, 1);
         let tree = SearchTree::default();
-        let ctx2 = EdgeTraversalContext::new(&l1, &v1, &e1, &v2, &tree);
+        let ctx2 = EdgeFrontierContext::new(&l1, &v1, &e1, &v2, &tree);
 
         let et2 = EdgeTraversal::new_local(
-            ctx2,
+            &ctx2,
             &et1.result_state,
             &state_model,
             test_bike.as_ref(),
@@ -438,16 +438,16 @@ mod test {
         let tree0 = SearchTree::default();
         let l0 = Label::Vertex(VertexId(0));
         let (v0, e0, v1) = mock_trajectory(0, 0, 0);
-        let ctx1 = EdgeTraversalContext::new(&l0, &v0, &e0, &v1, &tree0);
+        let ctx1 = EdgeFrontierContext::new(&l0, &v0, &e0, &v1, &tree0);
         let l1 = Label::Vertex(VertexId(1));
         let (v1, e1, v2) = mock_trajectory(1, 1, 1);
-        let ctx2 = EdgeTraversalContext::new(&l1, &v1, &e1, &v2, &tree0);
+        let ctx2 = EdgeFrontierContext::new(&l1, &v1, &e1, &v2, &tree0);
         // let t1 = mock_trajectory(0, 0, 0);
         // let t2 = mock_trajectory(1, 1, 1);
 
         // establish the trip state on "walk"-mode travel
         let et1 = EdgeTraversal::new_local(
-            ctx1,
+            &ctx1,
             &initial_state,
             &state_model,
             test_walk.as_ref(),
@@ -471,7 +471,7 @@ mod test {
         // ASSERTION 1: trip tries to enter "bike" mode after accessing edge 2 on edge list 1,
         // but this should result in an error, as we have restricted the max number of trip legs to 1.
         let result = EdgeTraversal::new_local(
-            ctx2,
+            &ctx2,
             &et1.result_state,
             &state_model,
             test_bike.as_ref(),
@@ -547,7 +547,7 @@ mod test {
         let l0 = Label::Vertex(VertexId(0));
         let (src, edge, dst) = mock_trajectory(0, 0, 0);
         let tree = SearchTree::default();
-        let ctx = EdgeTraversalContext::new(&l0, &src, &edge, &dst, &tree);
+        let ctx = EdgeFrontierContext::new(&l0, &src, &edge, &dst, &tree);
 
         test_tm
             .traverse_edge(&ctx, &mut state, &state_model)
