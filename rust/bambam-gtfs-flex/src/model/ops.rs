@@ -1,8 +1,4 @@
-use bambam_core::model::state::{
-    fieldname,
-    variable::EMPTY_CATEGORICAL_VALUE,
-    CategoricalMapping,
-};
+use bambam_core::model::state::{fieldname, variable::EMPTY_CATEGORICAL_VALUE, CategoricalMapping};
 use chrono::{NaiveDateTime, Timelike};
 use routee_compass_core::model::{
     state::{StateModel, StateModelError, StateVariable},
