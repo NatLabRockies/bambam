@@ -70,10 +70,12 @@ impl TraversalModel for GtfsFlexModel {
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         // determine if we need to inject a source zone id into the state vector.
-        let existing_gtfs_flex_trip = !ops::src_zone_id_set(state, state_model)?;
-        if existing_gtfs_flex_trip {
+        let not_existing_gtfs_flex_trip = !ops::src_zone_id_set(state, state_model)?;
+        if not_existing_gtfs_flex_trip {
             inject_src_zone_id(state, state_model, ctx.dst, self)?;
         }
+
+        // todo: pooling delay?
 
         // for every edge, assign whether it is a valid GTFS-Flex destination
         validate_flex_destination(state, state_model, ctx.dst, self)
