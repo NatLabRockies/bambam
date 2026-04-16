@@ -1,4 +1,4 @@
-use std::ops::{Add, Bound};
+use std::ops::Bound;
 
 use chrono::NaiveTime;
 use skiplist::OrderedSkipList;
