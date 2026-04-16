@@ -16,6 +16,7 @@ use crate::model::traversal::transit::TransitTraversalBuilder;
 use bambam_gbfs::model::constraint::boarding::BoardingConstraintBuilder;
 use bambam_gbfs::model::constraint::geofence::GeofenceConstraintBuilder;
 use bambam_gbfs::model::traversal::boarding::BoardingTraversalBuilder;
+use bambam_gtfs_flex::model::constraint::GtfsFlexDepartureFrontierBuilder;
 use bambam_gtfs_flex::model::traversal::flex::GtfsFlexBuilder;
 use inventory;
 use routee_compass::app::compass::BuilderRegistration;
@@ -54,7 +55,7 @@ pub const BUILDER_REGISTRATION: BuilderRegistration = BuilderRegistration(|build
         Rc::new(BoardingTraversalBuilder {}),
     );
 
-    builders.add_traversal_model("gtfs_flex".to_string(), Rc::new(GtfsFlexBuilder {}));
+    builders.add_traversal_model("gtfs-flex".to_string(), Rc::new(GtfsFlexBuilder {}));
 
     builders.add_constraint_model(
         "multimodal".to_string(),
@@ -63,6 +64,10 @@ pub const BUILDER_REGISTRATION: BuilderRegistration = BuilderRegistration(|build
     builders.add_constraint_model(
         String::from("time_limit"),
         Rc::new(TimeLimitConstraintBuilder {}),
+    );
+    builders.add_constraint_model(
+        String::from("gtfs-flex"),
+        Rc::new(GtfsFlexDepartureFrontierBuilder {}),
     );
 
     builders.add_input_plugin(String::from("grid"), Rc::new(GridInputPluginBuilder {}));
