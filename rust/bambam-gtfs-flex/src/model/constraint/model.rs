@@ -1,11 +1,16 @@
 use std::sync::Arc;
 
-use routee_compass_core::model::constraint::ConstraintModel;
+use routee_compass_core::model::{
+    constraint::{ConstraintModel, ConstraintModelError},
+    network::Edge,
+    state::{StateModel, StateVariable},
+    traversal::EdgeFrontierContext,
+};
 
+use crate::model::ops;
 use crate::util::zone::ZoneLookup;
 
 pub struct GtfsFlexDepartureConstraintModel {
-    #[allow(dead_code)]
     lookup: Arc<ZoneLookup>,
 }
 
@@ -18,21 +23,27 @@ impl GtfsFlexDepartureConstraintModel {
 impl ConstraintModel for GtfsFlexDepartureConstraintModel {
     fn valid_frontier(
         &self,
-        _edge: &routee_compass_core::model::network::Edge,
-        _previous_edge: Option<&routee_compass_core::model::network::Edge>,
-        _state: &[routee_compass_core::model::state::StateVariable],
-        _state_model: &routee_compass_core::model::state::StateModel,
-    ) -> Result<bool, routee_compass_core::model::constraint::ConstraintModelError> {
-        // have we transitioned onto this travel mode yet?
-        // if not, we are boarding GTFS-Flex. check if the ZoneGraph would
-        // consider this a valid departure.
-        todo!()
+        ctx: &EdgeFrontierContext,
+        state: &[StateVariable],
+        state_model: &StateModel,
+    ) -> Result<bool, ConstraintModelError> {
+        // if we have started our trip already, any edge is acceptable.
+        let existing_gtfs_flex_trip = ops::src_zone_id_set(state, state_model)
+            .map_err(|e| ConstraintModelError::ConstraintModelError(e.to_string()))?;
+        if existing_gtfs_flex_trip {
+            return Ok(true);
+        }
+
+        // GTFS-Flex trip has not yet started. reject this edge if it is not in a zone,
+        // otherwise accept as we will board here.
+        let this_zone_id = self
+            .lookup
+            .get_zone_for_vertex(ctx.dst)
+            .map_err(|e| ConstraintModelError::ConstraintModelError(e.to_string()))?;
+        Ok(this_zone_id.is_some())
     }
 
-    fn valid_edge(
-        &self,
-        _edge: &routee_compass_core::model::network::Edge,
-    ) -> Result<bool, routee_compass_core::model::constraint::ConstraintModelError> {
+    fn valid_edge(&self, _edge: &Edge) -> Result<bool, ConstraintModelError> {
         Ok(true)
     }
 }

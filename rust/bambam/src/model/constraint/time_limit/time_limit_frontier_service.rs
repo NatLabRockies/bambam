@@ -29,21 +29,25 @@ impl ConstraintModelService for TimeLimitConstraintService {
         _state_model: Arc<StateModel>,
     ) -> Result<Arc<dyn ConstraintModel>, ConstraintModelError> {
         log::debug!("begin ConstraintModelService::build for TimeLimitConstraintService");
-        let conf = match query.get(super::TIME_LIMIT_FIELD) {
-            None => Ok(self.time_limit.clone()),
-            Some(time_limit_json) => {
-                let time_limit: TimeLimitConfig = serde_json::from_value(time_limit_json.clone())
-                    .map_err(|e| {
+        let conf = get_conf(query)?.unwrap_or_else(|| self.time_limit.clone());
+        let time_limit = conf.time_limit()?;
+        let model = TimeLimitConstraintModel { time_limit };
+        Ok(Arc::new(model))
+    }
+}
+
+/// helper for grabbing the time limit from the query, if present
+fn get_conf(query: &serde_json::Value) -> Result<Option<TimeLimitConfig>, ConstraintModelError> {
+    match query.get(super::TIME_LIMIT_FIELD) {
+        None => Ok(None),
+        Some(time_limit_json) => {
+            let time_limit: TimeLimitConfig = serde_json::from_value(time_limit_json.clone())
+                .map_err(|e| {
                     ConstraintModelError::ConstraintModelError(format!(
                         "failure reading query time_limit for isochrone frontier model: {e}"
                     ))
                 })?;
-                Ok(time_limit)
-            }
-        }?;
-
-        let time_limit = conf.time_limit()?;
-        let model = TimeLimitConstraintModel { time_limit };
-        Ok(Arc::new(model))
+            Ok(Some(time_limit))
+        }
     }
 }

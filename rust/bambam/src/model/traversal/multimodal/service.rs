@@ -9,18 +9,18 @@ use serde_json::Value;
 use crate::model::traversal::multimodal::{
     MultimodalTraversalConfig, MultimodalTraversalModel, MultimodalTraversalQuery,
 };
-use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
+use bambam_core::model::state::{CategoricalMapping, CategoricalStateMapping};
 
 pub struct MultimodalTraversalService {
     pub config: MultimodalTraversalConfig,
-    pub mode_enumeration: Arc<MultimodalStateMapping>,
+    pub mode_enumeration: Arc<CategoricalStateMapping>,
 }
 
 impl MultimodalTraversalService {
     pub fn new(
         config: MultimodalTraversalConfig,
     ) -> Result<MultimodalTraversalService, TraversalModelError> {
-        let mode_enumeration = Arc::new(MultimodalMapping::new(&config.available_modes)?);
+        let mode_enumeration = Arc::new(CategoricalMapping::new(&config.available_modes)?);
         let result = MultimodalTraversalService {
             config,
             mode_enumeration,

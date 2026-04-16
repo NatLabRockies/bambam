@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 use bambam_core::model::bambam_state;
 use bambam_core::model::state::{
-    fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalStateMapping,
+    fieldname, multimodal_state_ops as state_ops, CategoricalStateMapping, LegIdx,
 };
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
@@ -15,7 +15,7 @@ pub fn mode_switch(
     state: &mut [StateVariable],
     state_model: &StateModel,
     prev_mode: &str,
-    mode_to_state: &MultimodalStateMapping,
+    mode_to_state: &CategoricalStateMapping,
     max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
     // grab the leg_idx and leg mode if it exists. allow None cases to flow through
@@ -56,7 +56,7 @@ pub fn update_accumulators(
     state_model: &StateModel,
     mode: &str,
     leg_idx: LegIdx,
-    mode_to_state: &MultimodalStateMapping,
+    mode_to_state: &CategoricalStateMapping,
     max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
     let distance: Length = state_model.get_distance(state, fieldname::EDGE_DISTANCE)?;
@@ -109,7 +109,7 @@ pub fn apply_mapping_for_serialization(
     state_json: &mut serde_json::Value,
     name: &str,
     leg_idx: LegIdx,
-    mapping: &MultimodalStateMapping,
+    mapping: &CategoricalStateMapping,
 ) -> Result<(), StateModelError> {
     if let Some(v) = state_json.get_mut(name) {
         let label = v.as_i64().ok_or_else(|| {

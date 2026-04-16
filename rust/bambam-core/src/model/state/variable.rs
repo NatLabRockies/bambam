@@ -9,8 +9,13 @@ use uom::{
     ConstZero,
 };
 
-/// config value representing an empty LegIdx, Mode, or RouteId.
-pub const EMPTY: CustomVariableConfig = CustomVariableConfig::SignedInteger { initial: -1 };
+/// value used to model emptiness for categoricals.
+pub const EMPTY_CATEGORICAL_VALUE: i64 = -1;
+
+/// config value representing an empty initial categorical value.
+pub const EMPTY_VARIABLE_CONFIG: CustomVariableConfig = CustomVariableConfig::SignedInteger {
+    initial: EMPTY_CATEGORICAL_VALUE,
+};
 
 pub fn active_leg_input_feature() -> InputFeature {
     InputFeature::Custom {
@@ -22,7 +27,7 @@ pub fn active_leg_input_feature() -> InputFeature {
 pub fn active_leg_variable_config() -> StateVariableConfig {
     StateVariableConfig::Custom {
         custom_type: "ActiveLeg".to_string(),
-        value: EMPTY,
+        value: EMPTY_VARIABLE_CONFIG,
         accumulator: true,
     }
 }
@@ -38,7 +43,7 @@ pub fn leg_mode_input_feature(leg_idx: LegIdx) -> InputFeature {
 pub fn leg_mode_variable_config() -> StateVariableConfig {
     StateVariableConfig::Custom {
         custom_type: "Mode".to_string(),
-        value: EMPTY,
+        value: EMPTY_VARIABLE_CONFIG,
         accumulator: true,
     }
 }
@@ -75,7 +80,7 @@ pub fn route_id_input_feature() -> InputFeature {
 pub fn route_id_variable_config() -> StateVariableConfig {
     StateVariableConfig::Custom {
         custom_type: "RouteId".to_string(),
-        value: EMPTY,
+        value: EMPTY_VARIABLE_CONFIG,
         accumulator: true,
     }
 }

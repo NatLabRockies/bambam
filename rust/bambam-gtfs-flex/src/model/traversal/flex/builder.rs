@@ -22,7 +22,7 @@ impl TraversalModelBuilder for GtfsFlexBuilder {
             let msg = format!("failure building engine from config for GtfsFlex builder: {e}");
             TraversalModelError::BuildError(msg)
         })?;
-        let service = GtfsFlexService::new(lookup);
+        let service = GtfsFlexService::new(lookup)?;
         Ok(Arc::new(service))
     }
 }

@@ -12,7 +12,7 @@ use crate::model::constraint::multimodal::{
     model::MultimodalConstraintModel, Constraint, MultimodalConstraintConfig,
     MultimodalConstraintEngine, MultimodalConstraintModelQuery,
 };
-use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
+use bambam_core::model::state::{CategoricalMapping, CategoricalStateMapping};
 
 pub struct MultimodalConstraintService {
     pub engine: Arc<MultimodalConstraintEngine>,
@@ -22,7 +22,7 @@ impl MultimodalConstraintService {
     pub fn new(
         config: MultimodalConstraintConfig,
     ) -> Result<MultimodalConstraintService, ConstraintModelError> {
-        let mode_mapping = MultimodalMapping::new(&config.available_modes).map_err(|e| {
+        let mode_mapping = CategoricalMapping::new(&config.available_modes).map_err(|e| {
             ConstraintModelError::BuildError(format!("while building mode mapping: {e}"))
         })?;
         let mode_to_state = Arc::new(mode_mapping);

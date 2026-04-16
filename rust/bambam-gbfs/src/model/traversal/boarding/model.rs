@@ -3,7 +3,7 @@ use routee_compass_core::{
     model::{
         network::Vertex,
         state::{InputFeature, StateModel, StateVariable, StateVariableConfig},
-        traversal::{EdgeTraversalContext, TraversalModel, TraversalModelError},
+        traversal::{EdgeFrontierContext, TraversalModel, TraversalModelError},
     },
 };
 
@@ -36,7 +36,7 @@ impl TraversalModel for BoardingTraversalModel {
 
     fn traverse_edge(
         &self,
-        _ctx: &EdgeTraversalContext,
+        _ctx: &EdgeFrontierContext,
         _state: &mut Vec<StateVariable>,
         _state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
