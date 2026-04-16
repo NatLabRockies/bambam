@@ -1,4 +1,9 @@
+use std::ops::{Add, Bound};
+
 use chrono::NaiveTime;
+use skiplist::OrderedSkipList;
+
+use crate::util::zone::ZoneSchedule;
 
 use super::{ZoneError, ZoneId, ZoneRecord};
 
@@ -16,16 +21,19 @@ use super::{ZoneError, ZoneId, ZoneRecord};
 /// The only remaining time variability is the intra-day pickup/drop-off window
 /// stored in `ToZoneScheduled`. `valid_time` checks that window against the
 /// wall-clock component of the current datetime; the date component is ignored.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ZonalRelation {
-    SelfLoop(ZoneId),
-    ToZone {
-        dst_zone_id: ZoneId,
-    },
+    /// relation to a zone (possibly a self-loop) where time is ignored.
+    ToZone { dst_zone_id: ZoneId },
+    /// relation to a zone (possibly a self-loop) with a time window constraint.
     ToZoneScheduled {
         dst_zone_id: ZoneId,
-        start_time: NaiveTime,
-        end_time: NaiveTime,
+        schedule: ZoneSchedule,
+    },
+    /// relation to a zone (possibly a self-loop) with multiple time window constraints.
+    ToZoneMultipleSchedules {
+        dst_zone_id: ZoneId,
+        schedules: OrderedSkipList<ZoneSchedule>,
     },
 }
 
@@ -35,22 +43,49 @@ impl ZonalRelation {
     /// id of some zone-to-zone relation.
     pub fn lookup_id(&self) -> &ZoneId {
         match self {
-            ZonalRelation::SelfLoop(zone_id) => zone_id,
-            ZonalRelation::ToZone { dst_zone_id } => dst_zone_id,
-            ZonalRelation::ToZoneScheduled { dst_zone_id, .. } => dst_zone_id,
+            Self::ToZone { dst_zone_id } => dst_zone_id,
+            Self::ToZoneScheduled { dst_zone_id, .. } => dst_zone_id,
+            Self::ToZoneMultipleSchedules { dst_zone_id, .. } => dst_zone_id,
         }
     }
 
-    /// tests if the provided datetime is valid for this particular [ZonalRelation]
+    /// tests if the provided datetime is valid for this particular [ZonalRelation].
     pub fn valid_time(&self, current_time: &NaiveTime) -> bool {
         match self {
+            Self::ToZone { .. } => true,
+            Self::ToZoneScheduled { schedule, .. } => schedule.contains(current_time),
+            Self::ToZoneMultipleSchedules { schedules, .. } => {
+                let query = Bound::Included(&ZoneSchedule::query(*current_time));
+                match schedules.lower_bound(query) {
+                    Some(schedule) => schedule.contains(current_time),
+                    None => false,
+                }
+            }
+        }
+    }
+
+    /// append a time range to an already-existing [ZonalRelation]. may upscale the
+    /// variant to accomodate the additional time range.
+    pub fn add_schedule(&mut self, schedule: ZoneSchedule) {
+        match self {
+            ZonalRelation::ToZone { dst_zone_id } => {
+                *self = Self::ToZoneScheduled {
+                    dst_zone_id: dst_zone_id.clone(),
+                    schedule,
+                }
+            }
             ZonalRelation::ToZoneScheduled {
-                start_time,
-                end_time,
-                ..
-            } => start_time <= current_time && current_time < end_time,
-            // without a scheduled time range, the time is valid by default
-            _ => true,
+                dst_zone_id,
+                schedule: prev_schedule,
+            } => {
+                *self = Self::ToZoneMultipleSchedules {
+                    dst_zone_id: dst_zone_id.clone(),
+                    schedules: OrderedSkipList::from_iter([prev_schedule.clone(), schedule]),
+                };
+            }
+            ZonalRelation::ToZoneMultipleSchedules { schedules, .. } => {
+                schedules.insert(schedule);
+            }
         }
     }
 }
@@ -66,14 +101,15 @@ impl TryFrom<&ZoneRecord> for ZonalRelation {
         let end_time = record.end_time.as_ref();
 
         match (dst_zone_id, start_time, end_time) {
-            (None, None, None) => Ok(Self::SelfLoop(record.src_zone_id.clone())),
+            (None, None, None) => Ok(Self::ToZone {
+                dst_zone_id: record.src_zone_id.clone(),
+            }),
             (Some(d_id), None, None) => Ok(Self::ToZone {
                 dst_zone_id: d_id.clone(),
             }),
             (Some(d_id), Some(s_t), Some(e_t)) => Ok(Self::ToZoneScheduled {
                 dst_zone_id: d_id.clone(),
-                start_time: *s_t,
-                end_time: *e_t,
+                schedule: ZoneSchedule::new(*s_t, *e_t),
             }),
             _ => {
                 let msg = format!(
