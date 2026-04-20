@@ -97,15 +97,15 @@ impl ConstraintModel for MultimodalConstraintModel {
                 &self.engine.mode_to_state,
                 self.max_trip_legs,
             )?;
-            log::debug!(
-                "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
-                (ctx.edge.edge_list_id, ctx.edge.edge_id),
-                state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
-                state_model
-                    .get_time(state, "trip_time")
-                    .unwrap_or_default()
-                    .get::<uom::si::time::minute>(),
-            );
+            // log::debug!(
+            //     "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
+            //     (ctx.edge.edge_list_id, ctx.edge.edge_id),
+            //     state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
+            //     state_model
+            //         .get_time(state, "trip_time")
+            //         .unwrap_or_default()
+            //         .get::<uom::si::time::minute>(),
+            // );
             if !valid {
                 return Ok(false);
             }
@@ -151,15 +151,15 @@ fn evaluate_multimodal_constraints(
             &model.engine.mode_to_state,
             model.max_trip_legs,
         )?;
-        log::debug!(
-            "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
-            (edge.edge_list_id, edge.edge_id),
-            state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
-            state_model
-                .get_time(state, "trip_time")
-                .unwrap_or_default()
-                .get::<uom::si::time::minute>(),
-        );
+        // log::debug!(
+        //     "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
+        //     (edge.edge_list_id, edge.edge_id),
+        //     state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
+        //     state_model
+        //         .get_time(state, "trip_time")
+        //         .unwrap_or_default()
+        //         .get::<uom::si::time::minute>(),
+        // );
         if !valid {
             return Ok(false);
         }
