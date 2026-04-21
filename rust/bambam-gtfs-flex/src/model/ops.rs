@@ -1,5 +1,5 @@
 use bambam_core::model::state::{fieldname, variable::EMPTY_CATEGORICAL_VALUE, CategoricalMapping};
-use chrono::{NaiveDateTime, Timelike};
+use chrono::{NaiveDateTime, TimeDelta};
 use routee_compass_core::model::{
     state::{StateModel, StateModelError, StateVariable},
     traversal::TraversalModelError,
@@ -14,13 +14,15 @@ pub fn create_current_datetime(
     state_model: &StateModel,
 ) -> Result<NaiveDateTime, TraversalModelError> {
     let time: Time = state_model.get_time(state, fieldname::TRIP_TIME)?;
-    let time_u32 = time.get::<uom::si::time::second>() as u32;
-    start_time.with_second(time_u32).ok_or_else(|| {
-        TraversalModelError::TraversalModelFailure(format!(
-            "overflow when adding {time_u32} seconds to {}",
-            start_time
-        ))
-    })
+    let time_i64 = time.get::<uom::si::time::second>() as i64;
+    start_time
+        .checked_add_signed(TimeDelta::seconds(time_i64))
+        .ok_or_else(|| {
+            TraversalModelError::TraversalModelFailure(format!(
+                "overflow when adding {time_i64} seconds to {}",
+                start_time
+            ))
+        })
 }
 
 /// quickly confirm if the state vector's leg src zone id is unset/empty.
@@ -43,6 +45,10 @@ pub fn get_src_zone_id<'a>(
         return Ok(None);
     }
     let zone_id = mapping.get_categorical(label)?.ok_or_else(|| {
+        log::debug!(
+            "label {label} has no corresponding ZoneId in mapping: {:?}",
+            mapping.get_categories()
+        );
         StateModelError::RuntimeError(format!(
             "label {label} has no corresponding ZoneId in mapping"
         ))
