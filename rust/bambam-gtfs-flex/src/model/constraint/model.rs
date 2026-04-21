@@ -98,7 +98,7 @@ fn is_valid_departure(
     current_time: &NaiveDateTime,
 ) -> Result<bool, ConstraintModelError> {
     lookup
-        .valid_departure(src_zone_id, &current_time)
+        .valid_departure(src_zone_id, current_time)
         .map_err(|e| {
             let msg =
                 format!("while validating frontier for gtfs-flex trip via ZoneGraph lookup, {e}");
