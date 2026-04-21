@@ -4,7 +4,7 @@ use bambam_core::model::state::multimodal_state_ops;
 use chrono::NaiveDateTime;
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
-    network::Edge,
+    network::{Edge, Vertex},
     state::{StateModel, StateVariable},
     traversal::EdgeFrontierContext,
 };
@@ -46,10 +46,7 @@ impl ConstraintModel for GtfsFlexDepartureConstraintModel {
         // GTFS-Flex trip has not yet started. reject this edge if it is not in a zone or if it
         // there is no supporting relation in the ZoneGraph, otherwise, accept as we will board here.
         let current_time = current_datetime(self.params.start_time, state, state_model)?;
-        let lookup_result = self
-            .lookup
-            .get_zone_for_vertex(ctx.dst)
-            .map_err(|e| ConstraintModelError::ConstraintModelError(e.to_string()))?;
+        let lookup_result = current_zone(&self.lookup, ctx.dst)?;
         let is_valid = match lookup_result {
             Some(src_zone_id) => is_valid_departure(&self.lookup, &src_zone_id, &current_time),
             None => Ok(false),
@@ -80,6 +77,7 @@ fn existing_trip(
     Ok(is_set)
 }
 
+/// helper function to calculate the current datetime based on the start time and trip_time values.
 fn current_datetime(
     start_time: NaiveDateTime,
     state: &[StateVariable],
@@ -92,6 +90,18 @@ fn current_datetime(
         })
 }
 
+/// helper function to look up the zone intersecting this [Vertex]. returns None if there is
+/// no intersecting zone.
+fn current_zone(lookup: &ZoneLookup, dst: &Vertex) -> Result<Option<ZoneId>, ConstraintModelError> {
+    lookup.get_zone_for_vertex(dst).map_err(|e| {
+        let msg = format!(
+            "while validating frontier for gtfs-flex trip and looking up the current ZoneId, {e}"
+        );
+        ConstraintModelError::ConstraintModelError(msg)
+    })
+}
+
+/// helper function to call the lookup.valid_departure function and return a wrapped error type.
 fn is_valid_departure(
     lookup: &ZoneLookup,
     src_zone_id: &ZoneId,
