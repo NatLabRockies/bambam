@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
 use crate::{
-    model::{feature, ops},
+    model::{feature, ops, GtfsFlexParams},
     util::zone::{ZoneId, ZoneLookup},
 };
-
-use super::GtfsFlexParams;
 
 use bambam_core::model::state::CategoricalMapping;
 use routee_compass_core::{
@@ -70,9 +68,9 @@ impl TraversalModel for GtfsFlexModel {
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
         // determine if we need to inject a source zone id into the state vector.
-        let not_existing_gtfs_flex_trip = !ops::src_zone_id_set(state, state_model)?;
+        let not_existing_gtfs_flex_trip = no_existing_trip(state, state_model)?;
         if not_existing_gtfs_flex_trip {
-            inject_src_zone_id(state, state_model, ctx.dst, self)?;
+            set_src_zone_id(state, state_model, ctx.dst, self)?;
         }
 
         // todo: pooling delay?
@@ -92,7 +90,18 @@ impl TraversalModel for GtfsFlexModel {
     }
 }
 
-fn inject_src_zone_id(
+fn no_existing_trip(
+    state: &[StateVariable],
+    state_model: &StateModel,
+) -> Result<bool, TraversalModelError> {
+    let is_set = ops::src_zone_id_set(state, state_model).map_err(|e| {
+        TraversalModelError::TraversalModelFailure(format!("while checking for existing trip, {e}"))
+    })?;
+    Ok(!is_set)
+}
+
+/// helper function to look up the ZoneId of this destination vertex and add it to the trip state.
+fn set_src_zone_id(
     state: &mut Vec<StateVariable>,
     state_model: &StateModel,
     dst: &Vertex,
@@ -103,7 +112,14 @@ fn inject_src_zone_id(
         TraversalModelError::InternalError(msg)
     })?;
     match zone_id_opt {
-        Some(src_zone_id) => ops::set_src_zone_id(&src_zone_id, state, state_model, &model.mapping),
+        Some(src_zone_id) => {
+            log::debug!("gtfs-flex traversal boarding at zone {src_zone_id}");
+            ops::set_src_zone_id(&src_zone_id, state, state_model, &model.mapping).map_err(|e| {
+                let msg =
+                    format!("while assigning src_zone_id for vertex {dst:?} in state vector, {e}");
+                TraversalModelError::TraversalModelFailure(msg)
+            })
+        }
         None => {
             let msg = format!("during GTFS-Flex traversal, entered edge with '{}' unset and no intersecting zonal data. should be unreachable, prevented by the constraint model.",
                 feature::fieldname::LEG_SRC_ZONE_ID
@@ -124,18 +140,40 @@ fn validate_flex_destination(
     model: &GtfsFlexModel,
 ) -> Result<(), TraversalModelError> {
     // find out if we can label this as a valid destination
-    let src_zone_id =
-        ops::get_src_zone_id(state, state_model, &model.mapping)?.ok_or_else(|| {
+    let src_zone_id = ops::get_src_zone_id(state, state_model, &model.mapping)
+        .map_err(|e| {
+            let msg = format!("while validating flex destination, {e}");
+            TraversalModelError::TraversalModelFailure(msg)
+        })?
+        .ok_or_else(|| {
             let msg = format!(
                 "field '{}' exists in state get_src_zone_id fails",
                 feature::fieldname::LEG_SRC_ZONE_ID
             );
             TraversalModelError::InternalError(msg)
         })?;
+
     let current_datetime =
-        ops::create_current_datetime(&model.params.start_time, state, state_model)?;
+        ops::create_current_datetime(&model.params.start_time, state, state_model).map_err(
+            |e| {
+                let msg = format!("while validating flex destination, {e}");
+                TraversalModelError::TraversalModelFailure(msg)
+            },
+        )?;
+
     let is_valid = model
         .lookup
         .valid_destination(src_zone_id, dst, &current_datetime)?;
-    ops::set_is_valid(is_valid, state, state_model)
+    log::debug!(
+        "gtfs-flex traversal reaches vertex {} ({},{}) at time {}. is a valid destination? {is_valid}",
+        dst.vertex_id,
+        dst.x(),
+        dst.y(),
+        current_datetime.format("%Y-%m-%d %H:%M:%S")
+    );
+    ops::set_is_valid(is_valid, state, state_model).map_err(|e| {
+        let msg =
+            format!("while assigning valid destination for vertex {dst:?} in state vector, {e}");
+        TraversalModelError::TraversalModelFailure(msg)
+    })
 }

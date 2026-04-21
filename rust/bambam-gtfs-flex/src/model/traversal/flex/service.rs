@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use super::GtfsFlexModel;
+use crate::model::GtfsFlexParams;
 use crate::util::zone::{ZoneId, ZoneLookup};
-
-use super::{GtfsFlexModel, GtfsFlexParams};
 
 use bambam_core::model::state::CategoricalMapping;
 use routee_compass_core::model::traversal::{

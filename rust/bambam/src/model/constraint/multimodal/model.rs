@@ -71,47 +71,18 @@ impl ConstraintModel for MultimodalConstraintModel {
         state: &[StateVariable],
         state_model: &StateModel,
     ) -> Result<bool, ConstraintModelError> {
-        // if adding this edge would exceed max_trip_legs, we can skip running the constraints
-        // and directly reject this edge.
-        let valid_leg_count = state_ops::appending_edge_mode_is_valid(
-            state,
-            state_model,
-            &self.engine.mode,
-            self.max_trip_legs,
-            &self.engine.mode_to_state,
-        )
-        .map_err(|e| {
-            let msg = format!("in multimodal constraint model, {e}");
-            ConstraintModelError::ConstraintModelError(msg)
-        })?;
-        if !valid_leg_count {
-            return Ok(false);
-        }
-
-        for constraint in self.constraints.iter() {
-            let valid = constraint.valid_frontier(
-                &self.engine.mode,
-                ctx.edge,
-                state,
-                state_model,
-                &self.engine.mode_to_state,
-                self.max_trip_legs,
-            )?;
-            // log::debug!(
-            //     "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
-            //     (ctx.edge.edge_list_id, ctx.edge.edge_id),
-            //     state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
-            //     state_model
-            //         .get_time(state, "trip_time")
-            //         .unwrap_or_default()
-            //         .get::<uom::si::time::minute>(),
-            // );
-            if !valid {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
+        let is_valid = evaluate_multimodal_constraints(ctx.edge, state, state_model, self)?;
+        log::debug!(
+            "multimodal frontier is valid? '{is_valid}' for label {:?}, edge {:?} with active_leg {}, trip_time: {:.2} minutes",
+            ctx.parent_label,
+            (ctx.edge.edge_list_id, ctx.edge.edge_id),
+            state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
+            state_model
+                .get_time(state, "trip_time")
+                .unwrap_or_default()
+                .get::<uom::si::time::minute>(),
+        );
+        Ok(is_valid)
     }
 
     fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
@@ -151,15 +122,6 @@ fn evaluate_multimodal_constraints(
             &model.engine.mode_to_state,
             model.max_trip_legs,
         )?;
-        // log::debug!(
-        //     "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
-        //     (edge.edge_list_id, edge.edge_id),
-        //     state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
-        //     state_model
-        //         .get_time(state, "trip_time")
-        //         .unwrap_or_default()
-        //         .get::<uom::si::time::minute>(),
-        // );
         if !valid {
             return Ok(false);
         }

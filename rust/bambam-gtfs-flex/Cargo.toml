@@ -21,6 +21,7 @@ geo-types = { workspace = true }
 geozero = { workspace = true }
 gtfs-structures = { workspace = true, optional = true }
 kdam = { workspace = true }
+log = { workspace = true }
 ordered-float = { workspace = true }
 routee-compass-core = { workspace = true }
 serde = { workspace = true }
