@@ -10,25 +10,32 @@ pub struct Agency {
     pub agency_id: Option<String>,
 
     /// agency URL
-    pub _agency_url: Option<String>,
+    #[allow(unused)]
+    pub agency_url: Option<String>,
 
     /// primary language used by the agency
-    pub _agency_lang: Option<String>,
+    #[allow(unused)]
+    pub agency_lang: Option<String>,
 
     /// full agency name
-    pub _agency_name: Option<String>,
+    #[allow(unused)]
+    pub agency_name: Option<String>,
 
     /// agency phone number
-    pub _agency_phone: Option<String>,
+    #[allow(unused)]
+    pub agency_phone: Option<String>,
 
     /// agency timezone
-    pub _agency_timezone: Option<String>,
+    #[allow(unused)]
+    pub agency_timezone: Option<String>,
 
     /// URL to fare information
-    pub _agency_fare_url: Option<String>,
+    #[allow(unused)]
+    pub agency_fare_url: Option<String>,
 
     /// text-to-speech version of agency name
-    pub _tts_agency_name: Option<String>,
+    #[allow(unused)]
+    pub tts_agency_name: Option<String>,
 }
 
 /// read `agency.txt` from a single GTFS-Flex zip file
