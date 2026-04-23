@@ -115,55 +115,9 @@ pub fn process_flex_files(
                 error,
             })?;
 
-            // // read agency.txt
-            // // read checking for error but ignoring actual multi-agency constraints
-            // let _agencies = read_agency_from_flex(&path)?
-            //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "agency.txt missing"))?;
-            // println!("      agency.txt read!");
-
-            // // read calender.txt
-            // let calendar = read_calendar_from_flex(&path)?.ok_or_else(|| {
-            //     io::Error::new(io::ErrorKind::InvalidData, "Error in calendar.txt")
-            // })?;
-            // // println!("      calendar.txt records: {:?}", calendar);
-            // println!("      calendar.txt read!");
-
-            // // read trips.txt
-            // let trips = read_trips_from_flex(&path)?
-            //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Error in trips.txt"))?;
-            // // println!("      trips.txt records: {:?}", trips);
-            // println!("      trips.txt read!");
-
-            // // read stop_times.txt
-            // let stop_times = read_stop_times_from_flex(&path)?.ok_or_else(|| {
-            //     io::Error::new(io::ErrorKind::InvalidData, "Error in stop_times.txt")
-            // })?;
-            // // println!("      stop_times.txt records: {:?}", stop_times);
-            // println!("      stop_times.txt read!");
-
-            // // read routes.txt
-            // let routes = read_routes_from_flex(&path)?
-            //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Error in routes.txt"))?;
-            // println!("      routes.txt read!");
-
             // process files for requested date and time and get valid zones
             let valid_zones = join_flex_files(&gtfs, date_requested, &feed_name, idx)?;
-
-            // println!(
-            //     "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window): {:#?}",
-            //     valid_zones
-            // );
-
-            // valid zones with feed name
-            let valid_zones_with_feed: Vec<ValidZone> = valid_zones
-                .into_iter()
-                .map(|mut zone| {
-                    zone.feed = feed_name.clone();
-                    zone
-                })
-                .collect();
-
-            all_valid_zones.extend(valid_zones_with_feed);
+            all_valid_zones.extend(valid_zones);
         }
     }
 
@@ -230,33 +184,6 @@ pub fn join_flex_files(
             }
         })
         .collect();
-
-    // let stop_times_by_trip: HashMap<String, Vec<StopTime>> = active_trips
-    //     .iter()
-    //     .map(|t| (t.id.clone(), t.stop_times))
-    //     .collect();
-
-    // println!("          active trips: {:?}", active_trips);
-
-    // filter stop_times for active trips and by requested time
-    // let active_trip_ids: Vec<&str> = active_trips.iter().map(|t| t.id.as_str()).collect();
-    // let active_stop_times: Vec<&StopTime> = gtfs
-    //     .trips
-    //     .iter()
-    //     .stop_times
-    //     .values()
-    //     .filter(|st| active_trip_ids.contains(&st.trip_id.as_str()))
-    //     .collect();
-    // println!("          active stop_times: {:?}", active_stop_times);
-
-    // group stop_times by trip_id
-    // let mut stop_times_by_trip: HashMap<String, Vec<&StopTimes>> = HashMap::new();
-    // for st in &active_stop_times {
-    //     stop_times_by_trip
-    //         .entry(st.trip_id.clone())
-    //         .or_default()
-    //         .push(*st);
-    // }
 
     // create valid zones of origin-destination pairs from each trip in stop_times
     let mut valid_zones: Vec<ValidZone> = vec![];
