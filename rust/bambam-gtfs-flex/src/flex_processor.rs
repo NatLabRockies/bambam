@@ -224,11 +224,10 @@ pub fn join_flex_files(
         .trips
         .values()
         .filter(|t| active_service_ids.contains(&t.service_id.as_str()))
-        .map(|t| {
+        .inspect(|t| {
             if let Some(agency_id) = route_to_agency.get(t.route_id.as_str()) {
                 trip_to_agency.insert(&t.id, agency_id.to_string());
             }
-            t
         })
         .collect();
 

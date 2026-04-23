@@ -1,4 +1,3 @@
-use gtfs_structures::StopTime;
 use itertools::Itertools;
 use routee_compass_core::model::map::MapError;
 
