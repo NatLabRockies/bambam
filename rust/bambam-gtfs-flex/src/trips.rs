@@ -6,6 +6,9 @@ use zip::ZipArchive;
 /// s single row from trips.txt in a GTFS-Flex feed
 #[derive(Debug, Deserialize)]
 pub struct Trips {
+    /// unique route identifier
+    pub route_id: String,
+
     /// unique service identifier
     pub service_id: String,
 

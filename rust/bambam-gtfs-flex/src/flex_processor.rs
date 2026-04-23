@@ -1,14 +1,16 @@
-use crate::agency::read_agency_from_flex;
-use crate::calendar::{read_calendar_from_flex, Calendar};
-use crate::stop_times::{read_stop_times_from_flex, StopTimes};
-use crate::trips::{read_trips_from_flex, Trips};
+// use crate::agency::read_agency_from_flex;
+// use crate::calendar::{read_calendar_from_flex, Calendar};
+// use crate::routes::{read_routes_from_flex, Route};
+// use crate::stop_times::{read_stop_times_from_flex, StopTimes};
+// use crate::trips::{read_trips_from_flex, Trips};
 
+use bambam_gtfs_flex::model::GtfsFlexError;
 use chrono::Datelike;
 use chrono::NaiveTime;
+use gtfs_structures::{Calendar, Gtfs, PickupDropOffType, StopTime, Trip};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
-use std::io;
 use std::path::Path;
 
 /// a valid origin-destination zone pair for a trip
@@ -28,7 +30,7 @@ pub struct ValidZone {
 pub fn process_gtfs_flex_bundle(
     flex_directory_path: &Path,
     date_requested: &str,
-) -> io::Result<Vec<ValidZone>> {
+) -> Result<Vec<ValidZone>, GtfsFlexError> {
     println!("=== Processing GTFS-Flex bundle ===");
 
     // discover gtfs-flex feeds
@@ -42,19 +44,25 @@ pub fn process_gtfs_flex_bundle(
 }
 
 /// discover all zip files in the given directory
-pub fn discover_gtfs_flex_feeds(flex_directory_path: &Path) -> io::Result<()> {
+pub fn discover_gtfs_flex_feeds(flex_directory_path: &Path) -> Result<(), GtfsFlexError> {
     if !flex_directory_path.exists() {
-        eprintln!("Directory does not exist: {:?}", flex_directory_path);
+        log::error!("Directory does not exist: {:?}", flex_directory_path);
         return Ok(());
     }
 
-    let entries = fs::read_dir(flex_directory_path)?;
+    let entries = fs::read_dir(flex_directory_path).map_err(|error| GtfsFlexError::Io {
+        path: flex_directory_path.to_path_buf(),
+        error,
+    })?;
 
     println!("Found zip files in {:?}:", flex_directory_path);
 
     let mut count = 0;
     for entry in entries {
-        let entry = entry?;
+        let entry = entry.map_err(|error| GtfsFlexError::Io {
+            path: flex_directory_path.to_path_buf(),
+            error,
+        })?;
         let path = entry.path();
 
         if path.is_file() && path.extension().is_some_and(|e| e == "zip") {
@@ -75,34 +83,24 @@ pub fn discover_gtfs_flex_feeds(flex_directory_path: &Path) -> io::Result<()> {
 pub fn process_flex_files(
     flex_directory_path: &Path,
     date_requested: &str,
-) -> io::Result<Vec<ValidZone>> {
+) -> Result<Vec<ValidZone>, GtfsFlexError> {
     println!("Processing GTFS-Flex feeds in {:?}", flex_directory_path);
 
     let mut all_valid_zones = Vec::new();
+    let iter = std::fs::read_dir(flex_directory_path).map_err(|error| GtfsFlexError::Io {
+        path: flex_directory_path.to_path_buf(),
+        error,
+    })?;
 
-    for entry in std::fs::read_dir(flex_directory_path)? {
-        let entry = entry?;
+    for (idx, entry) in iter.enumerate() {
+        let entry = entry.map_err(|error| GtfsFlexError::Io {
+            path: flex_directory_path.to_path_buf(),
+            error,
+        })?;
         let path = entry.path();
 
         if path.is_file() && path.extension().is_some_and(|e| e == "zip") {
             println!("  Processing {:?}", path);
-
-            // read agency.txt
-            let agencies = read_agency_from_flex(&path)?
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "agency.txt missing"))?;
-            println!("      agency.txt read!");
-
-            // get agency_id
-            let agency_id = match agencies.as_slice() {
-                [] => None, // technically shouldn't happen if file exists
-                [agency] => agency.agency_id.clone(),
-                _ => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("Multiple agencies found in feed {:?}", path),
-                    ));
-                }
-            };
 
             // extract feed name
             let feed_name = path
@@ -111,35 +109,45 @@ pub fn process_flex_files(
                 .unwrap_or("unknown_feed")
                 .to_string();
 
-            // read calender.txt
-            let calendar = read_calendar_from_flex(&path)?.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "Error in calendar.txt")
+            // load GTFS
+            let gtfs = Gtfs::from_path(&path).map_err(|error| GtfsFlexError::GtfsRead {
+                path: path.to_path_buf(),
+                error,
             })?;
-            // println!("      calendar.txt records: {:?}", calendar);
-            println!("      calendar.txt read!");
 
-            // read trips.txt
-            let trips = read_trips_from_flex(&path)?
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Error in trips.txt"))?;
-            // println!("      trips.txt records: {:?}", trips);
-            println!("      trips.txt read!");
+            // // read agency.txt
+            // // read checking for error but ignoring actual multi-agency constraints
+            // let _agencies = read_agency_from_flex(&path)?
+            //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "agency.txt missing"))?;
+            // println!("      agency.txt read!");
 
-            // read stop_times.txt
-            let stop_times = read_stop_times_from_flex(&path)?.ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "Error in stop_times.txt")
-            })?;
-            // println!("      stop_times.txt records: {:?}", stop_times);
-            println!("      stop_times.txt read!");
+            // // read calender.txt
+            // let calendar = read_calendar_from_flex(&path)?.ok_or_else(|| {
+            //     io::Error::new(io::ErrorKind::InvalidData, "Error in calendar.txt")
+            // })?;
+            // // println!("      calendar.txt records: {:?}", calendar);
+            // println!("      calendar.txt read!");
+
+            // // read trips.txt
+            // let trips = read_trips_from_flex(&path)?
+            //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Error in trips.txt"))?;
+            // // println!("      trips.txt records: {:?}", trips);
+            // println!("      trips.txt read!");
+
+            // // read stop_times.txt
+            // let stop_times = read_stop_times_from_flex(&path)?.ok_or_else(|| {
+            //     io::Error::new(io::ErrorKind::InvalidData, "Error in stop_times.txt")
+            // })?;
+            // // println!("      stop_times.txt records: {:?}", stop_times);
+            // println!("      stop_times.txt read!");
+
+            // // read routes.txt
+            // let routes = read_routes_from_flex(&path)?
+            //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Error in routes.txt"))?;
+            // println!("      routes.txt read!");
 
             // process files for requested date and time and get valid zones
-            let valid_zones = join_flex_files(
-                &calendar,
-                &trips,
-                &stop_times,
-                date_requested,
-                &feed_name,
-                agency_id.clone(),
-            )?;
+            let valid_zones = join_flex_files(&gtfs, date_requested, &feed_name, idx)?;
 
             // println!(
             //     "Valid zones (trip_id, origin_zone, destination_zone, start_pickup_drop_off_window, end_pickup_drop_off_window): {:#?}",
@@ -164,110 +172,152 @@ pub fn process_flex_files(
     Ok(all_valid_zones)
 }
 
-/// process calender, trips, and stop_times files for the requested date and time
+/// process calender, trips, routes, and stop_times files for the requested date and time
 pub fn join_flex_files(
-    calendar: &[Calendar],
-    trips: &[Trips],
-    stop_times: &[StopTimes],
+    gtfs: &Gtfs,
     date_requested: &str,
     feed_name: &str,
-    agency_id: Option<String>,
-) -> io::Result<Vec<ValidZone>> {
+    archive_idx: usize,
+) -> Result<Vec<ValidZone>, GtfsFlexError> {
     // parse requested date
-    let date = chrono::NaiveDate::parse_from_str(date_requested, "%Y%m%d")
-        .expect("Invalid date format YYYYMMDD");
+    let date = chrono::NaiveDate::parse_from_str(date_requested, "%Y%m%d").map_err(|e| {
+        let msg = format!("user date request is invalid: {e}");
+        GtfsFlexError::Runtime(msg)
+    })?;
 
     println!("          requested date: {:?}", date);
 
     // filter calendar for the requested date
     let weekday = match date.weekday() {
-        chrono::Weekday::Mon => |c: &Calendar| c.monday == 1,
-        chrono::Weekday::Tue => |c: &Calendar| c.tuesday == 1,
-        chrono::Weekday::Wed => |c: &Calendar| c.wednesday == 1,
-        chrono::Weekday::Thu => |c: &Calendar| c.thursday == 1,
-        chrono::Weekday::Fri => |c: &Calendar| c.friday == 1,
-        chrono::Weekday::Sat => |c: &Calendar| c.saturday == 1,
-        chrono::Weekday::Sun => |c: &Calendar| c.sunday == 1,
+        chrono::Weekday::Mon => |c: &Calendar| c.monday,
+        chrono::Weekday::Tue => |c: &Calendar| c.tuesday,
+        chrono::Weekday::Wed => |c: &Calendar| c.wednesday,
+        chrono::Weekday::Thu => |c: &Calendar| c.thursday,
+        chrono::Weekday::Fri => |c: &Calendar| c.friday,
+        chrono::Weekday::Sat => |c: &Calendar| c.saturday,
+        chrono::Weekday::Sun => |c: &Calendar| c.sunday,
     };
     println!("          requested day: {:?}", date.weekday());
 
-    let active_service_ids: Vec<&str> = calendar
-        .iter()
+    let active_service_ids: Vec<&str> = gtfs
+        .calendar
+        .values()
         .filter(|c| weekday(c) && c.start_date <= date && date <= c.end_date)
-        .map(|c| c.service_id.as_str())
+        .map(|c| c.id.as_str())
         .collect();
 
     // println!("          active service_ids: {:?}", active_service_ids);
 
-    // filter trips by active service_ids
-    let active_trips: Vec<&Trips> = trips
-        .iter()
+    // 1. Map route_id -> agency_id (fallback to archive_idx if missing)
+    let mut route_to_agency: HashMap<&str, String> = HashMap::new();
+    for route in gtfs.routes.values() {
+        let agency_id = route
+            .agency_id
+            .clone()
+            .unwrap_or_else(|| format!("archive{archive_idx}"));
+        route_to_agency.insert(&route.id, agency_id);
+    }
+
+    // filter trips by active service_ids and map trip_id -> agency_id
+    let mut trip_to_agency: HashMap<&str, String> = HashMap::new();
+    let active_trips: Vec<&Trip> = gtfs
+        .trips
+        .values()
         .filter(|t| active_service_ids.contains(&t.service_id.as_str()))
+        .map(|t| {
+            if let Some(agency_id) = route_to_agency.get(t.route_id.as_str()) {
+                trip_to_agency.insert(&t.id, agency_id.to_string());
+            }
+            t
+        })
         .collect();
+
+    // let stop_times_by_trip: HashMap<String, Vec<StopTime>> = active_trips
+    //     .iter()
+    //     .map(|t| (t.id.clone(), t.stop_times))
+    //     .collect();
+
     // println!("          active trips: {:?}", active_trips);
 
     // filter stop_times for active trips and by requested time
-    let active_trip_ids: Vec<&str> = active_trips.iter().map(|t| t.trip_id.as_str()).collect();
-    let active_stop_times: Vec<&StopTimes> = stop_times
-        .iter()
-        .filter(|st| active_trip_ids.contains(&st.trip_id.as_str()))
-        .collect();
+    // let active_trip_ids: Vec<&str> = active_trips.iter().map(|t| t.id.as_str()).collect();
+    // let active_stop_times: Vec<&StopTime> = gtfs
+    //     .trips
+    //     .iter()
+    //     .stop_times
+    //     .values()
+    //     .filter(|st| active_trip_ids.contains(&st.trip_id.as_str()))
+    //     .collect();
     // println!("          active stop_times: {:?}", active_stop_times);
 
     // group stop_times by trip_id
-    let mut stop_times_by_trip: HashMap<String, Vec<&StopTimes>> = HashMap::new();
-    for st in &active_stop_times {
-        stop_times_by_trip
-            .entry(st.trip_id.clone())
-            .or_default()
-            .push(*st);
-    }
+    // let mut stop_times_by_trip: HashMap<String, Vec<&StopTimes>> = HashMap::new();
+    // for st in &active_stop_times {
+    //     stop_times_by_trip
+    //         .entry(st.trip_id.clone())
+    //         .or_default()
+    //         .push(*st);
+    // }
 
     // create valid zones of origin-destination pairs from each trip in stop_times
-    let valid_zones: Vec<ValidZone> = stop_times_by_trip
-        .into_iter()
-        .filter_map(|(trip_id, sts)| {
-            // find origin zone: pickup allowed, dropoff not allowed
-            let origin = sts
-                .iter()
-                .find(|st| st.pickup_type == 2 && st.drop_off_type == 1)
-                .map(|st| st.location_id.clone());
-
-            // find destination zone: pickup not allowed, dropoff allowed
-            let destination = sts
-                .iter()
-                .find(|st| st.pickup_type == 1 && st.drop_off_type == 2)
-                .map(|st| st.location_id.clone());
-
-            // find start pickup/drop-off window
-            // using value from origin zone row
-            let start_pickup_drop_off_window = sts
-                .iter()
-                .find(|st| st.pickup_type == 2 && st.drop_off_type == 1)
-                .map(|st| st.start_pickup_drop_off_window);
-
-            // find end pickup/drop-off window
-            // using value from destination zone row
-            let end_pickup_drop_off_window = sts
-                .iter()
-                .find(|st| st.pickup_type == 1 && st.drop_off_type == 2)
-                .map(|st| st.end_pickup_drop_off_window);
-
-            match (origin, destination) {
-                (Some(origin_zone), Some(destination_zone)) => Some(ValidZone {
-                    agency_id: agency_id.clone(),
+    let mut valid_zones: Vec<ValidZone> = vec![];
+    for trip in active_trips.into_iter() {
+        match trip.stop_times.as_slice() {
+            [src, dst] if valid_flex_trip_stops(src, dst) => {
+                let resolved_agency_id = trip_to_agency.get(&trip.id.as_str()).cloned();
+                let zones_opt = (src.location.clone(), dst.location.clone());
+                let (origin_zone, destination_zone) = match zones_opt {
+                    (Some(sloc), Some(dloc)) => (sloc.id.clone(), dloc.id.clone()),
+                    (None, Some(_)) => {
+                        log::warn!("GTFS-Flex Trip {} has origin StopTime that is missing a 'location' entry", trip.id);
+                        continue;
+                    }
+                    (Some(_), None) => {
+                        log::warn!("GTFS-Flex Trip {} has destination StopTime that is missing a 'location' entry", trip.id);
+                        continue;
+                    }
+                    (None, None) => {
+                        log::warn!(
+                            "GTFS-Flex Trip {} has two StopTimes, both missing a 'location' entry",
+                            trip.id
+                        );
+                        continue;
+                    }
+                };
+                let start_pickup_drop_off_window = src
+                    .start_pickup_drop_off_window
+                    .and_then(|s| NaiveTime::from_num_seconds_from_midnight_opt(s, 0));
+                let end_pickup_drop_off_window = dst
+                    .end_pickup_drop_off_window
+                    .and_then(|s| NaiveTime::from_num_seconds_from_midnight_opt(s, 0));
+                let valid_zone = ValidZone {
+                    agency_id: resolved_agency_id,
                     feed: feed_name.to_string(),
                     requested_date: date_requested.to_string(),
-                    trip_id,
+                    trip_id: trip.id.clone(),
                     origin_zone,
                     start_pickup_drop_off_window,
                     end_pickup_drop_off_window,
                     destination_zone,
-                }),
-                _ => None,
+                };
+                valid_zones.push(valid_zone)
             }
-        })
-        .collect();
+            other => {
+                log::warn!(
+                    "GTFS-Flex Trip {} has {} StopTime entries, assumed should always be 2",
+                    trip.id,
+                    other.len()
+                );
+            }
+        }
+    }
 
     Ok(valid_zones)
+}
+
+fn valid_flex_trip_stops(src: &StopTime, dst: &StopTime) -> bool {
+    matches!(src.pickup_type, PickupDropOffType::ArrangeByPhone)
+        && matches!(src.drop_off_type, PickupDropOffType::NotAvailable)
+        && matches!(dst.pickup_type, PickupDropOffType::NotAvailable)
+        && matches!(dst.drop_off_type, PickupDropOffType::ArrangeByPhone)
 }

@@ -7,10 +7,6 @@ description = "Simple GTFS-Flex scanner"
 repository = "https://github.com/NREL/bambam"
 readme = "README.md"
 
-[features]
-default = ["type4"]
-type4 = ["dep:gtfs-structures"]
-
 [dependencies]
 bambam-core = { version = "0.2.3", path = "../bambam-core" } 
 chrono = { workspace = true }
@@ -19,7 +15,7 @@ csv = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }
 geozero = { workspace = true }
-gtfs-structures = { workspace = true, optional = true }
+gtfs-structures = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
 ordered-float = { workspace = true }
