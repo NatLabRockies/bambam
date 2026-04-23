@@ -2,13 +2,8 @@ use bambam_gtfs_flex::model::GtfsFlexError;
 use clap::Parser;
 use std::path::Path;
 
-mod agency;
 mod app;
-mod calendar;
 mod flex_processor;
-mod routes;
-mod stop_times;
-mod trips;
 
 use crate::app::{Cli, Commands};
 use crate::flex_processor::process_gtfs_flex_bundle;
