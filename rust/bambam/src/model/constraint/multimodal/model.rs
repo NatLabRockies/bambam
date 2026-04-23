@@ -4,8 +4,9 @@ use std::sync::Arc;
 use crate::model::constraint::multimodal::Constraint;
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
 use bambam_core::model::state::{
-    multimodal_state_ops as state_ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
+    multimodal_state_ops as state_ops, CategoricalMapping, CategoricalStateMapping, LegIdx,
 };
+use routee_compass_core::model::traversal::EdgeFrontierContext;
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError},
     network::Edge,
@@ -40,7 +41,7 @@ impl MultimodalConstraintModel {
         modes: &[&str],
     ) -> Result<Self, ConstraintModelError> {
         let mode_to_state =
-            MultimodalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
+            CategoricalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
                 .map_err(|e| {
                 ConstraintModelError::BuildError(format!(
                     "while building local MultimodalConstraintModel, failure constructing mode mapping: {e}"
@@ -66,52 +67,22 @@ impl ConstraintModel for MultimodalConstraintModel {
     ///   - our trip still matches any exact mode sequences
     fn valid_frontier(
         &self,
-        edge: &Edge,
-        previous_edge: Option<&Edge>,
+        ctx: &EdgeFrontierContext,
         state: &[StateVariable],
         state_model: &StateModel,
     ) -> Result<bool, ConstraintModelError> {
-        // if adding this edge would exceed max_trip_legs, we can skip running the constraints
-        // and directly reject this edge.
-        let valid_leg_count = state_ops::appending_edge_mode_is_valid(
-            state,
-            state_model,
-            &self.engine.mode,
-            self.max_trip_legs,
-            &self.engine.mode_to_state,
-        )
-        .map_err(|e| {
-            let msg = format!("in multimodal constraint model, {e}");
-            ConstraintModelError::ConstraintModelError(msg)
-        })?;
-        if !valid_leg_count {
-            return Ok(false);
-        }
-
-        for constraint in self.constraints.iter() {
-            let valid = constraint.valid_frontier(
-                &self.engine.mode,
-                edge,
-                state,
-                state_model,
-                &self.engine.mode_to_state,
-                self.max_trip_legs,
-            )?;
-            log::debug!(
-                "multimodal frontier is valid? '{valid}' for edge {:?} with active_leg {}, trip_time: {:.2} minutes",
-                (edge.edge_list_id, edge.edge_id),
-                state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
-                state_model
-                    .get_time(state, "trip_time")
-                    .unwrap_or_default()
-                    .get::<uom::si::time::minute>(),
-            );
-            if !valid {
-                return Ok(false);
-            }
-        }
-
-        Ok(true)
+        let is_valid = evaluate_multimodal_constraints(ctx.edge, state, state_model, self)?;
+        log::debug!(
+            "multimodal frontier is valid? '{is_valid}' for label {:?}, edge {:?} with active_leg {}, trip_time: {:.2} minutes",
+            ctx.parent_label,
+            (ctx.edge.edge_list_id, ctx.edge.edge_id),
+            state_ops::get_active_leg_idx(state, state_model).unwrap_or_default().unwrap_or_default(),
+            state_model
+                .get_time(state, "trip_time")
+                .unwrap_or_default()
+                .get::<uom::si::time::minute>(),
+        );
+        Ok(is_valid)
     }
 
     fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
@@ -119,8 +90,51 @@ impl ConstraintModel for MultimodalConstraintModel {
     }
 }
 
+fn evaluate_multimodal_constraints(
+    edge: &Edge,
+    state: &[StateVariable],
+    state_model: &StateModel,
+    model: &MultimodalConstraintModel,
+) -> Result<bool, ConstraintModelError> {
+    // if adding this edge would exceed max_trip_legs, we can skip running the constraints
+    // and directly reject this edge.
+    let valid_leg_count = state_ops::appending_edge_mode_is_valid(
+        state,
+        state_model,
+        &model.engine.mode,
+        model.max_trip_legs,
+        &model.engine.mode_to_state,
+    )
+    .map_err(|e| {
+        let msg = format!("in multimodal constraint model, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    if !valid_leg_count {
+        return Ok(false);
+    }
+
+    for constraint in model.constraints.iter() {
+        let valid = constraint.valid_frontier(
+            &model.engine.mode,
+            edge,
+            state,
+            state_model,
+            &model.engine.mode_to_state,
+            model.max_trip_legs,
+        )?;
+        if !valid {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
 #[cfg(test)]
 mod test {
+
+    use super::evaluate_multimodal_constraints;
+
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroU64,
@@ -141,7 +155,7 @@ mod test {
         },
         traversal::multimodal::MultimodalTraversalModel,
     };
-    use bambam_core::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
+    use bambam_core::model::state::{multimodal_state_ops as state_ops, CategoricalStateMapping};
 
     #[test]
     fn test_valid_max_trip_legs_empty_state() {
@@ -153,8 +167,7 @@ mod test {
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
 
         // test
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -175,8 +188,7 @@ mod test {
             .expect("test invariant failed");
 
         // test
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -199,8 +211,7 @@ mod test {
         );
 
         // test
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid);
     }
@@ -239,8 +250,7 @@ mod test {
             1,
             Length::new::<uom::si::length::meter>(1000.0),
         );
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -272,8 +282,7 @@ mod test {
 
         // test accessing another walk-mode link, which would increase the number of walk-mode legs to 3
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid);
     }
@@ -309,8 +318,7 @@ mod test {
             1,
             Length::new::<uom::si::length::meter>(1000.0),
         );
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -339,8 +347,7 @@ mod test {
 
         // test the drive-mode traversal model, which is not an allowed mode
         let edge = Edge::new(2, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid);
     }
@@ -373,8 +380,7 @@ mod test {
             1,
             Length::new::<uom::si::length::meter>(1000.0),
         );
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -415,8 +421,7 @@ mod test {
             1,
             Length::new::<uom::si::length::meter>(1000.0),
         );
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -448,8 +453,7 @@ mod test {
         );
 
         // test
-        let is_valid = mfm
-            .valid_frontier(&edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid);
     }
@@ -483,7 +487,7 @@ mod test {
         legs: &[&str],
         state: &mut [StateVariable],
         state_model: &StateModel,
-        mode_to_state: &MultimodalStateMapping,
+        mode_to_state: &CategoricalStateMapping,
         max_trip_legs: NonZeroU64,
     ) {
         for (leg_idx, mode) in legs.iter().enumerate() {
@@ -511,8 +515,7 @@ mod test {
 
         // Test that walk-mode edge is invalid when walk has 0 limit
         let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = walk_mfm
-            .valid_frontier(&walk_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&walk_edge, &state, &state_model, &walk_mfm)
             .expect("test failed");
         assert!(!is_valid);
     }
@@ -534,8 +537,7 @@ mod test {
 
         // Test drive-mode edge traversal model when drive is not in limits
         let dummy_edge = Edge::new(2, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&dummy_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&dummy_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid);
     }
@@ -562,8 +564,7 @@ mod test {
 
         // Test adding another walk edge (same mode) - should be valid
         let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&walk_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&walk_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -587,8 +588,7 @@ mod test {
                 1,
                 Length::new::<uom::si::length::meter>(1000.0),
             );
-            let is_valid = mfm
-                .valid_frontier(&edge, None, &state, &state_model)
+            let is_valid = evaluate_multimodal_constraints(&edge, &state, &state_model, &mfm)
                 .expect("test failed");
             assert!(!is_valid);
         }
@@ -609,8 +609,7 @@ mod test {
         );
 
         let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0)); // lowercase walk
-        let is_valid = mfm
-            .valid_frontier(&walk_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&walk_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid); // Should be invalid due to case mismatch
     }
@@ -640,8 +639,7 @@ mod test {
 
         // Test walk edge - should be valid as "bike" -> "walk" is a valid sequence
         let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&walk_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&walk_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -660,8 +658,7 @@ mod test {
         );
 
         let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&walk_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&walk_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid);
     }
@@ -695,8 +692,7 @@ mod test {
 
         // Test bike edge - should be valid as we're continuing the valid sequence
         let bike_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&bike_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&bike_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -724,8 +720,7 @@ mod test {
         );
 
         let bike_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&bike_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&bike_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(is_valid);
     }
@@ -754,8 +749,7 @@ mod test {
         );
 
         let bike_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = bike_mfm
-            .valid_frontier(&bike_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&bike_edge, &state, &state_model, &bike_mfm)
             .expect("test failed");
         assert!(!is_valid); // Should fail due to AllowedModes constraint
     }
@@ -789,8 +783,7 @@ mod test {
 
         // Since we have 26 walk legs and the limit is 25, another walk edge should be invalid
         let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = mfm
-            .valid_frontier(&walk_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&walk_edge, &state, &state_model, &mfm)
             .expect("test failed");
         assert!(!is_valid); // Should be invalid as we've exceeded the walk limit
     }
@@ -813,8 +806,7 @@ mod test {
 
         // Test adding a different mode edge, which would create a second leg and exceed the limit
         let bike_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
-        let is_valid = bike_mfm
-            .valid_frontier(&bike_edge, None, &state, &state_model)
+        let is_valid = evaluate_multimodal_constraints(&bike_edge, &state, &state_model, &bike_mfm)
             .expect("test failed");
         assert!(!is_valid); // Should be invalid as this would create a second leg
     }

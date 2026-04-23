@@ -301,9 +301,11 @@ pub fn read_gtfs(
     for trip_id in trip_ids {
         let trip = gtfs.get_trip(trip_id)?;
         for stop_time in trip.stop_times.iter() {
-            if disconnected_stops.contains(&stop_time.stop.id) {
-                disconnected_trips.insert(trip.id.clone());
-                break;
+            if let Some(stop) = &stop_time.stop {
+                if disconnected_stops.contains(&stop.id) {
+                    disconnected_trips.insert(trip.id.clone());
+                    break;
+                }
             }
         }
     }
@@ -491,7 +493,13 @@ fn process_schedule(
             let arr_dt = create_datetime(arr, picked_date)?;
             Ok((dep_dt, arr_dt))
         }
-        (None, None) => Err(ScheduleError::MissingAllStopTimes(src.stop.id.clone())),
+        (None, None) => {
+            let id = match &src.stop {
+                Some(stop) => stop.id.clone(),
+                None => "no id (GTFS-Flex?)".to_string(),
+            };
+            Err(ScheduleError::MissingAllStopTimes(id))
+        }
     }?;
 
     let route = gtfs.routes.get(&trip.route_id).ok_or_else(|| {
@@ -609,17 +617,26 @@ fn map_match(
     stop_locations: &HashMap<String, Option<Point<f64>>>,
     spatial_index: Arc<SpatialIndex>,
 ) -> Result<MapMatchResult, ScheduleError> {
+    let src_stop = src
+        .stop
+        .as_ref()
+        .ok_or_else(|| ScheduleError::StopTimeMissingStop)?;
+    let dst_stop = dst
+        .stop
+        .as_ref()
+        .ok_or_else(|| ScheduleError::StopTimeMissingStop)?;
+
     // Since `stop_locations` is computed from `gtfs.stops`, this should never fail
-    let maybe_src = stop_locations.get(&src.stop.id).ok_or_else(|| {
+    let maybe_src = stop_locations.get(&src_stop.id).ok_or_else(|| {
         ScheduleError::MalformedGtfs(format!(
             "source stop_id '{}' is not associated with a geographic location in either it's stop row or any parent row (see 'parent_station' of GTFS Stops.txt)",
-            src.stop.id
+            src_stop.id
         ))
     })?;
-    let maybe_dst = stop_locations.get(&dst.stop.id).ok_or_else(|| {
+    let maybe_dst = stop_locations.get(&dst_stop.id).ok_or_else(|| {
         ScheduleError::MalformedGtfs(format!(
             "destination stop_id '{}' is not associated with a geographic location in either it's stop row or any parent row (see 'parent_station' of GTFS Stops.txt)",
-            dst.stop.id
+            dst_stop.id
         ))
     })?;
 
@@ -640,8 +657,8 @@ fn map_match(
         _ => {
             let msg = format!(
                 "while map matching stop times between stops '{}' and '{}' could not find POINTs for both stops",
-                src.stop.id,
-                dst.stop.id
+                src_stop.id,
+                dst_stop.id
             );
             Err(ScheduleError::MalformedGtfs(msg))
         }

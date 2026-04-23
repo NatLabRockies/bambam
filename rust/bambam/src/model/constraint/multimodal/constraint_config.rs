@@ -1,6 +1,7 @@
 use bambam_core::model::{
     destination::DestinationPredicate, state::multimodal_state_ops as state_ops,
 };
+use itertools::Itertools;
 use routee_compass_core::model::{
     constraint::ConstraintModelError,
     state::{StateModel, StateVariable},
@@ -233,6 +234,53 @@ impl LimitOperation {
     }
 }
 
+impl DistanceConstraint {
+    pub fn test(&self, value: Length, mode_switch: bool) -> bool {
+        self.op.test(value, self.limit, mode_switch)
+    }
+}
+
+impl TimeConstraint {
+    pub fn test(&self, value: Time, mode_switch: bool) -> bool {
+        self.op.test(value, self.limit, mode_switch)
+    }
+}
+
+impl EnergyConstraint {
+    pub fn test(&self, value: Energy, mode_switch: bool) -> bool {
+        self.op.test(value, self.limit, mode_switch)
+    }
+}
+
+impl TripLegConstraint {
+    /// true if the given state vector is a match to the configuration of this TripLegConstraint.
+    pub fn matches(
+        &self,
+        state: &[StateVariable],
+        state_model: &StateModel,
+        max_trip_legs: NonZeroU64,
+    ) -> Result<bool, ConstraintModelError> {
+        match self {
+            TripLegConstraint::First => matches_leg(state, state_model, 0),
+            TripLegConstraint::LegIndex { index } => matches_leg(state, state_model, *index as u64),
+            TripLegConstraint::Last => {
+                // safe to call -1 here on max_trip_legs which is strictly > 0
+                let max_trip_idx = max_trip_legs.get() - 1;
+                matches_leg(state, state_model, max_trip_idx)
+            }
+            TripLegConstraint::Arrival {
+                destination_predicate,
+            } => destination_predicate
+                .valid_destination(state, state_model)
+                .map_err(|e| {
+                    let msg = format!("while checking trip leg constraint: {e}");
+                    ConstraintModelError::ConstraintModelError(msg)
+                }),
+            TripLegConstraint::Any => Ok(true),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for DistanceConstraint {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -304,51 +352,117 @@ impl<'de> Deserialize<'de> for EnergyConstraint {
     }
 }
 
-impl DistanceConstraint {
-    pub fn test(&self, value: Length, mode_switch: bool) -> bool {
-        self.op.test(value, self.limit, mode_switch)
+impl std::fmt::Display for LimitOperation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            LimitOperation::MinInclusive => "min-inclusive",
+            LimitOperation::MinExclusive => "mix-exclusive",
+            LimitOperation::MaxInclusive => "max-inclusive",
+            LimitOperation::MaxExclusive => "max-exclusive",
+        };
+        write!(f, "{s}")
     }
 }
 
-impl TimeConstraint {
-    pub fn test(&self, value: Time, mode_switch: bool) -> bool {
-        self.op.test(value, self.limit, mode_switch)
-    }
-}
-
-impl EnergyConstraint {
-    pub fn test(&self, value: Energy, mode_switch: bool) -> bool {
-        self.op.test(value, self.limit, mode_switch)
-    }
-}
-
-impl TripLegConstraint {
-    /// true if the given state vector is a match to the configuration of this TripLegConstraint.
-    pub fn matches(
-        &self,
-        state: &[StateVariable],
-        state_model: &StateModel,
-        max_trip_legs: NonZeroU64,
-    ) -> Result<bool, ConstraintModelError> {
+impl std::fmt::Display for TripLegConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TripLegConstraint::First => matches_leg(state, state_model, 0),
-            TripLegConstraint::LegIndex { index } => matches_leg(state, state_model, *index as u64),
-            TripLegConstraint::Last => {
-                // safe to call -1 here on max_trip_legs which is strictly > 0
-                let max_trip_idx = max_trip_legs.get() - 1;
-                matches_leg(state, state_model, max_trip_idx)
-            }
+            TripLegConstraint::First => write!(f, "first leg"),
+            TripLegConstraint::LegIndex { index } => write!(f, "{index}'th leg index"),
+            TripLegConstraint::Last => write!(f, "last leg"),
             TripLegConstraint::Arrival {
-                destination_predicate,
-            } => destination_predicate
-                .valid_destination(state, state_model)
-                .map_err(|e| {
-                    let msg = format!("while checking trip leg constraint: {e}");
-                    ConstraintModelError::ConstraintModelError(msg)
-                }),
-            TripLegConstraint::Any => Ok(true),
+                destination_predicate: p,
+            } => write!(f, "{p}"),
+            TripLegConstraint::Any => write!(f, "any leg"),
         }
     }
+}
+
+impl std::fmt::Display for DistanceConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "distance constraint of {} {} ({})",
+            self.unit.from_uom(self.limit),
+            self.unit,
+            self.op
+        )
+    }
+}
+
+impl std::fmt::Display for TimeConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "time constraint of {} {} ({})",
+            self.unit.from_uom(self.limit),
+            self.unit,
+            self.op
+        )
+    }
+}
+
+impl std::fmt::Display for ModeLegDistanceConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.leg, self.constraint)
+    }
+}
+
+impl std::fmt::Display for ModeLegTimeConstraint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.leg, self.constraint)
+    }
+}
+
+impl std::fmt::Display for ConstraintConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConstraintConfig::AllowedModes { values } => {
+                write!(f, "{}", pretty_list(values))
+            }
+            ConstraintConfig::ModeCounts { values } => write!(f, "{}", pretty_map(values)),
+            ConstraintConfig::ExactSequences { values } => {
+                let sequence_strings = values.iter().map(|path| path.join("->")).collect_vec();
+                write!(f, "{}", pretty_list(&sequence_strings))
+            }
+            ConstraintConfig::DistanceConstraint(constraint) => write!(f, "overall {}", constraint),
+            ConstraintConfig::TimeConstraint(constraint) => write!(f, "overall {}", constraint),
+            ConstraintConfig::ModeDistanceLimit { values } => write!(f, "{}", pretty_map(values)),
+            ConstraintConfig::ModeTimeLimit { values } => write!(f, "{}", pretty_map(values)),
+            ConstraintConfig::ModeLegDistanceLimit { values } => {
+                write!(f, "{}", pretty_map(values))
+            }
+            ConstraintConfig::ModeLegTimeLimit { values } => write!(f, "{}", pretty_map(values)),
+        }
+    }
+}
+
+/// helper function to pretty print a list of string values using English grammar conventions for ",", "and".
+fn pretty_list(values: &[String]) -> String {
+    match values.iter().as_slice() {
+        [] => String::from("no travel modes allowed!"),
+        [single] => format!("allow travel by {single} mode"),
+        [first, second] => {
+            format!("allow travel by {first} and {second} modes")
+        }
+        [.., last] => {
+            let most_str = values.iter().dropping(1).join(", ");
+            format!("allow travel by {most_str} and {last} modes")
+        }
+        _ => unreachable!(),
+    }
+}
+
+/// helper function to pretty print a hashmap where the key is a modename and the value is
+/// a [std::fmt::Display]-able metric constraint.
+fn pretty_map<T>(values: &HashMap<String, T>) -> String
+where
+    T: std::fmt::Display,
+{
+    values
+        .iter()
+        .map(|(k, v)| format!("mode {k} has a {v}"))
+        .join(", ")
 }
 
 /// helper function to test matching of leg index

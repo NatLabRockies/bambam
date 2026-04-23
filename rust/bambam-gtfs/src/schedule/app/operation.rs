@@ -318,7 +318,17 @@ fn summarize(rows: &Vec<GtfsProvider>) {
                     for (_, trip) in gtfs.trips {
                         let mut leg_ods: HashSet<(&String, &String)> = HashSet::new();
                         for pair in trip.stop_times.windows(2) {
-                            leg_ods.insert((&pair[0].stop.id, &pair[1].stop.id));
+                            let src_stop = pair[0]
+                                .stop
+                                .as_ref()
+                                .ok_or_else(|| ScheduleError::StopTimeMissingStop)
+                                .unwrap();
+                            let dst_stop = pair[1]
+                                .stop
+                                .as_ref()
+                                .ok_or_else(|| ScheduleError::StopTimeMissingStop)
+                                .unwrap();
+                            leg_ods.insert((&src_stop.id, &dst_stop.id));
                         }
                         let trip_legs = (trip.stop_times.len() - 1).max(0); // stop_times are vertices, we want edges
                         n_legs += trip_legs;

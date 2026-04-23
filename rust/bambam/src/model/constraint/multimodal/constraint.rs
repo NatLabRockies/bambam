@@ -7,7 +7,7 @@ use crate::model::constraint::multimodal::{
     TimeConstraint,
 };
 use bambam_core::model::state::{
-    multimodal_state_ops as state_ops, MultimodalMapping, MultimodalStateMapping,
+    multimodal_state_ops as state_ops, CategoricalMapping, CategoricalStateMapping,
 };
 use bambam_core::model::{bambam_field, bambam_state};
 use routee_compass_core::model::state::StateModelError;
@@ -72,7 +72,7 @@ impl Constraint {
         edge: &Edge,
         state: &[StateVariable],
         state_model: &StateModel,
-        mode_to_state: &MultimodalStateMapping,
+        mode_to_state: &CategoricalStateMapping,
         max_trip_legs: NonZeroU64,
     ) -> Result<bool, ConstraintModelError> {
         use Constraint as MFC;
@@ -187,7 +187,7 @@ impl TryFrom<&ConstraintConfig> for Constraint {
                         })?;
                         Ok((k.clone(), v_usize))
                     })
-                    .collect::<Result<HashMap<_, _>, _>>()?;
+                    .collect::<Result<HashMap<_, _>, ConstraintModelError>>()?;
                 Ok(Self::ModeCounts(counts))
             }
             MFCC::ExactSequences { values } => {
@@ -231,7 +231,7 @@ fn validate_mode_counts(
     state_model: &StateModel,
     limits: &HashMap<String, usize>,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     let mut counts = ops::get_mode_counts(state, state_model, max_trip_legs, mode_to_state)?;
@@ -261,7 +261,7 @@ fn validate_mode_sequences(
     state_model: &StateModel,
     trie: &SubSequenceTrie,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     let mut modes = state_ops::get_mode_sequence(state, state_model, max_trip_legs, mode_to_state)
@@ -333,7 +333,7 @@ fn validate_mode_distance(
     state_model: &StateModel,
     limits: &HashMap<String, DistanceConstraint>,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
@@ -354,7 +354,7 @@ fn validate_mode_time(
     state_model: &StateModel,
     limits: &HashMap<String, TimeConstraint>,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
@@ -375,7 +375,7 @@ fn validate_mode_energy(
     state_model: &StateModel,
     limits: &HashMap<String, EnergyConstraint>,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
@@ -396,7 +396,7 @@ fn validate_mode_leg_distance(
     state_model: &StateModel,
     limits: &HashMap<String, ModeLegDistanceConstraint>,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
@@ -424,7 +424,7 @@ fn validate_mode_leg_time(
     state_model: &StateModel,
     limits: &HashMap<String, ModeLegTimeConstraint>,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
@@ -452,7 +452,7 @@ fn validate_mode_leg_energy(
     state_model: &StateModel,
     limits: &HashMap<String, ModeLegEnergyConstraint>,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
     match limits.get(edge_mode) {
@@ -526,7 +526,7 @@ fn check_mode_switch(
     state: &[StateVariable],
     state_model: &StateModel,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalMapping<String, i64>,
+    mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> Result<bool, ConstraintModelError> {
     let active_leg =

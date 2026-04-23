@@ -54,7 +54,7 @@ impl TraversalModel for ScheduleTraversalModel {
 
     fn traverse_edge(
         &self,
-        ctx: &routee_compass_core::model::traversal::EdgeTraversalContext,
+        ctx: &routee_compass_core::model::traversal::EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &routee_compass_core::model::state::StateModel,
     ) -> Result<(), TraversalModelError> {

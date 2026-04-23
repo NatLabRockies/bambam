@@ -1,17 +1,14 @@
+use bambam_gtfs_flex::model::GtfsFlexError;
 use clap::Parser;
 use std::path::Path;
 
-mod agency;
 mod app;
-mod calendar;
 mod flex_processor;
-mod stop_times;
-mod trips;
 
 use crate::app::{Cli, Commands};
 use crate::flex_processor::process_gtfs_flex_bundle;
 
-fn main() -> std::io::Result<()> {
+fn main() -> Result<(), GtfsFlexError> {
     // parse cli arguments
     let cli = Cli::parse();
 
@@ -31,11 +28,25 @@ fn main() -> std::io::Result<()> {
             let valid_zones = process_gtfs_flex_bundle(flex_dir, date_requested)?;
 
             // write valid zones CSV
-            let mut writer = csv::Writer::from_path(flex_dir.join(output_file))?;
+            let csv_path = flex_dir.join(output_file);
+            let mut writer =
+                csv::Writer::from_path(&csv_path).map_err(|error| GtfsFlexError::CsvWrite {
+                    path: csv_path.clone(),
+                    error,
+                })?;
+
             for zone in valid_zones {
-                writer.serialize(zone)?;
+                writer
+                    .serialize(zone)
+                    .map_err(|error| GtfsFlexError::CsvWrite {
+                        path: csv_path.clone(),
+                        error,
+                    })?;
             }
-            writer.flush()?;
+            writer.flush().map_err(|error| GtfsFlexError::IoWrite {
+                path: csv_path.clone(),
+                error,
+            })?;
 
             println!("Valid zones written to {}", output_file);
         }

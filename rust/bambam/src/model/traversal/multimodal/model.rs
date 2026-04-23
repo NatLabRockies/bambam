@@ -1,7 +1,7 @@
 use super::multimodal_traversal_ops as ops;
 use bambam_core::model::state::{
-    fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable, LegIdx,
-    MultimodalMapping, MultimodalStateMapping,
+    fieldname, multimodal_state_ops, multimodal_state_ops as state_ops, variable,
+    CategoricalMapping, CategoricalStateMapping, LegIdx,
 };
 use itertools::Itertools;
 use routee_compass_core::{
@@ -10,7 +10,7 @@ use routee_compass_core::{
         label::Label,
         network::{Edge, Vertex, VertexId},
         state::{InputFeature, StateModel, StateModelError, StateVariable, StateVariableConfig},
-        traversal::{EdgeTraversalContext, TraversalModel, TraversalModelError},
+        traversal::{EdgeFrontierContext, TraversalModel, TraversalModelError},
     },
 };
 use serde_json::json;
@@ -25,7 +25,7 @@ use uom::si::f64::{Length, Time};
 pub struct MultimodalTraversalModel {
     pub mode: String,
     pub max_trip_legs: NonZeroU64,
-    pub mode_enumeration: Arc<MultimodalStateMapping>,
+    pub mode_enumeration: Arc<CategoricalStateMapping>,
 }
 
 /// Applies the multimodal leg + mode-specific accumulator updates during
@@ -98,7 +98,7 @@ impl TraversalModel for MultimodalTraversalModel {
 
     fn traverse_edge(
         &self,
-        ctx: &EdgeTraversalContext,
+        ctx: &EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
@@ -167,7 +167,7 @@ impl MultimodalTraversalModel {
     pub fn new(
         mode: String,
         max_trip_legs: NonZeroU64,
-        mode_enumeration: Arc<MultimodalStateMapping>,
+        mode_enumeration: Arc<CategoricalStateMapping>,
     ) -> MultimodalTraversalModel {
         Self {
             mode,
@@ -184,12 +184,12 @@ impl MultimodalTraversalModel {
         modes: &[&str],
     ) -> Result<MultimodalTraversalModel, StateModelError> {
         let mode_enumeration =
-            MultimodalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
+            CategoricalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
                 .map_err(|e| {
-                StateModelError::BuildError(format!(
+                    StateModelError::BuildError(format!(
                     "while building MultimodalTripLegModel, failure constructing mode mapping: {e}"
                 ))
-            })?;
+                })?;
 
         let mmm = MultimodalTraversalModel::new(
             mode.to_string(),
@@ -229,14 +229,14 @@ mod test {
     use super::MultimodalTraversalModel;
     use crate::model::label::multimodal::MultimodalLabelModel;
     use bambam_core::model::state::{
-        fieldname, multimodal_state_ops as state_ops, LegIdx, MultimodalMapping,
-        MultimodalStateMapping,
+        fieldname, multimodal_state_ops as state_ops, CategoricalMapping, CategoricalStateMapping,
+        LegIdx,
     };
     use routee_compass_core::model::{
         cost::{cost_model_service::CostModelService, CostConstraint, CostModel, VehicleCostRate},
         label::Label,
         network::VertexId,
-        traversal::EdgeTraversalContext,
+        traversal::EdgeFrontierContext,
     };
     use routee_compass_core::{
         algorithm::search::{EdgeTraversal, SearchTree},
@@ -260,7 +260,7 @@ mod test {
         let mtm = MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk"])
             .expect("test invariant failed, model constructor had error");
         let state_model = StateModel::new(mtm.output_features());
-        let route_id_to_state = MultimodalStateMapping::empty(); // no route ids
+        let route_id_to_state = CategoricalStateMapping::empty(); // no route ids
 
         let mut state = state_model
             .initial_state(None)
@@ -299,7 +299,7 @@ mod test {
         let l = Label::Vertex(VertexId(0));
         let (src, edge, dst) = mock_trajectory(0, 0, 0);
         let tree = SearchTree::default();
-        let ctx = EdgeTraversalContext::new(&l, &src, &edge, &dst, &tree);
+        let ctx = EdgeFrontierContext::new(&l, &src, &edge, &dst, &tree);
 
         mtm.traverse_edge(&ctx, &mut state, &state_model)
             .expect("access failed");
@@ -350,11 +350,11 @@ mod test {
         let l0 = Label::Vertex(VertexId(0));
         let (v0, e0, v1) = mock_trajectory(0, 0, 0);
         let mut tree = SearchTree::default();
-        let ctx1 = EdgeTraversalContext::new(&l0, &v0, &e0, &v1, &tree);
+        let ctx1 = EdgeFrontierContext::new(&l0, &v0, &e0, &v1, &tree);
 
         // traverse walk edge
         let et1 = EdgeTraversal::new_local(
-            ctx1,
+            &ctx1,
             &initial_state,
             &state_model,
             test_walk.as_ref(),
@@ -386,10 +386,10 @@ mod test {
         let l1 = Label::Vertex(VertexId(1));
         let (v1, e1, v2) = mock_trajectory(1, 1, 1);
         let tree = SearchTree::default();
-        let ctx2 = EdgeTraversalContext::new(&l1, &v1, &e1, &v2, &tree);
+        let ctx2 = EdgeFrontierContext::new(&l1, &v1, &e1, &v2, &tree);
 
         let et2 = EdgeTraversal::new_local(
-            ctx2,
+            &ctx2,
             &et1.result_state,
             &state_model,
             test_bike.as_ref(),
@@ -438,16 +438,16 @@ mod test {
         let tree0 = SearchTree::default();
         let l0 = Label::Vertex(VertexId(0));
         let (v0, e0, v1) = mock_trajectory(0, 0, 0);
-        let ctx1 = EdgeTraversalContext::new(&l0, &v0, &e0, &v1, &tree0);
+        let ctx1 = EdgeFrontierContext::new(&l0, &v0, &e0, &v1, &tree0);
         let l1 = Label::Vertex(VertexId(1));
         let (v1, e1, v2) = mock_trajectory(1, 1, 1);
-        let ctx2 = EdgeTraversalContext::new(&l1, &v1, &e1, &v2, &tree0);
+        let ctx2 = EdgeFrontierContext::new(&l1, &v1, &e1, &v2, &tree0);
         // let t1 = mock_trajectory(0, 0, 0);
         // let t2 = mock_trajectory(1, 1, 1);
 
         // establish the trip state on "walk"-mode travel
         let et1 = EdgeTraversal::new_local(
-            ctx1,
+            &ctx1,
             &initial_state,
             &state_model,
             test_walk.as_ref(),
@@ -471,7 +471,7 @@ mod test {
         // ASSERTION 1: trip tries to enter "bike" mode after accessing edge 2 on edge list 1,
         // but this should result in an error, as we have restricted the max number of trip legs to 1.
         let result = EdgeTraversal::new_local(
-            ctx2,
+            &ctx2,
             &et1.result_state,
             &state_model,
             test_bike.as_ref(),
@@ -491,7 +491,7 @@ mod test {
 
         let (tm, test_tm, state_model, state) =
             build_test_assets(&available_modes, max_trip_legs, this_mode);
-        let mapping = MultimodalStateMapping::empty(); // no route ids
+        let mapping = CategoricalStateMapping::empty(); // no route ids
 
         // as a head check, we can also inspect the serialized access state JSON in the logs
         print_state(&state, &state_model);
@@ -547,7 +547,7 @@ mod test {
         let l0 = Label::Vertex(VertexId(0));
         let (src, edge, dst) = mock_trajectory(0, 0, 0);
         let tree = SearchTree::default();
-        let ctx = EdgeTraversalContext::new(&l0, &src, &edge, &dst, &tree);
+        let ctx = EdgeFrontierContext::new(&l0, &src, &edge, &dst, &tree);
 
         test_tm
             .traverse_edge(&ctx, &mut state, &state_model)
@@ -681,7 +681,7 @@ mod test {
         state: &[StateVariable],
         state_model: &StateModel,
         max_trip_legs: NonZeroU64,
-        mode_to_state: &MultimodalStateMapping,
+        mode_to_state: &CategoricalStateMapping,
     ) -> Result<(), String> {
         let active_leg_opt = state_ops::get_active_leg_idx(state, state_model)
             .expect("failure getting active leg index");

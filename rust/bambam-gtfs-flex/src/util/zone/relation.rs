@@ -1,22 +1,39 @@
-use chrono::TimeDelta;
+use std::ops::Bound;
+
+use chrono::NaiveTime;
+use skiplist::OrderedSkipList;
+
+use crate::util::zone::ZoneSchedule;
 
 use super::{ZoneError, ZoneId, ZoneRecord};
 
-/// note:
-/// you know, the zone times for type 3 are time delta values (hh:mm:ss).
-/// in order to know what day of the year the relation is supported for,
-/// we probably need to look up the Trip via trip_id, then use the calendar
-/// things to look up a date match via the service_id.
-#[derive(Clone, Debug)]
+/// A directed travel relation between GTFS-Flex zones.
+///
+/// # Date invariant
+///
+/// All `ZonalRelation` values are constructed from records that have already been
+/// filtered to a single service date by the GTFS-Flex preprocessor
+/// (`flex_processor::process_gtfs_flex_bundle`). That step joins `calendar.txt`
+/// and `calendar_dates.txt` against the requested date and writes only the
+/// active trips to the `valid-zones.csv` output. By the time a `ZonalRelation`
+/// is built, the date-of-service question is fully resolved.
+///
+/// The only remaining time variability is the intra-day pickup/drop-off window
+/// stored in `ToZoneScheduled`. `valid_time` checks that window against the
+/// wall-clock component of the current datetime; the date component is ignored.
+#[derive(Debug)]
 pub enum ZonalRelation {
-    SelfLoop(ZoneId),
-    ToZone {
-        dst_zone_id: ZoneId,
-    },
+    /// relation to a zone (possibly a self-loop) where time is ignored.
+    ToZone { dst_zone_id: ZoneId },
+    /// relation to a zone (possibly a self-loop) with a time window constraint.
     ToZoneScheduled {
         dst_zone_id: ZoneId,
-        start_time: TimeDelta,
-        end_time: TimeDelta,
+        schedule: ZoneSchedule,
+    },
+    /// relation to a zone (possibly a self-loop) with multiple time window constraints.
+    ToZoneMultipleSchedules {
+        dst_zone_id: ZoneId,
+        schedules: OrderedSkipList<ZoneSchedule>,
     },
 }
 
@@ -26,9 +43,49 @@ impl ZonalRelation {
     /// id of some zone-to-zone relation.
     pub fn lookup_id(&self) -> &ZoneId {
         match self {
-            ZonalRelation::SelfLoop(zone_id) => zone_id,
-            ZonalRelation::ToZone { dst_zone_id } => dst_zone_id,
-            ZonalRelation::ToZoneScheduled { dst_zone_id, .. } => dst_zone_id,
+            Self::ToZone { dst_zone_id } => dst_zone_id,
+            Self::ToZoneScheduled { dst_zone_id, .. } => dst_zone_id,
+            Self::ToZoneMultipleSchedules { dst_zone_id, .. } => dst_zone_id,
+        }
+    }
+
+    /// tests if the provided datetime is valid for this particular [ZonalRelation].
+    pub fn valid_time(&self, current_time: &NaiveTime) -> bool {
+        match self {
+            Self::ToZone { .. } => true,
+            Self::ToZoneScheduled { schedule, .. } => schedule.contains(current_time),
+            Self::ToZoneMultipleSchedules { schedules, .. } => {
+                let query = Bound::Included(&ZoneSchedule::query(*current_time));
+                match schedules.lower_bound(query) {
+                    Some(schedule) => schedule.contains(current_time),
+                    None => false,
+                }
+            }
+        }
+    }
+
+    /// append a time range to an already-existing [ZonalRelation]. may upscale the
+    /// variant to accomodate the additional time range.
+    pub fn add_schedule(&mut self, schedule: ZoneSchedule) {
+        match self {
+            ZonalRelation::ToZone { dst_zone_id } => {
+                *self = Self::ToZoneScheduled {
+                    dst_zone_id: dst_zone_id.clone(),
+                    schedule,
+                }
+            }
+            ZonalRelation::ToZoneScheduled {
+                dst_zone_id,
+                schedule: prev_schedule,
+            } => {
+                *self = Self::ToZoneMultipleSchedules {
+                    dst_zone_id: dst_zone_id.clone(),
+                    schedules: OrderedSkipList::from_iter([prev_schedule.clone(), schedule]),
+                };
+            }
+            ZonalRelation::ToZoneMultipleSchedules { schedules, .. } => {
+                schedules.insert(schedule);
+            }
         }
     }
 }
@@ -44,14 +101,15 @@ impl TryFrom<&ZoneRecord> for ZonalRelation {
         let end_time = record.end_time.as_ref();
 
         match (dst_zone_id, start_time, end_time) {
-            (None, None, None) => Ok(Self::SelfLoop(record.src_zone_id.clone())),
+            (None, None, None) => Ok(Self::ToZone {
+                dst_zone_id: record.src_zone_id.clone(),
+            }),
             (Some(d_id), None, None) => Ok(Self::ToZone {
                 dst_zone_id: d_id.clone(),
             }),
             (Some(d_id), Some(s_t), Some(e_t)) => Ok(Self::ToZoneScheduled {
                 dst_zone_id: d_id.clone(),
-                start_time: *s_t,
-                end_time: *e_t,
+                schedule: ZoneSchedule::new(*s_t, *e_t),
             }),
             _ => {
                 let msg = format!(

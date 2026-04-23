@@ -5,6 +5,7 @@ mod lookup;
 mod lookup_config;
 mod record;
 mod relation;
+mod schedule;
 
 pub use error::ZoneError;
 pub use graph::ZoneGraph;
@@ -13,3 +14,4 @@ pub use lookup::ZoneLookup;
 pub use lookup_config::ZoneLookupConfig;
 pub use record::ZoneRecord;
 pub use relation::ZonalRelation;
+pub use schedule::ZoneSchedule;

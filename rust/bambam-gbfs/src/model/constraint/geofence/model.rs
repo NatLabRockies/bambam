@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use routee_compass_core::model::constraint::ConstraintModel;
+use routee_compass_core::model::{constraint::ConstraintModel, traversal::EdgeFrontierContext};
 
 use crate::model::constraint::geofence::GeofenceConstraintEngine;
 
@@ -19,8 +19,7 @@ impl GeofenceConstraintModel {
 impl ConstraintModel for GeofenceConstraintModel {
     fn valid_frontier(
         &self,
-        _edge: &routee_compass_core::model::network::Edge,
-        _previous_edge: Option<&routee_compass_core::model::network::Edge>,
+        _ctx: &EdgeFrontierContext,
         _state: &[routee_compass_core::model::state::StateVariable],
         _state_model: &routee_compass_core::model::state::StateModel,
     ) -> Result<bool, routee_compass_core::model::constraint::ConstraintModelError> {
