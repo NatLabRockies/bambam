@@ -1,7 +1,5 @@
 use bambam::app::oppvec::{self, oppvec_ops};
-use bambam::app::overlay::{
-    self, GeometryColumnType, OverlayOperation, OverlaySource,
-};
+use bambam::app::overlay::{self, GeometryColumnType, OverlayOperation, OverlaySource};
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -157,13 +155,13 @@ pub enum App {
         output_directory: String,
         /// used for specifying column name for the geometry x value. do not combine with
         /// geometry_column argument.
-        x_column: Option<String>,
+        xcol: Option<String>,
         /// used for specifying column name for the geometry y value. do not combine with
         /// geometry_column argument.
-        y_column: Option<String>,
+        ycol: Option<String>,
         /// used for specifying column name for the geometry. do not combine with x_column or
         /// y_column arguments.
-        geometry_column: Option<String>,
+        geomcol: Option<String>,
         /// overlay method to apply
         #[arg(long, default_value_t = OverlayOperation::Intersection)]
         how: OverlayOperation,
@@ -358,9 +356,9 @@ impl App {
                 bambam_output_filepath,
                 overlay_filepath,
                 output_directory,
-                x_column,
-                y_column,
-                geometry_column,
+                xcol: x_column,
+                ycol: y_column,
+                geomcol: geometry_column,
                 how,
                 id_field,
             } => {
