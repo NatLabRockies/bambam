@@ -1,6 +1,6 @@
 use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
-    self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
+    self, GeometryColumnType, OverlayOperation, OverlaySource,
 };
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
