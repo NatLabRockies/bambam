@@ -1,4 +1,7 @@
 use bambam::app::oppvec::{self, oppvec_ops};
+use bambam::app::overlay::{
+    self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
+};
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -140,6 +143,35 @@ pub enum App {
         // /// comma-delimited list of categories to keep
         // #[arg(long)]
         // activity_categories: String,
+    },
+    #[command(
+        name = "overlay-shapefile",
+        about = "partition the BAMBAM output into another dataset of geospatial boundaries"
+    )]
+    OverlayShapefile {
+        /// a CSV file containing a bambam output
+        bambam_output_filepath: String,
+        /// a shapefile such as a
+        overlay_filepath: String,
+        /// file path to write the result dataset
+        output_directory: String,
+        /// used for specifying column name for the geometry x value. do not combine with
+        /// geometry_column argument.
+        x_column: Option<String>,
+        /// used for specifying column name for the geometry y value. do not combine with
+        /// geometry_column argument.
+        y_column: Option<String>,
+        /// used for specifying column name for the geometry. do not combine with x_column or
+        /// y_column arguments.
+        geometry_column: Option<String>,
+        /// overlay method to apply
+        #[arg(long, default_value_t = OverlayOperation::Intersection)]
+        how: OverlayOperation,
+        /// name of the id field in the shapefile, used to create the output filepath
+        /// for each partitioned dataset. values will be re-encoded for the filesystem,
+        /// removing values such as forward slashes that could have unintended effects.
+        #[arg(long, default_value_t = String::from("GEOID"))]
+        id_field: String,
     },
     #[command(
         name = "gtfs-config",
@@ -322,6 +354,34 @@ impl App {
                 base_config_relative_path.as_deref(),
             )
             .map_err(|e| e.to_string()),
+            Self::OverlayShapefile {
+                bambam_output_filepath,
+                overlay_filepath,
+                output_directory,
+                x_column,
+                y_column,
+                geometry_column,
+                how,
+                id_field,
+            } => {
+                let col_type = GeometryColumnType::new(
+                    x_column.as_ref(),
+                    y_column.as_ref(),
+                    geometry_column.as_ref(),
+                    None,
+                )?;
+                let overlay_source = OverlaySource::Shapefile {
+                    file: overlay_filepath.clone(),
+                    id_field: id_field.clone(),
+                };
+                overlay::run(
+                    bambam_output_filepath,
+                    output_directory,
+                    &overlay_source,
+                    &col_type,
+                    how,
+                )
+            }
         }
     }
 }
