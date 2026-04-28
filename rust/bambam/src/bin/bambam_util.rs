@@ -170,7 +170,7 @@ pub enum App {
         /// used for specifying the geometry type of the value stored at geomcol do not combine
         /// with xcol or ycol arguments.
         #[arg(long)]
-        geomformat: Option<GeometryFormat>,
+        geomfmt: Option<GeometryFormat>,
         /// overlay method to apply
         #[arg(long, default_value_t = OverlayOperation::Intersection)]
         how: OverlayOperation,
@@ -372,7 +372,7 @@ impl App {
                 xcol: x_column,
                 ycol: y_column,
                 geomcol,
-                geomformat,
+                geomfmt: geomformat,
                 how,
                 id_field,
                 verbose,
