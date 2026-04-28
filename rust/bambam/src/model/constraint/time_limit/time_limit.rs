@@ -3,12 +3,12 @@ use serde::{Deserialize, Serialize};
 use uom::si::f64::Time;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TimeLimitConfig {
+pub struct TimeLimit {
     pub time: f64,
     pub time_unit: TimeUnit,
 }
 
-impl TimeLimitConfig {
+impl TimeLimit {
     pub fn time_limit(&self) -> Result<Time, ConstraintModelError> {
         if self.time <= 0.0 {
             Err(ConstraintModelError::BuildError(format!(

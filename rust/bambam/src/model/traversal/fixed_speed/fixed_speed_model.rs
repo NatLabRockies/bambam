@@ -7,7 +7,7 @@ use routee_compass_core::{
         network::{Edge, Vertex},
         state::{InputFeature, StateModel, StateVariable, StateVariableConfig},
         traversal::{
-            EdgeTraversalContext, TraversalModel, TraversalModelError, TraversalModelService,
+            EdgeFrontierContext, TraversalModel, TraversalModelError, TraversalModelService,
         },
         unit::SpeedUnit,
     },
@@ -68,7 +68,7 @@ impl TraversalModel for FixedSpeedModel {
 
     fn traverse_edge(
         &self,
-        ctx: &EdgeTraversalContext,
+        _ctx: &EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
@@ -78,7 +78,7 @@ impl TraversalModel for FixedSpeedModel {
 
     fn estimate_traversal(
         &self,
-        od: (&Vertex, &Vertex),
+        _od: (&Vertex, &Vertex),
         state: &mut Vec<StateVariable>,
         tree: &SearchTree,
         state_model: &StateModel,

@@ -27,7 +27,7 @@ use crate::{
     model::{
         constraint::{
             multimodal::{ConstraintConfig, MultimodalConstraintConfig},
-            time_limit::{TimeLimitConfig, TimeLimitConstraintConfig},
+            time_limit::{TimeLimit, TimeLimitConstraintConfig},
         },
         traversal::{
             multimodal::MultimodalTraversalConfig,
@@ -406,7 +406,7 @@ pub fn gtfs_traversal_model_config(
 
 /// generates the JSON fields expected for a transit frontier model
 pub fn gtfs_constraint_model_config(
-    time_limit: &TimeLimitConfig,
+    time_limit: &TimeLimit,
     available_modes: &[String],
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let mmc_conf = MultimodalConstraintConfig {

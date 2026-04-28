@@ -5,7 +5,9 @@ use routee_compass_core::{
     model::{
         network::{Edge, Vertex},
         state::{InputFeature, StateModel, StateVariable, StateVariableConfig},
-        traversal::{TraversalModel, TraversalModelError, TraversalModelService},
+        traversal::{
+            EdgeFrontierContext, TraversalModel, TraversalModelError, TraversalModelService,
+        },
     },
 };
 use std::sync::Arc;
@@ -78,7 +80,7 @@ impl TraversalModel for TripDepartureDelayModel {
 
     fn traverse_edge(
         &self,
-        ctx: &routee_compass_core::model::traversal::EdgeTraversalContext,
+        ctx: &EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {

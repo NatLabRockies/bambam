@@ -187,7 +187,7 @@ impl TryFrom<&ConstraintConfig> for Constraint {
                         })?;
                         Ok((k.clone(), v_usize))
                     })
-                    .collect::<Result<HashMap<_, _>, _>>()?;
+                    .collect::<Result<HashMap<_, _>, ConstraintModelError>>()?;
                 Ok(Self::ModeCounts(counts))
             }
             MFCC::ExactSequences { values } => {

@@ -36,7 +36,7 @@ rayon = { workspace = true }
 regex = { workspace = true }
 routee-compass = { workspace = true }
 routee-compass-core = { workspace = true }
-routee-compass-powertrain = { workspace = true }
+# routee-compass-powertrain = { workspace = true }
 rstar = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

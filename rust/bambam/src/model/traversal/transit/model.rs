@@ -6,7 +6,7 @@ use bambam_core::model::bambam_state;
 use bambam_core::model::state::variable;
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use routee_compass_core::model::state::{StateModel, StateVariable};
-use routee_compass_core::model::traversal::{EdgeTraversalContext, TraversalModelError};
+use routee_compass_core::model::traversal::{EdgeFrontierContext, TraversalModelError};
 use routee_compass_core::model::{
     state::StateVariableConfig,
     traversal::{default::fieldname, TraversalModel},
@@ -102,7 +102,7 @@ impl TraversalModel for TransitTraversalModel {
 
     fn traverse_edge(
         &self,
-        ctx: &EdgeTraversalContext,
+        ctx: &EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &StateModel,
     ) -> Result<(), routee_compass_core::model::traversal::TraversalModelError> {
