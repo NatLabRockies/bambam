@@ -1,5 +1,7 @@
 use bambam::app::oppvec::{self, oppvec_ops};
-use bambam::app::overlay::{self, GeometryColumnType, OverlayOperation, OverlaySource};
+use bambam::app::overlay::{
+    self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
+};
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -149,19 +151,26 @@ pub enum App {
     OverlayShapefile {
         /// a CSV file containing a bambam output
         bambam_output_filepath: String,
-        /// a shapefile such as a
+        /// a path to the overlay boundary dataset, such as a shapefile
         overlay_filepath: String,
         /// file path to write the result dataset
         output_directory: String,
         /// used for specifying column name for the geometry x value. do not combine with
-        /// geometry_column argument.
+        /// geomcol argument.
+        #[arg(long)]
         xcol: Option<String>,
         /// used for specifying column name for the geometry y value. do not combine with
-        /// geometry_column argument.
+        /// geomcol argument.
+        #[arg(long)]
         ycol: Option<String>,
-        /// used for specifying column name for the geometry. do not combine with x_column or
-        /// y_column arguments.
+        /// used for specifying column name for the geometry. do not combine with xcol or
+        /// ycol arguments.
+        #[arg(long)]
         geomcol: Option<String>,
+        /// used for specifying the geometry type of the value stored at geomcol do not combine
+        /// with xcol or ycol arguments.
+        #[arg(long)]
+        geomfmt: Option<GeometryFormat>,
         /// overlay method to apply
         #[arg(long, default_value_t = OverlayOperation::Intersection)]
         how: OverlayOperation,
@@ -170,6 +179,9 @@ pub enum App {
         /// removing values such as forward slashes that could have unintended effects.
         #[arg(long, default_value_t = String::from("GEOID"))]
         id_field: String,
+        /// if true, log if any rows fail to match the provided overlay dataset
+        #[arg(long)]
+        verbose: bool,
     },
     #[command(
         name = "gtfs-config",
@@ -352,21 +364,24 @@ impl App {
                 base_config_relative_path.as_deref(),
             )
             .map_err(|e| e.to_string()),
+
             Self::OverlayShapefile {
                 bambam_output_filepath,
                 overlay_filepath,
                 output_directory,
                 xcol: x_column,
                 ycol: y_column,
-                geomcol: geometry_column,
+                geomcol,
+                geomfmt: geomformat,
                 how,
                 id_field,
+                verbose,
             } => {
                 let col_type = GeometryColumnType::new(
                     x_column.as_ref(),
                     y_column.as_ref(),
-                    geometry_column.as_ref(),
-                    None,
+                    geomcol.as_ref(),
+                    geomformat.as_ref(),
                 )?;
                 let overlay_source = OverlaySource::Shapefile {
                     file: overlay_filepath.clone(),
@@ -378,6 +393,7 @@ impl App {
                     &overlay_source,
                     &col_type,
                     how,
+                    *verbose,
                 )
             }
         }

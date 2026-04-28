@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
+use clap::ValueEnum;
 use geo::{Coord, Geometry, Point};
+use geozero::{wkb::Wkb, wkt::Wkt, ToGeo};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -10,7 +12,7 @@ pub enum GeometryColumnType {
     Xy { x: String, y: String },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum GeometryFormat {
     Wkt,
@@ -43,7 +45,20 @@ impl GeometryColumnType {
     ) -> Result<Geometry, String> {
         match self {
             GeometryColumnType::Geometry { col, format } => {
-                todo!("deserialize a geometry directly from the row")
+                let geom_idx = lookup
+                    .get(col)
+                    .ok_or_else(|| format!("header missing {col} column"))?;
+                let geom_str = row
+                    .get(*geom_idx)
+                    .ok_or_else(|| format!("row missing {col} column at index {geom_idx}"))?;
+                match format {
+                    GeometryFormat::Wkt => Wkt(geom_str).to_geo().map_err(|e| {
+                        format!("value at column {col} not a valid WKT geometry: {e}")
+                    }),
+                    GeometryFormat::Wkb => Wkb(geom_str).to_geo().map_err(|e| {
+                        format!("value at column {col} not a valid WKB geometry: {e}")
+                    }),
+                }
             }
             GeometryColumnType::Xy { x, y } => {
                 let x_idx = lookup
