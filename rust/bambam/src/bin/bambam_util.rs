@@ -149,18 +149,21 @@ pub enum App {
     OverlayShapefile {
         /// a CSV file containing a bambam output
         bambam_output_filepath: String,
-        /// a shapefile such as a
+        /// a path to the overlay boundary dataset, such as a shapefile
         overlay_filepath: String,
         /// file path to write the result dataset
         output_directory: String,
         /// used for specifying column name for the geometry x value. do not combine with
         /// geometry_column argument.
+        #[arg(long)]
         xcol: Option<String>,
         /// used for specifying column name for the geometry y value. do not combine with
         /// geometry_column argument.
+        #[arg(long)]
         ycol: Option<String>,
         /// used for specifying column name for the geometry. do not combine with x_column or
         /// y_column arguments.
+        #[arg(long)]
         geomcol: Option<String>,
         /// overlay method to apply
         #[arg(long, default_value_t = OverlayOperation::Intersection)]
@@ -170,6 +173,9 @@ pub enum App {
         /// removing values such as forward slashes that could have unintended effects.
         #[arg(long, default_value_t = String::from("GEOID"))]
         id_field: String,
+        /// if true, log if any rows fail to match the provided overlay dataset
+        #[arg(long)]
+        verbose: bool,
     },
     #[command(
         name = "gtfs-config",
@@ -361,6 +367,7 @@ impl App {
                 geomcol: geometry_column,
                 how,
                 id_field,
+                verbose,
             } => {
                 let col_type = GeometryColumnType::new(
                     x_column.as_ref(),
@@ -378,6 +385,7 @@ impl App {
                     &overlay_source,
                     &col_type,
                     how,
+                    *verbose,
                 )
             }
         }

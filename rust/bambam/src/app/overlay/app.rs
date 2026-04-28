@@ -23,12 +23,16 @@ pub fn run(
     overlay_source: &OverlaySource,
     col_type: &GeometryColumnType,
     _: &OverlayOperation,
+    verbose: bool,
 ) -> Result<(), String> {
     // fail early if IO error from read/write destinations
     let output_directory = Path::new(output_directory);
-    let output_dir = output_directory
-        .parent()
-        .expect("output file should have a parent directory");
+    std::fs::create_dir_all(output_directory).map_err(|e| {
+        format!(
+            "failure creating output directory '{}': {e}",
+            output_directory.as_os_str().to_string_lossy()
+        )
+    })?;
 
     // read overlay dataset
     let overlay_data = overlay_source.build()?;
@@ -48,17 +52,8 @@ pub fn run(
 
     let headers = build_header_lookup(&mut reader)?;
 
-    // let rows: Box<[MepRow]> = read_utils::from_csv(
-    //     &mep_filepath,
-    //     true,
-    //     Some(BarBuilder::default().desc("reading MEP rows")),
-    //     None,
-    // )
-    // .expect("failed to read mep file");
-    // log::info!("processed {} rows", rows.len());
-
     let grouped_rows: Vec<(String, (StringRecord, Geometry))> =
-        spatial_lookup(reader, overlay.clone(), &headers, col_type)?;
+        spatial_lookup(reader, overlay.clone(), &headers, col_type, verbose)?;
 
     let mut grouped_lookup: HashMap<String, (Geometry, Vec<StringRecord>)> = HashMap::new();
     for (grouping, (row, geom)) in grouped_rows.into_iter() {
@@ -85,7 +80,8 @@ pub fn run(
         total = len
     );
     for (id, (overlay, raw_rows)) in write_iter {
-        let out_filename = format!("{id}.csv");
+        let id_sani = sanitize_filename::sanitize(&id);
+        let out_filename = format!("{id_sani}.csv");
         let out_filepath = output_directory.join(out_filename);
         let mut output_writer = csv::Writer::from_path(&out_filepath).map_err(|e| {
             format!(
@@ -112,14 +108,8 @@ fn spatial_lookup(
     overlay: Arc<PolygonalRTree<f64, String>>,
     headers: &HashMap<String, usize>,
     col_type: &GeometryColumnType,
+    verbose: bool,
 ) -> Result<Vec<(String, (csv::StringRecord, Geometry))>, String> {
-    // let bar = Arc::new(Mutex::new(
-    //     BarBuilder::default()
-    //         .desc("spatial lookup")
-    //         // .total(rows.len())
-    //         .build()?,
-    // ));
-
     let iter = tqdm!(reader.into_records(), desc = "spatial lookup");
 
     let mut result = vec![];
@@ -133,16 +123,17 @@ fn spatial_lookup(
             .map_err(|e| format!("failure running spatial intersection for row {idx}: {e}"))?
             .collect_vec();
         match found[..] {
-            // [] => vec![],
             [single] => result.push((single.data.clone(), (row, point))),
-            _ => {} // _ => {
-                    //     let found_geoids = found.iter().map(|r| r.data.to_string()).join(", ");
-                    //     vec![Err(format!(
-                    //         "during spatial lookup, point {} unexpectedly found multiple matching geometries with ids: [{}]",
-                    //         point.to_wkt(),
-                    //         found_geoids
-                    //     ))]
-                    // }
+            [] if verbose => {
+                log::warn!("no spatial match found for row {idx}")
+            }
+            _ if verbose => {
+                log::warn!(
+                    "more than one spatial match ({} > 1) found for row {idx}",
+                    found.len()
+                )
+            }
+            _ => {}
         }
     }
 

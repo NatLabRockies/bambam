@@ -26,7 +26,6 @@ clap = { workspace = true }
 config = { workspace = true }
 csv = { workspace = true }
 # rusqlite = { workspace = true}
-
 env_logger = { workspace = true }
 flate2 = { workspace = true }
 geo = { workspace = true }
@@ -34,7 +33,6 @@ geo-traits = { workspace = true }
 geo-types = { workspace = true }
 geozero = { workspace = true }
 gtfs-structures = { workspace = true }
-
 h3o = { workspace = true }
 hex = { workspace = true }
 inventory = { workspace = true }
@@ -43,15 +41,13 @@ jsonpath-rust = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
 rand = { workspace = true }
-
 rayon = { workspace = true }
 regex = { workspace = true }
 routee-compass = { workspace = true }
 routee-compass-core = { workspace = true }
 routee-compass-powertrain = { workspace = true }
-
 rstar = { workspace = true }
-
+sanitize-filename = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 shapefile = { workspace = true }
@@ -59,6 +55,5 @@ skiplist = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 toml = { workspace = true }
-
 uom = { workspace = true }
 zip = { workspace = true }
