@@ -320,7 +320,7 @@ fn summarize(rows: &Vec<GtfsProvider>) {
                         for pair in trip.stop_times.windows(2) {
                             leg_ods.insert((&pair[0].stop.id, &pair[1].stop.id));
                         }
-                        let trip_legs = (trip.stop_times.len() - 1).max(0); // stop_times are vertices, we want edges
+                        let trip_legs = trip.stop_times.len() - 1; // stop_times are vertices, we want edges
                         n_legs += trip_legs;
                         n_unique_legs += leg_ods.len();
 
