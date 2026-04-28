@@ -50,7 +50,7 @@ pub fn run(
         .trim(csv::Trim::Fields)
         .from_reader(file);
 
-    let headers = build_header_lookup(&mut reader)?;
+    let (header_record, headers) = build_header_lookup(&mut reader)?;
 
     let grouped_rows: Vec<(String, (StringRecord, Geometry))> =
         spatial_lookup(reader, overlay.clone(), &headers, col_type, verbose)?;
@@ -89,6 +89,10 @@ pub fn run(
                 out_filepath.as_os_str().to_string_lossy()
             )
         })?;
+
+        output_writer
+            .write_record(&header_record)
+            .map_err(|e| format!("failure writing header to output: {e}"))?;
 
         for row in raw_rows.into_iter() {
             output_writer
@@ -141,16 +145,19 @@ fn spatial_lookup(
     Ok(result)
 }
 
-pub fn build_header_lookup(reader: &mut Reader<File>) -> Result<HashMap<String, usize>, String> {
+pub fn build_header_lookup(
+    reader: &mut Reader<File>,
+) -> Result<(StringRecord, HashMap<String, usize>), String> {
     // We nest this call in its own scope because of lifetimes.
     let headers = reader
         .headers()
-        .map_err(|e| format!("failure retrieving headers: {e}"))?;
+        .map_err(|e| format!("failure retrieving headers: {e}"))?
+        .clone();
     let lookup: HashMap<String, usize> = headers
         .iter()
         .enumerate()
         .map(|(idx, col)| (String::from(col), idx))
         .collect::<HashMap<_, _>>();
 
-    Ok(lookup)
+    Ok((headers, lookup))
 }
