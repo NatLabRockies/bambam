@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use clap::ValueEnum;
 use geo::{Coord, Geometry, Point};
 use geozero::{wkb::Wkb, wkt::Wkt, ToGeo};
 use serde::{Deserialize, Serialize};
@@ -11,7 +12,7 @@ pub enum GeometryColumnType {
     Xy { x: String, y: String },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum GeometryFormat {
     Wkt,
