@@ -316,6 +316,9 @@ fn summarize(rows: &Vec<GtfsProvider>) {
                     let mut n_unique_legs = 0;
                     let mut sum = 0;
                     for (_, trip) in gtfs.trips {
+                        if trip.stop_times.len() < 2 {
+                            continue; // ignore invalid trips with 0 or 1 stop times
+                        }
                         let mut leg_ods: HashSet<(&String, &String)> = HashSet::new();
                         for pair in trip.stop_times.windows(2) {
                             leg_ods.insert((&pair[0].stop.id, &pair[1].stop.id));
