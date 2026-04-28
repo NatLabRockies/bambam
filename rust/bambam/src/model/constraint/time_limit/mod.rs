@@ -1,13 +1,13 @@
-mod time_limit_config;
-mod time_limit_frontier_builder;
-mod time_limit_frontier_config;
-mod time_limit_frontier_model;
-mod time_limit_frontier_service;
+mod builder;
+mod config;
+mod model;
+mod service;
+mod time_limit;
 
-pub use time_limit_config::TimeLimitConfig;
-pub use time_limit_frontier_builder::TimeLimitConstraintBuilder;
-pub use time_limit_frontier_config::TimeLimitConstraintConfig;
-pub use time_limit_frontier_model::TimeLimitConstraintModel;
-pub use time_limit_frontier_service::TimeLimitConstraintService;
+pub use builder::TimeLimitConstraintBuilder;
+pub use config::TimeLimitConstraintConfig;
+pub use model::TimeLimitConstraintModel;
+pub use service::TimeLimitConstraintService;
+pub use time_limit::TimeLimit;
 
 pub const TIME_LIMIT_FIELD: &str = "time_limit";

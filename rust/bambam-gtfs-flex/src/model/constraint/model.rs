@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use routee_compass_core::model::constraint::ConstraintModel;
+use routee_compass_core::model::{
+    constraint::ConstraintModel,
+    state::{StateModel, StateVariable},
+    traversal::EdgeFrontierContext,
+};
 
 use crate::util::zone::ZoneLookup;
 
@@ -18,10 +22,9 @@ impl GtfsFlexDepartureConstraintModel {
 impl ConstraintModel for GtfsFlexDepartureConstraintModel {
     fn valid_frontier(
         &self,
-        _edge: &routee_compass_core::model::network::Edge,
-        _previous_edge: Option<&routee_compass_core::model::network::Edge>,
-        _state: &[routee_compass_core::model::state::StateVariable],
-        _state_model: &routee_compass_core::model::state::StateModel,
+        _ctx: &EdgeFrontierContext,
+        _state: &[StateVariable],
+        _state_model: &StateModel,
     ) -> Result<bool, routee_compass_core::model::constraint::ConstraintModelError> {
         // have we transitioned onto this travel mode yet?
         // if not, we are boarding GTFS-Flex. check if the ZoneGraph would

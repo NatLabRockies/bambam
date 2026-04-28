@@ -1,4 +1,4 @@
-use crate::model::constraint::time_limit::TimeLimitConfig;
+use crate::model::constraint::time_limit::TimeLimit;
 use bambam_core::model::bambam_state;
 use routee_compass_core::{
     algorithm::search::Direction,
@@ -6,6 +6,7 @@ use routee_compass_core::{
         constraint::{ConstraintModel, ConstraintModelError},
         network::{Edge, VertexId},
         state::{StateModel, StateVariable},
+        traversal::EdgeFrontierContext,
         unit::TimeUnit,
     },
 };
@@ -19,8 +20,7 @@ pub struct TimeLimitConstraintModel {
 impl ConstraintModel for TimeLimitConstraintModel {
     fn valid_frontier(
         &self,
-        _edge: &Edge,
-        _previous_edge: Option<&Edge>,
+        _ctx: &EdgeFrontierContext,
         state: &[StateVariable],
         state_model: &StateModel,
     ) -> Result<bool, ConstraintModelError> {
