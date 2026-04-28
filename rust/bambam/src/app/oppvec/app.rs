@@ -370,7 +370,7 @@ fn sample_point_from_triangle(t: &geo::Triangle<f32>, rng: &mut ThreadRng) -> ge
         r1 = 1.0 - r1;
         r2 = 1.0 - r2;
     }
-    let (p1, p2, p3) = (t.0, t.1, t.2);
+    let (p1, p2, p3) = (t.v1(), t.v2(), t.v3());
     // apply vectors to p1 that stretch it randomly towards p2 + p3
     let t1 = geo::Point(p1);
     let t2 = geo::Point(p2 - p1) * r1;
