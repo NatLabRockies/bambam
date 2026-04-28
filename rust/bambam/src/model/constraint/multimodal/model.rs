@@ -68,7 +68,7 @@ impl ConstraintModel for MultimodalConstraintModel {
         validate_frontier(ctx.edge, state, state_model, self)
     }
 
-    fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
+    fn valid_edge(&self, _edge: &Edge) -> Result<bool, ConstraintModelError> {
         Ok(true)
     }
 }
