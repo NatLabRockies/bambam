@@ -137,11 +137,12 @@ impl BinningConfig {
     /// * `marginal` - if true, each bin interval will be bounded by two consecutive values in the
     /// binning config. if false, each bin will start with zero.
     pub fn build_bins(&self, marginal: bool) -> Result<Vec<BinInterval>, DestinationError> {
-        let mut values = vec![];
-        if self.prepend_zero() {
+        let mut values = self.values_ascending();
+        if self.prepend_zero() || !marginal {
             values.push(0);
         }
-        values.extend(self.values_ascending());
+        values.sort();
+        values.dedup();
         if values.len() < 2 {
             return Err(DestinationError::InvalidBinConfig {
                 reason: format!(
