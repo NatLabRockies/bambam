@@ -420,6 +420,46 @@ mod tests {
         }
     }
 
+    #[test]
+    fn build_bins_not_marginal_prepends_zero_when_enabled() {
+        let config = BinningConfig::Time {
+            feature: "travel_time".to_string(),
+            values: vec![10, 20, 30],
+            unit: TimeUnit::Minutes,
+            prepend_zero: true,
+        };
+        let bins = config.build_bins(false).unwrap();
+        for (bin, expected_max) in bins.into_iter().zip([10.0, 20.0, 30.0]) {
+            match bin {
+                BinInterval::Time { min, max, .. } => {
+                    assert_eq!(min, Time::new::<minute>(0.0));
+                    assert_eq!(max, Time::new::<minute>(expected_max));
+                }
+                _ => panic!("unexpected bin type"),
+            }
+        }
+    }
+
+    #[test]
+    fn build_bins_not_marginal_without_zero_and_no_prepend_uses_first_value() {
+        let config = BinningConfig::Time {
+            feature: "travel_time".to_string(),
+            values: vec![10, 20, 30],
+            unit: TimeUnit::Minutes,
+            prepend_zero: false,
+        };
+        let bins = config.build_bins(false).unwrap();
+        for (bin, expected_max) in bins.into_iter().zip([20.0, 30.0]) {
+            match bin {
+                BinInterval::Time { min, max, .. } => {
+                    assert_eq!(min, Time::new::<minute>(10.0));
+                    assert_eq!(max, Time::new::<minute>(expected_max));
+                }
+                _ => panic!("unexpected bin type"),
+            }
+        }
+    }
+
     /// Each bin key matches the upper bound of that bin.
     #[test]
     fn bin_keys_match_upper_bounds() {
