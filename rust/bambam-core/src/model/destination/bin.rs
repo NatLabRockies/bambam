@@ -439,7 +439,7 @@ mod tests {
             feature: "travel_time".to_string(),
             values: vec![10],
             unit: TimeUnit::Minutes,
-            prepend_zero: true,
+            prepend_zero: false,
         };
         assert!(config.build_bins(true).is_err());
     }
