@@ -141,7 +141,7 @@ impl BinningConfig {
         if self.prepend_zero() {
             values.push(0);
         }
-        values.extend(self.values_ascending().into_iter());
+        values.extend(self.values_ascending());
         if values.len() < 2 {
             return Err(DestinationError::InvalidBinConfig {
                 reason: format!(
