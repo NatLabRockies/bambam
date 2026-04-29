@@ -4,6 +4,7 @@ use routee_compass_core::model::{
     unit::{DistanceUnit, EnergyUnit, TimeUnit},
 };
 use serde::{Deserialize, Serialize};
+use uom::ConstZero;
 
 use crate::model::destination::DestinationError;
 
@@ -130,8 +131,17 @@ impl BinningConfig {
 
     /// create the collection of bins from this configuration. each of these bins will capture
     /// a subset of the destinations.
-    pub fn build_bins(&self) -> Result<Vec<BinInterval>, DestinationError> {
-        let mut values = self.values_ascending();
+    ///
+    /// # Arguments
+    ///
+    /// * `marginal` - if true, each bin interval will be bounded by two consecutive values in the
+    /// binning config. if false, each bin will start with zero.
+    pub fn build_bins(&self, marginal: bool) -> Result<Vec<BinInterval>, DestinationError> {
+        let mut values = vec![];
+        if self.prepend_zero() {
+            values.push(0);
+        }
+        values.extend(self.values_ascending().into_iter());
         if values.len() < 2 {
             return Err(DestinationError::InvalidBinConfig {
                 reason: format!(
@@ -140,9 +150,6 @@ impl BinningConfig {
                 ),
             });
         }
-        if self.prepend_zero() {
-            values.insert(0, 0);
-        }
 
         let bins = match self {
             BinningConfig::Distance { feature, unit, .. } => values
@@ -150,7 +157,11 @@ impl BinningConfig {
                 .tuple_windows()
                 .map(|(min, max)| BinInterval::Distance {
                     feature: feature.to_string(),
-                    min: unit.to_uom(*min as f64),
+                    min: if marginal {
+                        unit.to_uom(*min as f64)
+                    } else {
+                        uom::si::f64::Length::ZERO
+                    },
                     max: unit.to_uom(*max as f64),
                     unit: *unit,
                 })
@@ -160,7 +171,11 @@ impl BinningConfig {
                 .tuple_windows()
                 .map(|(min, max)| BinInterval::Time {
                     feature: feature.to_string(),
-                    min: unit.to_uom(*min as f64),
+                    min: if marginal {
+                        unit.to_uom(*min as f64)
+                    } else {
+                        uom::si::f64::Time::ZERO
+                    },
                     max: unit.to_uom(*max as f64),
                     unit: *unit,
                 })
@@ -170,7 +185,11 @@ impl BinningConfig {
                 .tuple_windows()
                 .map(|(min, max)| BinInterval::Energy {
                     feature: feature.to_string(),
-                    min: unit.to_uom(*min as f64),
+                    min: if marginal {
+                        unit.to_uom(*min as f64)
+                    } else {
+                        uom::si::f64::Energy::ZERO
+                    },
                     max: unit.to_uom(*max as f64),
                     unit: *unit,
                 })
@@ -184,7 +203,7 @@ impl BinningConfig {
                     .iter()
                     .tuple_windows()
                     .map(|(min, max)| BinInterval::CustomRange {
-                        min: *min as f64,
+                        min: if marginal { *min as f64 } else { 0.0 },
                         max: *max as f64,
                         feature: feature.to_string(),
                         unit: unit.clone(),
@@ -361,8 +380,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::BinningConfig;
+    use super::{BinInterval, BinningConfig};
     use routee_compass_core::model::unit::TimeUnit;
+    use uom::si::{f64::Time, time::minute};
 
     /// BinRangeConfig with N values produces N-1 bins (sliding window).
     #[test]
@@ -373,8 +393,30 @@ mod tests {
             unit: TimeUnit::Minutes,
             prepend_zero: false,
         };
-        let bins = config.build_bins().unwrap();
+        let bins = config.build_bins(true).unwrap();
         assert_eq!(bins.len(), 3);
+    }
+
+    /// marginal = false
+    #[test]
+    fn build_bins_not_marginal() {
+        let feature = "travel_time".to_string();
+        let config = BinningConfig::Time {
+            feature: feature.clone(),
+            values: vec![0, 10, 20, 30],
+            unit: TimeUnit::Minutes,
+            prepend_zero: false,
+        };
+        let bins = config.build_bins(false).unwrap();
+        for (bin, expected_max) in bins.into_iter().zip([10.0, 20.0, 30.0]) {
+            match bin {
+                BinInterval::Time { min, max, .. } => {
+                    assert_eq!(min, Time::new::<minute>(0.0));
+                    assert_eq!(max, Time::new::<minute>(expected_max));
+                }
+                _ => panic!("unexpected bin type"),
+            }
+        }
     }
 
     /// Each bin key matches the upper bound of that bin.
@@ -386,7 +428,7 @@ mod tests {
             unit: TimeUnit::Minutes,
             prepend_zero: false,
         };
-        let bins = config.build_bins().unwrap();
+        let bins = config.build_bins(true).unwrap();
         let keys: Vec<String> = bins.iter().map(|b| b.bin_key()).collect();
         assert_eq!(keys, vec!["10", "20", "30"]);
     }
@@ -399,7 +441,7 @@ mod tests {
             unit: TimeUnit::Minutes,
             prepend_zero: true,
         };
-        assert!(config.build_bins().is_err());
+        assert!(config.build_bins(true).is_err());
     }
 
     #[test]
@@ -410,7 +452,7 @@ mod tests {
             unit: TimeUnit::Minutes,
             prepend_zero: true,
         };
-        assert!(config.build_bins().is_err());
+        assert!(config.build_bins(true).is_err());
     }
 
     #[test]
@@ -421,7 +463,7 @@ mod tests {
             unit: TimeUnit::Minutes,
             prepend_zero: false,
         };
-        let bins = config.build_bins().unwrap();
+        let bins = config.build_bins(true).unwrap();
         let keys: Vec<String> = bins.iter().map(|b| b.bin_key()).collect();
         assert_eq!(keys, vec!["10", "20", "30"]);
     }
@@ -434,7 +476,7 @@ mod tests {
             unit: TimeUnit::Minutes,
             prepend_zero: false,
         };
-        let bins = config.build_bins().unwrap();
+        let bins = config.build_bins(true).unwrap();
         assert_eq!(bins.len(), 2); // [0,10), [10,20)
     }
 }
