@@ -7,6 +7,7 @@ use std::{
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use itertools::Itertools;
+use jsonpath_rust::query::queryable::Queryable;
 use kdam::tqdm;
 use regex::Regex;
 use routee_compass::app::compass::{CompassAppConfig, SearchConfig};
@@ -98,8 +99,7 @@ pub fn run(
     }
 
     // grab configuration arguments to copy into each GTFS frontier model configuration
-    let (mmfc, tlfc) = get_constraint_model_arguments(&compass_conf)?;
-    let time_limit = tlfc.time_limit.clone();
+    let mmfc = get_constraint_model_arguments(&compass_conf)?;
 
     log::info!("finding metadata files in {directory}");
     let read_dir = std::fs::read_dir(directory).map_err(|e| GtfsConfigError::ReadFailure {
@@ -175,7 +175,7 @@ pub fn run(
             &available_modes,
             &fq_route_ids_filepath,
         )?;
-        let cm_conf = gtfs_constraint_model_config(&time_limit, &available_modes)?;
+        let cm_conf = gtfs_constraint_model_config(&available_modes)?;
         conf_search.push(SearchConfig {
             traversal: tm_conf,
             constraint: cm_conf,
@@ -262,7 +262,7 @@ fn write_fq_route_id_file(
 /// across all edge lists.
 pub fn get_constraint_model_arguments(
     base_conf: &CompassAppConfig,
-) -> Result<(MultimodalConstraintConfig, TimeLimitConstraintConfig), GtfsConfigError> {
+) -> Result<MultimodalConstraintConfig, GtfsConfigError> {
     if let Some((edge_list_id, search)) = base_conf.search.iter().enumerate().next() {
         let models = search.constraint.get("models").ok_or_else(|| GtfsConfigError::RunFailure(format!("key 'models' missing from traversal model configuration in edge list {edge_list_id}")))?;
         let models_vec = models.as_array().ok_or_else(|| {
@@ -278,16 +278,8 @@ pub fn get_constraint_model_arguments(
         .map_err(|e| {
             GtfsConfigError::RunFailure(format!("while getting constraint model arguments, {e}"))
         })?;
-        let tlfc: TimeLimitConstraintConfig = find_expected_config(
-            models_vec,
-            EdgeListId(edge_list_id),
-            "time_limit",
-        )
-        .map_err(|e| {
-            GtfsConfigError::RunFailure(format!("while getting constraint model arguments, {e}"))
-        })?;
 
-        return Ok((mmfc, tlfc));
+        return Ok(mmfc);
     }
     Err(GtfsConfigError::RunFailure(String::from(
         "no constraint model found in configuration with multimodal arguments",
@@ -317,7 +309,19 @@ where
                 "edge list {edge_list_id} has no '{expected_name}' model"
             ))
         })?;
-    let result: T = serde_json::from_value(model_conf.clone()).map_err(|e| {
+    let mut conf_clean = model_conf.clone();
+    let removed = conf_clean.delete_by_path("type").map_err(|e| {
+        GtfsConfigError::InternalError(format!(
+            "after keying on 'type', was unable to delete the key in JSON: \n{}",
+            serde_json::to_string_pretty(model_conf).unwrap_or_default()
+        ))
+    })?;
+    if removed != 1 {
+        return Err(GtfsConfigError::InternalError(String::from(
+            "removed 'type' from config which led to {removed} key removals",
+        )));
+    }
+    let result: T = serde_json::from_value(conf_clean).map_err(|e| {
         GtfsConfigError::RunFailure(format!(
             "failed to parse '{expected_name}' model config for edge list {edge_list_id}: {e}. JSON:\n{}",
             serde_json::to_string_pretty(model_conf).unwrap_or_default()
@@ -406,19 +410,17 @@ pub fn gtfs_traversal_model_config(
 
 /// generates the JSON fields expected for a transit frontier model
 pub fn gtfs_constraint_model_config(
-    time_limit: &TimeLimit,
     available_modes: &[String],
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let mmc_conf = MultimodalConstraintConfig {
         this_mode: "transit".to_string(),
         available_modes: available_modes.to_vec(),
     };
-    let tlm = as_json_with_type_tag(time_limit, "time_limit")?;
     let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
 
     let result = json![{
         "type": "combined",
-        "models": [tlm, mmc]
+        "models": [mmc]
     }];
     Ok(result)
 }
