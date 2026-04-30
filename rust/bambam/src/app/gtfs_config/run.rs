@@ -310,15 +310,19 @@ where
             ))
         })?;
     let mut conf_clean = model_conf.clone();
-    let removed = conf_clean.delete_by_path("type").map_err(|e| {
-        GtfsConfigError::InternalError(format!(
-            "after keying on 'type', was unable to delete the key in JSON: \n{}",
-            serde_json::to_string_pretty(model_conf).unwrap_or_default()
-        ))
-    })?;
-    if removed != 1 {
-        return Err(GtfsConfigError::InternalError(String::from(
-            "removed 'type' from config which led to {removed} key removals",
+    let failure_deleting_type = match conf_clean.as_object_mut() {
+        Some(obj) => obj.remove("type").is_none(),
+        None => {
+            return Err(GtfsConfigError::InternalError(format!(
+                "after keying on 'type', was unable to delete the key in JSON: \n{}",
+                serde_json::to_string_pretty(model_conf).unwrap_or_default()
+            )));
+        }
+    };
+    if failure_deleting_type {
+        return Err(GtfsConfigError::InternalError(format!(
+            "failed while removing 'type' key, did not find in object: \n {}",
+            serde_json::to_string_pretty(&model_conf).unwrap_or_default(),
         )));
     }
     let result: T = serde_json::from_value(conf_clean).map_err(|e| {
