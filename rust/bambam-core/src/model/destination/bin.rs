@@ -449,10 +449,10 @@ mod tests {
             prepend_zero: false,
         };
         let bins = config.build_bins(false).unwrap();
-        for (bin, expected_max) in bins.into_iter().zip([20.0, 30.0]) {
+        for (bin, expected_max) in bins.into_iter().zip([10.0, 20.0, 30.0]) {
             match bin {
                 BinInterval::Time { min, max, .. } => {
-                    assert_eq!(min, Time::new::<minute>(10.0));
+                    assert_eq!(min, Time::new::<minute>(0.0));
                     assert_eq!(max, Time::new::<minute>(expected_max));
                 }
                 _ => panic!("unexpected bin type"),
