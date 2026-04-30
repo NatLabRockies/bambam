@@ -71,9 +71,9 @@ pub enum App {
         /// String of desired output file location
         #[arg(long)]
         output_file: String,
-        /// String of extent to examine
+        /// String of extent to examine stored in a text file
         #[arg(long)]
-        extent: String,
+        extent_file: String,
     },
     #[command(
         name = "opps-long",
@@ -224,7 +224,7 @@ impl App {
                 extent_format,
                 grid_resolution,
                 output_file,
-                extent,
+                extent_file,
             } => {
                 // build acs categories from &Option<String> to Option<Vec<String>>
                 let acs_categories: Option<Vec<String>> = acs_categories
@@ -246,6 +246,9 @@ impl App {
                     resolution: grid_res_add,
                 };
 
+                let extent = std::fs::read_to_string(extent_file)
+                    .map_err(|e| format!("failed to read extent file: {e}"))?;
+
                 // unpack the command line arguments into serde_json::Values
                 let mut data: serde_json::Value = json!({
                     "extent": extent,
@@ -256,21 +259,31 @@ impl App {
                 });
 
                 // BUILD THE PLUGIN
-                let plugin = grid_input_plugin_builder::plugin_builder(&data).expect("Error");
+                let plugin = grid_input_plugin_builder::plugin_builder(&data)
+                    .map_err(|e| format!("failed to read grid model arguments: {e}"))?;
 
-                // PROCESS
-                let _processed_plugin = grid_input_plugin::process_grid_input(
+                // RUN GRID BUILDING PROCESS
+                grid_input_plugin::process_grid_input(
                     &mut data,
                     plugin.extent_format,
                     plugin.grid_type,
                     &plugin.population_source,
-                );
+                )
+                .map_err(|e| format!("failure running grid processing: {e}"))?;
 
                 // mutable data as input to process_grid_input becomes a json array
                 // these 3 lines make sure the resulting data array is json, if it is, we have an array to loop through
                 let array = match data.as_array() {
                     Some(a) => a,
-                    None => return Err("not an array of JSON".to_string()),
+                    None => {
+                        eprintln!(
+                            "{}",
+                            serde_json::to_string_pretty(&data).unwrap_or_default()
+                        );
+                        return Err(
+                            "resulting data is not an array of JSON as expected".to_string()
+                        );
+                    }
                 };
 
                 // write the resulting array to the output file location as newline-delimited JSON
