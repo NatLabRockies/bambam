@@ -29,7 +29,7 @@ futures = { version = "0.3.31", features = ["executor"] }
 geo = { version = "0.32.0", features = ["use-serde"] }
 geo-buffer = "0.2.0"
 geo-traits = "0.3.0"
-geo-types = "0.7.16"
+geo-types = "=0.7.19"
 geozero = { version = "0.14.0", features = ["with-geo", "with-wkb", "with-wkt", "with-geojson"] }
 gtfs-structures = "0.43.0"
 h3o = { version = "0.9.4", features = ["serde", "geo"] }
