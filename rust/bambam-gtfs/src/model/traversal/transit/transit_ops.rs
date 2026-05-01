@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Add};
+use std::collections::HashMap;
 
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use routee_compass_core::model::{
@@ -19,7 +19,7 @@ pub fn get_current_time(
         .get_time(state, fieldname::TRIP_TIME)?
         .get::<uom::si::time::second>();
     let seconds = trip_time as i64;
-    let remainder = (trip_time - seconds as f64);
+    let remainder = trip_time - seconds as f64 ;
     let nanos = (remainder * 1_000_000_000.0) as u32;
     let trip_duration = Duration::new(seconds, nanos).ok_or_else(|| {
         TraversalModelError::TraversalModelFailure(format!(
