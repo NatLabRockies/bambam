@@ -79,7 +79,16 @@ pub fn batch_process(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| ScheduleError::GtfsApp(format!("failure reading directory: {e}")))?;
 
-    let chunk_size = calculate_chunk_size(archive_paths.len(), parallelism);
+    let n_archives = archive_paths.len();
+    if n_archives == 0 {
+        let msg = format!(
+            "directory {} is empty",
+            bundle_directory_path.to_string_lossy()
+        );
+        return Err(ScheduleError::InvalidData(msg));
+    }
+
+    let chunk_size = calculate_chunk_size(n_archives, parallelism);
 
     // a progress bar shared across threads
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
