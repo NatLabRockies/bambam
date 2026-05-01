@@ -1,5 +1,4 @@
 use chrono::NaiveDateTime;
-use routee_compass::plugin::input::default;
 use serde::{Deserialize, Serialize};
 
 use crate::model::traversal::transit::schedule::{Departure, Schedule};

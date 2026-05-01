@@ -137,7 +137,7 @@ fn run_transit_traversal(
     record_dwell_time: bool,
 ) -> Result<(), TraversalModelError> {
     let current_route_id = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
-    let current_datetime = transit_ops::get_current_time(&start_datetime, state, state_model)?;
+    let current_datetime = transit_ops::get_current_time(start_datetime, state, state_model)?;
 
     // get the next departure.
     // in the case that no schedules are found, a sentinel value is returned set

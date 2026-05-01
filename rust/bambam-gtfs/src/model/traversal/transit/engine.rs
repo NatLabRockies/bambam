@@ -1,26 +1,21 @@
 use std::{
-    cmp,
     collections::HashMap,
     fs::File,
     io::BufReader,
-    path::{Path, PathBuf},
+    path::Path,
     sync::Arc,
 };
 
 use crate::model::traversal::transit::{
     config::TransitTraversalConfig,
-    metadata::{self, GtfsArchiveMetadata},
+    metadata::GtfsArchiveMetadata,
     schedule::{Departure, Schedule},
-    schedule_loading_policy::{self, ScheduleLoadingPolicy},
+    schedule_loading_policy::ScheduleLoadingPolicy,
     transit_ops,
 };
-use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
+use bambam_core::model::state::MultimodalStateMapping;
 use chrono::{NaiveDate, NaiveDateTime};
-use flate2::bufread::GzDecoder;
 use routee_compass_core::{model::traversal::TraversalModelError, util::fs::read_utils};
-use serde::{Deserialize, Serialize};
-use skiplist::OrderedSkipList;
-use uom::si::f64::Time;
 
 pub struct TransitTraversalEngine {
     pub edge_schedules: Box<[HashMap<i64, Schedule>]>,
@@ -62,7 +57,7 @@ impl TransitTraversalEngine {
                     std::ops::Bound::Unbounded,
                 ) {
                     if departure.dst_arrival_time < best_departure.dst_arrival_time {
-                        best_departure = departure.clone();
+                        best_departure = *departure;
                     }
 
                     if departure.src_departure_time >= best_departure.dst_arrival_time {

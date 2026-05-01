@@ -1,6 +1,6 @@
 use std::ops::Add;
 
-use chrono::{Duration, Months, NaiveDateTime, TimeDelta};
+use chrono::{NaiveDateTime, TimeDelta};
 use skiplist::OrderedSkipList;
 
 /// a schedule contains an ordered list of [`Departure`] values.

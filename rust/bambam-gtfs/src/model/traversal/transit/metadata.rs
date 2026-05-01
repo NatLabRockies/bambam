@@ -1,6 +1,5 @@
 use bambam_core::util::date_deserialization_ops::naive_date_to_str;
 use chrono::{Duration, NaiveDate};
-use routee_compass_core::model::traversal::TraversalModelError;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
