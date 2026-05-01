@@ -334,7 +334,7 @@ where
     Ok(result)
 }
 
-/// finds what modes are already available via other edge lists in the config.
+/// finds what modes are already available via other edge lists via the Label model in the config.
 /// assumes that each edge list has a "multimodal" TraversalModel type.
 /// enforces that the mode list matches the listing in the label model.
 pub fn get_available_modes(base_conf: &CompassAppConfig) -> Result<Vec<String>, GtfsConfigError> {
