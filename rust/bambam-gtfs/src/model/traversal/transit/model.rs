@@ -153,8 +153,14 @@ fn run_transit_traversal(
     let wait_duration = (next_departure.src_departure_time - current_datetime).as_seconds_f64();
     if wait_duration < 0.0 {
         return Err(TraversalModelError::InternalError(format!(
-            "fatal: caught departure in the past. src: {}",
-            next_departure.src_departure_time
+            "fatal: caught departure in the past; edge_id: {}, start_datetime: {}, current_datetime: {}, current_route_id: {}, next_departure_route_id: {}, src_departure_time: {}, wait_duration_seconds: {}",
+            ctx.edge.edge_id,
+            start_datetime,
+            current_datetime,
+            current_route_id,
+            next_departure_route_id,
+            next_departure.src_departure_time,
+            wait_duration
         )));
     }
     let wait_time = Time::new::<uom::si::time::second>(wait_duration);
