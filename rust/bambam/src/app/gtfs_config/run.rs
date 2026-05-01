@@ -4,6 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use bambam_gtfs::model::traversal::transit::{ScheduleLoadingPolicy, TransitTraversalConfig};
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use itertools::Itertools;
@@ -30,10 +31,7 @@ use crate::{
             multimodal::{ConstraintConfig, MultimodalConstraintConfig},
             time_limit::{TimeLimit, TimeLimitConstraintConfig},
         },
-        traversal::{
-            multimodal::MultimodalTraversalConfig,
-            transit::{ScheduleLoadingPolicy, TransitTraversalConfig},
-        },
+        traversal::multimodal::MultimodalTraversalConfig,
     },
 };
 

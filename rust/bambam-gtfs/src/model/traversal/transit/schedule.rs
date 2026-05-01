@@ -65,14 +65,15 @@ impl PartialEq for Departure {
 
 impl PartialOrd for Departure {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.src_departure_time
-            .partial_cmp(&other.src_departure_time)
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for Departure {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.src_departure_time.cmp(&other.src_departure_time)
+        self.src_departure_time
+            .cmp(&other.src_departure_time)
+            .then_with(|| self.dst_arrival_time.cmp(&other.dst_arrival_time))
     }
 }
 
@@ -267,5 +268,38 @@ mod tests {
         assert!(early < late);
         assert!(late > early);
         assert_eq!(early, early);
+    }
+
+    #[test]
+    fn test_ord_partial_eq_identity_invariant() {
+        let mut schedule = Schedule::new();
+
+        let base_date = chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap();
+
+        // Two departures leaving at the exact same time but arriving at different times
+        let dep1 = Departure {
+            src_departure_time: base_date.and_hms_opt(12, 0, 0).unwrap(),
+            dst_arrival_time: base_date.and_hms_opt(12, 10, 0).unwrap(),
+        };
+
+        let dep2 = Departure {
+            src_departure_time: base_date.and_hms_opt(12, 0, 0).unwrap(),
+            dst_arrival_time: base_date.and_hms_opt(12, 15, 0).unwrap(),
+        };
+
+        schedule.insert(dep1);
+        schedule.insert(dep2);
+
+        // If Ord lacks the dst_arrival_time tie-breaker, the skiplist may treat them as strictly equal
+        // and unpredictably manage size or iteration depending on underlying implementation.
+        assert_eq!(
+            schedule.len(),
+            2,
+            "Schedule should retain both non-identical departures"
+        );
+
+        let collected: Vec<_> = schedule.iter().collect();
+        assert!(collected.contains(&&dep1));
+        assert!(collected.contains(&&dep2));
     }
 }

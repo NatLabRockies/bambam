@@ -56,17 +56,25 @@ impl TransitTraversalEngine {
                 // skiplist. I tried several other approaches but I think this is the cleanest
                 let search_query = Departure::construct_query(search_datetime);
 
-                // get next or infinity. if infinity cannot be created: error
-                let next_route_departure = skiplist
-                    .lower_bound(std::ops::Bound::Included(&search_query))
-                    .cloned()
-                    .unwrap_or(Departure::infinity());
+                let mut best_departure = Departure::infinity();
+                for departure in skiplist.range(
+                    std::ops::Bound::Included(&search_query),
+                    std::ops::Bound::Unbounded,
+                ) {
+                    if departure.dst_arrival_time < best_departure.dst_arrival_time {
+                        best_departure = departure.clone();
+                    }
+
+                    if departure.src_departure_time >= best_departure.dst_arrival_time {
+                        break;
+                    }
+                }
 
                 // Undo datemapping
                 let next_route_departure = transit_ops::reverse_date_mapping(
                     current_datetime,
                     &search_datetime,
-                    next_route_departure,
+                    best_departure,
                 );
 
                 // Return next departure for route

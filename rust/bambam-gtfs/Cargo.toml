@@ -12,6 +12,7 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
+bambam-core = { version = "0.2.3", path = "../bambam-core" }
 chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
@@ -27,6 +28,7 @@ itertools = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
+routee-compass = { workspace = true }
 routee-compass-core = { workspace = true }
 rstar = { workspace = true }
 serde = { workspace = true }
