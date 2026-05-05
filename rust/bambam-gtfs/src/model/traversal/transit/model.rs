@@ -146,7 +146,7 @@ fn run_transit_traversal(
     // transit frontier model, so "infinity" must solve the same problem.
     let next_dep_opt = engine.get_next_departure(ctx.edge.edge_id.as_usize(), &current_datetime)?;
 
-    let (next_route, next_departure) = match next_dep_opt {
+    let (next_departure_route_id, next_departure) = match next_dep_opt {
         Some(pair) => pair,
         None => {
             // no valid departures, add a 1-week penalty time value and exit prematurely.
@@ -157,30 +157,16 @@ fn run_transit_traversal(
         }
     };
 
-    let next_departure_route_id = next_route;
-
-    // update the state. a bunch of features are modified here.
     // NOTE: wait_time is "time waiting in the transit stop" OR "time waiting sitting on the bus during scheduled dwell time"
-    let wait_duration = (next_departure.src_departure_time - current_datetime).as_seconds_f64();
-    if wait_duration < 0.0 {
-        return Err(TraversalModelError::InternalError(format!(
-            "fatal: caught departure in the past; edge_id: {}, start_datetime: {}, current_datetime: {}, current_route_id: {}, next_departure_route_id: {}, src_departure_time: {}, wait_duration_seconds: {}",
-            ctx.edge.edge_id,
-            start_datetime,
-            current_datetime,
-            current_route_id,
-            next_departure_route_id,
-            next_departure.src_departure_time,
-            wait_duration
-        )));
-    }
-    let wait_time = Time::new::<uom::si::time::second>(wait_duration);
-
-    let travel_time = Time::new::<uom::si::time::second>(
-        (next_departure.dst_arrival_time - next_departure.src_departure_time)
-            .as_seconds_f64()
-            .max(0.0),
-    );
+    let wait_time = compute_wait_time(
+        ctx,
+        &current_datetime,
+        current_route_id,
+        next_departure_route_id,
+        start_datetime,
+        &next_departure,
+    )?;
+    let travel_time = compute_travel_time(ctx, &next_departure)?;
     let total_time = wait_time + travel_time;
 
     // Update state
@@ -205,6 +191,52 @@ fn run_transit_traversal(
 /// work: wire in a constraint model for transit that uses the same schedules, ideally without
 /// loading two copies into memory.
 const NOT_FOUND_TIME_PENALTY_DAYS: f64 = 7.0;
+
+/// helper function to compute the wait time between the current datetime and
+/// the next scheduled departure. Returns an error if the departure is in the past.
+fn compute_wait_time(
+    ctx: &EdgeFrontierContext,
+    current_datetime: &NaiveDateTime,
+    current_route_id: i64,
+    next_departure_route_id: i64,
+    start_datetime: &NaiveDateTime,
+    departure: &crate::model::traversal::transit::schedule::Departure,
+) -> Result<Time, TraversalModelError> {
+    let wait_duration = (departure.src_departure_time - *current_datetime).as_seconds_f64();
+    if wait_duration < 0.0 {
+        return Err(TraversalModelError::InternalError(format!(
+            "fatal: caught departure in the past; edge_id: {}, start_datetime: {}, current_datetime: {}, current_route_id: {}, next_departure_route_id: {}, src_departure_time: {}, wait_duration_seconds: {}",
+            ctx.edge.edge_id,
+            start_datetime,
+            current_datetime,
+            current_route_id,
+            next_departure_route_id,
+            departure.src_departure_time,
+            wait_duration
+        )));
+    }
+    Ok(Time::new::<uom::si::time::second>(wait_duration))
+}
+
+/// helper function to compute the travel time between the scheduled departure and arrival.
+/// Returns an error if arrival precedes departure.
+fn compute_travel_time(
+    ctx: &EdgeFrontierContext,
+    departure: &crate::model::traversal::transit::schedule::Departure,
+) -> Result<Time, TraversalModelError> {
+    let travel_duration =
+        (departure.dst_arrival_time - departure.src_departure_time).as_seconds_f64();
+    if travel_duration < 0.0 {
+        return Err(TraversalModelError::InternalError(format!(
+            "fatal: caught negative travel time in schedule; edge_id: {}, src_departure_time: {}, dst_arrival_time: {}, travel_duration_seconds: {}",
+            ctx.edge.edge_id,
+            departure.src_departure_time,
+            departure.dst_arrival_time,
+            travel_duration
+        )));
+    }
+    Ok(Time::new::<uom::si::time::second>(travel_duration))
+}
 
 #[cfg(test)]
 mod tests {
@@ -272,31 +304,48 @@ mod tests {
         NaiveDateTime::parse_from_str(&format!("20250101 {string}"), "%Y%m%d %H:%M:%S").unwrap()
     }
 
-    fn mock_context(edge_id: usize) -> EdgeFrontierContext<'static> {
-        // Build a static mock edge - we only care about its edge_id right now
-        let edge = Edge {
-            edge_id: EdgeId(edge_id),
-            edge_list_id: EdgeListId(0),
-            src_vertex_id: VertexId(0),
-            dst_vertex_id: VertexId(1),
-            distance: Length::new::<uom::si::length::meter>(100.0),
-        };
-        let src = Vertex::new(0, 0.0, 0.0);
-        let dst = Vertex::new(1, 0.0, 0.0);
-        let label = Label::new_u8_state(VertexId(0), &[]).unwrap();
-        // Use Box::leak to keep the reference 'static as expected by EdgeFrontierContext
-        let static_edge: &'static Edge = Box::leak(Box::new(edge));
-        let static_src: &'static Vertex = Box::leak(Box::new(src));
-        let static_dst: &'static Vertex = Box::leak(Box::new(dst));
-        let static_label: &'static Label = Box::leak(Box::new(label));
-        let tree = SearchTree::new_stateful(Direction::Forward);
-        let static_tree: &'static SearchTree = Box::leak(Box::new(tree));
-        EdgeFrontierContext {
-            edge: static_edge,
-            src: static_src,
-            dst: static_dst,
-            parent_label: static_label,
-            tree: static_tree,
+    /// mocks the data for an EdgeFrontierContext and provides a method `context` to
+    /// retrieve an EdgeFrontierContext with the stateful values referenced and lifetime
+    /// requirements/borrowed status properly modeled.
+    struct MockContext {
+        edge: Edge,
+        src: Vertex,
+        dst: Vertex,
+        label: Label,
+        tree: SearchTree,
+    }
+
+    impl MockContext {
+        fn new(edge_id: usize) -> Self {
+            let edge = Edge {
+                edge_id: EdgeId(edge_id),
+                edge_list_id: EdgeListId(0),
+                src_vertex_id: VertexId(0),
+                dst_vertex_id: VertexId(1),
+                distance: Length::new::<uom::si::length::meter>(100.0),
+            };
+            let src = Vertex::new(0, 0.0, 0.0);
+            let dst = Vertex::new(1, 0.0, 0.0);
+            let label = Label::new_u8_state(VertexId(0), &[]).unwrap();
+            let tree = SearchTree::new_stateful(Direction::Forward);
+
+            Self {
+                edge,
+                src,
+                dst,
+                label,
+                tree,
+            }
+        }
+
+        fn context<'a>(&'a self) -> EdgeFrontierContext<'a> {
+            EdgeFrontierContext {
+                edge: &self.edge,
+                src: &self.src,
+                dst: &self.dst,
+                parent_label: &self.label,
+                tree: &self.tree,
+            }
         }
     }
 
@@ -370,9 +419,9 @@ mod tests {
             .expect("failed to spawn state");
 
         // Edge 0 (First Boarding) - Wait 5m
-        let ctx0 = mock_context(0);
+        let ctx0 = MockContext::new(0);
         traversal_model
-            .traverse_edge(&ctx0, &mut state, &state_model)
+            .traverse_edge(&ctx0.context(), &mut state, &state_model)
             .unwrap();
         // Wait 300s. Because current_route (EMPTY) != next_route (1), it logs as generic board wait.
         assert_eq!(
@@ -392,9 +441,9 @@ mod tests {
         let mut state = advance_state(&state, &state_model);
 
         // Edge 1 (Stay on Route 1, DWELL) - Wait 5m
-        let ctx1 = mock_context(1);
+        let ctx1 = MockContext::new(1);
         traversal_model
-            .traverse_edge(&ctx1, &mut state, &state_model)
+            .traverse_edge(&ctx1.context(), &mut state, &state_model)
             .unwrap();
 
         // BOARDING TIME on this edge is zero, DWELL TIME receives the 300s wait
@@ -415,9 +464,9 @@ mod tests {
         let mut state = advance_state(&state, &state_model);
 
         // Edge 2 (Transfer to Route 2) - Wait 5m
-        let ctx2 = mock_context(2);
+        let ctx2 = MockContext::new(2);
         traversal_model
-            .traverse_edge(&ctx2, &mut state, &state_model)
+            .traverse_edge(&ctx2.context(), &mut state, &state_model)
             .unwrap();
 
         // BOARDING TIME receives the 300s wait since changing routes, DWELL TIME is 0
@@ -455,9 +504,9 @@ mod tests {
             .get_custom_i64(&state, bambam_state::ROUTE_ID)
             .unwrap();
 
-        let ctx = mock_context(0);
+        let ctx0 = MockContext::new(0);
         traversal_model
-            .traverse_edge(&ctx, &mut state, &state_model)
+            .traverse_edge(&ctx0.context(), &mut state, &state_model)
             .unwrap();
 
         let penalty = Time::new::<uom::si::time::day>(NOT_FOUND_TIME_PENALTY_DAYS);
@@ -507,9 +556,9 @@ mod tests {
             .set_time(&mut state, fieldname::TRIP_TIME, &existing_trip_time)
             .unwrap();
 
-        let ctx = mock_context(0);
+        let ctx = MockContext::new(0);
         traversal_model
-            .traverse_edge(&ctx, &mut state, &state_model)
+            .traverse_edge(&ctx.context(), &mut state, &state_model)
             .unwrap();
 
         let penalty = Time::new::<uom::si::time::day>(NOT_FOUND_TIME_PENALTY_DAYS);
