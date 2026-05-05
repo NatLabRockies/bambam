@@ -1,7 +1,11 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 use crate::model::traversal::transit::schedule::{Departure, Schedule};
+
+/// guarantees we only log a dst < src data error ONCE
+static SRC_DST_ORDERING_ERROR_LOCK: OnceLock<()> = OnceLock::new();
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub enum ScheduleLoadingPolicy {
@@ -16,6 +20,12 @@ pub enum ScheduleLoadingPolicy {
 impl ScheduleLoadingPolicy {
     pub fn insert_if_valid(&self, schedule_skiplist: &mut Schedule, element: Departure) {
         if element.src_departure_time > element.dst_arrival_time {
+            SRC_DST_ORDERING_ERROR_LOCK.get_or_init(|| {
+                let src_time = element.src_departure_time.format("%Y-%m-%d %H:%M:%S");
+                let dst_time = element.dst_arrival_time.format("%Y-%m-%d %H:%M:%S");
+                let msg = format!("encountered at least one schedule row where src time {src_time} is not earlier than {dst_time}. the schedule may be corrupted.");
+                log::warn!("{msg}");
+            });
             return;
         }
 

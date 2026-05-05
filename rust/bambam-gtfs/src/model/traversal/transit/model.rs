@@ -144,8 +144,19 @@ fn run_transit_traversal(
     // far in the future (an "infinity" value). this indicates that this edge should not
     // have been accepted by the ConstraintModel. but at this point, we do not have a
     // transit frontier model, so "infinity" must solve the same problem.
-    let (next_route, next_departure) =
-        engine.get_next_departure(ctx.edge.edge_id.as_usize(), &current_datetime)?;
+    let next_dep_opt = engine.get_next_departure(ctx.edge.edge_id.as_usize(), &current_datetime)?;
+
+    let (next_route, next_departure) = match next_dep_opt {
+        Some(pair) => pair,
+        None => {
+            // no valid departures, add a 1-week penalty time value and exit prematurely.
+            let sentinel: Time = Time::new::<uom::si::time::day>(NOT_FOUND_TIME_PENALTY_DAYS);
+            state_model.add_time(state, fieldname::EDGE_TIME, &sentinel)?;
+            state_model.add_time(state, fieldname::TRIP_TIME, &sentinel)?;
+            return Ok(());
+        }
+    };
+
     let next_departure_route_id = next_route;
 
     // update the state. a bunch of features are modified here.
@@ -186,6 +197,14 @@ fn run_transit_traversal(
 
     Ok(())
 }
+
+/// when no departure schedules are found, we are in a pickle, as we are already forcing an
+/// edge traversal here. so, in order to comply with RouteE Compass' API, we have to update
+/// the state to reflect that something happened. here, we inject a travel time of seven
+/// days, so that, in the result, the user can filter these values in post-processing. future
+/// work: wire in a constraint model for transit that uses the same schedules, ideally without
+/// loading two copies into memory.
+const NOT_FOUND_TIME_PENALTY_DAYS: f64 = 7.0;
 
 #[cfg(test)]
 mod tests {
