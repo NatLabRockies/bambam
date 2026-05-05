@@ -434,4 +434,92 @@ mod tests {
             Time::new::<uom::si::time::second>(0.0)
         );
     }
+
+    #[test]
+    fn test_no_departure_adds_not_found_penalty() {
+        let state_model = mock_state_model(false);
+        let start_datetime = internal_date("12:00:00");
+
+        // Edge 0 exists but has no departures for any route.
+        let schedules_vec = vec![HashMap::from([(1, Schedule::new())])];
+        let engine = Arc::new(TransitTraversalEngine {
+            edge_schedules: schedules_vec.into_boxed_slice(),
+            date_mapping: HashMap::new(),
+        });
+
+        let traversal_model = TransitTraversalModel::new(engine, start_datetime, false);
+        let mut state = state_model
+            .initial_state(None)
+            .expect("failed to spawn state");
+        let initial_route_id = state_model
+            .get_custom_i64(&state, bambam_state::ROUTE_ID)
+            .unwrap();
+
+        let ctx = mock_context(0);
+        traversal_model
+            .traverse_edge(&ctx, &mut state, &state_model)
+            .unwrap();
+
+        let penalty = Time::new::<uom::si::time::day>(NOT_FOUND_TIME_PENALTY_DAYS);
+        assert_eq!(
+            state_model.get_time(&state, fieldname::EDGE_TIME).unwrap(),
+            penalty
+        );
+        assert_eq!(
+            state_model.get_time(&state, fieldname::TRIP_TIME).unwrap(),
+            penalty
+        );
+
+        // No route or wait-state metrics should be updated on not-found traversal.
+        assert_eq!(
+            state_model
+                .get_custom_i64(&state, bambam_state::ROUTE_ID)
+                .unwrap(),
+            initial_route_id
+        );
+        assert_eq!(
+            state_model
+                .get_time(&state, bambam_state::TRANSIT_BOARDING_TIME)
+                .unwrap(),
+            Time::ZERO
+        );
+    }
+
+    #[test]
+    fn test_no_departure_penalty_accumulates_existing_trip_time() {
+        let state_model = mock_state_model(false);
+        let start_datetime = internal_date("12:00:00");
+
+        // Edge 0 exists but has no departures for any route.
+        let schedules_vec = vec![HashMap::from([(1, Schedule::new())])];
+        let engine = Arc::new(TransitTraversalEngine {
+            edge_schedules: schedules_vec.into_boxed_slice(),
+            date_mapping: HashMap::new(),
+        });
+
+        let traversal_model = TransitTraversalModel::new(engine, start_datetime, false);
+        let mut state = state_model
+            .initial_state(None)
+            .expect("failed to spawn state");
+
+        let existing_trip_time = Time::new::<uom::si::time::minute>(15.0);
+        state_model
+            .set_time(&mut state, fieldname::TRIP_TIME, &existing_trip_time)
+            .unwrap();
+
+        let ctx = mock_context(0);
+        traversal_model
+            .traverse_edge(&ctx, &mut state, &state_model)
+            .unwrap();
+
+        let penalty = Time::new::<uom::si::time::day>(NOT_FOUND_TIME_PENALTY_DAYS);
+        assert_eq!(
+            state_model.get_time(&state, fieldname::TRIP_TIME).unwrap(),
+            existing_trip_time + penalty
+        );
+        assert_eq!(
+            state_model.get_time(&state, fieldname::EDGE_TIME).unwrap(),
+            penalty
+        );
+    }
 }
