@@ -191,7 +191,7 @@ fn run_transit_traversal(
 mod tests {
     use super::*;
     use crate::model::traversal::transit::schedule::{Departure, Schedule};
-    use chrono::{NaiveDate, NaiveDateTime};
+    use chrono::NaiveDateTime;
     use routee_compass_core::algorithm::search::{Direction, SearchTree};
     use routee_compass_core::model::label::Label;
     use routee_compass_core::model::network::{Edge, EdgeId, EdgeListId, Vertex, VertexId};

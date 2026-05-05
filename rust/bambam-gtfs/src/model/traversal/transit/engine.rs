@@ -1,10 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::BufReader,
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path, sync::Arc};
 
 use crate::model::traversal::transit::{
     config::TransitTraversalConfig,
@@ -229,9 +223,8 @@ mod test {
         engine::TransitTraversalEngine,
         schedule::{Departure, Schedule},
     };
-    use chrono::{Months, NaiveDate, NaiveDateTime};
+    use chrono::{NaiveDate, NaiveDateTime};
     use std::collections::HashMap;
-    use std::str::FromStr;
 
     fn internal_date(string: &str) -> NaiveDateTime {
         NaiveDateTime::parse_from_str(&format!("20250101 {string}"), "%Y%m%d %H:%M:%S").unwrap()
@@ -293,7 +286,7 @@ mod test {
         assert_eq!(next_departure.src_departure_time, internal_date("16:00:00"));
 
         // Traverse 3 times the next edge
-        for i in 0..3 {
+        for _ in 0..3 {
             next_tuple = engine
                 .get_next_departure(current_edge, &current_time)
                 .unwrap();
@@ -311,7 +304,7 @@ mod test {
         next_tuple = engine
             .get_next_departure(current_edge, &current_time)
             .unwrap();
-        next_route = next_tuple.0;
+        // next_route = next_tuple.0;
         next_departure = next_tuple.1;
 
         current_time = next_departure.dst_arrival_time;
@@ -321,7 +314,7 @@ mod test {
         next_tuple = engine
             .get_next_departure(current_edge, &current_time)
             .unwrap();
-        next_route = next_tuple.0;
+        // next_route = next_tuple.0;
         next_departure = next_tuple.1;
         assert_eq!(next_departure, Departure::infinity());
     }
@@ -430,10 +423,10 @@ mod test {
         );
         let engine = get_dummy_engine(date_mapping);
 
-        let mut current_edge: usize = 0;
-        let mut current_time =
+        let current_edge: usize = 0;
+        let current_time =
             NaiveDateTime::parse_from_str("20250102 15:55:00", "%Y%m%d %H:%M:%S").unwrap();
-        let mut next_tuple = engine
+        let next_tuple = engine
             .get_next_departure(current_edge, &current_time)
             .unwrap();
 
