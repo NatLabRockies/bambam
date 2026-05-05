@@ -131,7 +131,7 @@ fn find_best_departure(
         // Early break is sound only if each trip has non-negative travel time.
         // ScheduleLoadingPolicy enforces this at ingest; keep a debug assertion here
         // for schedules created through alternative code paths.
-        if !(departure.dst_arrival_time >= departure.src_departure_time) {
+        if (departure.dst_arrival_time < departure.src_departure_time) {
             let arr = departure.dst_arrival_time.format("%Y-%m-%d %H:%M:%S");
             let dep = departure.src_departure_time.format("%Y-%m-%d %H:%M:%S");
             let msg = format!("schedule invariant violated: dst_arrival_time must be >= src_departure_time, but found {arr} < {dep}");
