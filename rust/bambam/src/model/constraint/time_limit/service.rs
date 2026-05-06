@@ -45,12 +45,14 @@ impl ConstraintModelService for TimeLimitConstraintService {
 }
 
 /// helper for grabbing the time limit from the query, if present
-fn get_conf(query: &serde_json::Value) -> Result<Option<TimeLimitConfig>, ConstraintModelError> {
+fn get_conf(
+    query: &serde_json::Value,
+) -> Result<Option<TimeLimitConstraintConfig>, ConstraintModelError> {
     match query.get(super::TIME_LIMIT_FIELD) {
         None => Ok(None),
         Some(time_limit_json) => {
-            let time_limit: TimeLimitConfig = serde_json::from_value(time_limit_json.clone())
-                .map_err(|e| {
+            let time_limit: TimeLimitConstraintConfig =
+                serde_json::from_value(time_limit_json.clone()).map_err(|e| {
                     ConstraintModelError::ConstraintModelError(format!(
                         "failure reading query time_limit for isochrone frontier model: {e}"
                     ))
