@@ -7,7 +7,7 @@ use crate::model::traversal::transit::{
     schedule_loading_policy::ScheduleLoadingPolicy,
     transit_ops,
 };
-use bambam_core::model::state::MultimodalStateMapping;
+use bambam_core::model::state::CategoricalStateMapping;
 use chrono::{NaiveDate, NaiveDateTime};
 use routee_compass_core::{model::traversal::TraversalModelError, util::fs::read_utils};
 use skiplist::OrderedSkipList;
@@ -81,10 +81,10 @@ impl TryFrom<TransitTraversalConfig> for TransitTraversalEngine {
             })?;
 
         let route_id_to_state = match &value.route_ids_input_file {
-            Some(route_ids_input_file) => MultimodalStateMapping::from_enumerated_category_file(
+            Some(route_ids_input_file) => CategoricalStateMapping::from_enumerated_category_file(
                 Path::new(&route_ids_input_file),
             )?,
-            None => MultimodalStateMapping::new(&metadata.fq_route_ids)?,
+            None => CategoricalStateMapping::new(&metadata.fq_route_ids)?,
         };
 
         log::debug!(
@@ -158,7 +158,7 @@ fn find_best_departure(
 /// a HashMap into Vec<Schedule> will fail
 fn read_schedules_from_file(
     filename: String,
-    route_mapping: Arc<MultimodalStateMapping>,
+    route_mapping: Arc<CategoricalStateMapping>,
     schedule_loading_policy: ScheduleLoadingPolicy,
 ) -> Result<Box<[HashMap<i64, Schedule>]>, TraversalModelError> {
     // Reading csv
@@ -221,7 +221,7 @@ fn read_schedules_from_file(
 /// into a date mapping.
 fn build_label_to_date_mapping(
     metadata: &GtfsArchiveMetadata,
-    route_id_to_state: &MultimodalStateMapping,
+    route_id_to_state: &CategoricalStateMapping,
 ) -> Result<HashMap<i64, HashMap<NaiveDate, NaiveDate>>, TraversalModelError> {
     let mapped = metadata
             .fq_route_ids
