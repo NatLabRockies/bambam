@@ -69,7 +69,7 @@ impl TraversalModel for TransitTraversalModel {
                 String::from(bambam_state::ROUTE_ID),
                 StateVariableConfig::Custom {
                     custom_type: "RouteId".to_string(),
-                    value: variable::EMPTY,
+                    value: variable::EMPTY_VARIABLE_CONFIG,
                     accumulator: true,
                 },
             ),
@@ -272,7 +272,7 @@ mod tests {
                 bambam_state::ROUTE_ID.to_string(),
                 StateVariableConfig::Custom {
                     custom_type: "RouteId".to_string(),
-                    value: variable::EMPTY,
+                    value: variable::EMPTY_VARIABLE_CONFIG,
                     accumulator: true,
                 },
             ),
