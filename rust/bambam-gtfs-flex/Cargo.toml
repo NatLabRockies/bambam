@@ -1,6 +1,6 @@
 [package]
 name = "bambam-gtfs-flex"
-version = "0.2.4"
+version = "0.3.0"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "Simple GTFS-Flex scanner"
@@ -12,7 +12,7 @@ default = ["type4"]
 type4 = ["dep:gtfs-structures"]
 
 [dependencies]
-bambam-core = { version = "0.2.3", path = "../bambam-core" } 
+bambam-core = { version = "0.3.0", path = "../bambam-core" } 
 chrono = { workspace = true }
 clap = { workspace = true }
 csv = { workspace = true }
