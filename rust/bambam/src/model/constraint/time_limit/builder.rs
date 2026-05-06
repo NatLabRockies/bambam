@@ -1,6 +1,6 @@
-use crate::model::constraint::time_limit::{TimeLimitConfig, TimeLimitConstraintConfig};
+use crate::model::constraint::time_limit::{TimeLimit, TimeLimitConstraintConfig};
 
-use super::time_limit_frontier_service::TimeLimitConstraintService;
+use super::service::TimeLimitConstraintService;
 use routee_compass_core::model::{
     constraint::{ConstraintModelBuilder, ConstraintModelError, ConstraintModelService},
     unit::TimeUnit,

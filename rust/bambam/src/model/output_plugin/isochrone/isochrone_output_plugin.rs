@@ -58,7 +58,7 @@ pub fn run_isochrone(
 
     let mut agg = row.aggregate()?;
     let bins = bin_config
-        .build_bins()
+        .build_bins(false)
         .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
     for bin in bins.into_iter() {
         let bin_key = bin.bin_key();

@@ -1,6 +1,6 @@
-use crate::model::constraint::time_limit::{TimeLimitConfig, TimeLimitConstraintConfig};
+use crate::model::constraint::time_limit::{TimeLimit, TimeLimitConstraintConfig};
 
-use super::time_limit_frontier_model::TimeLimitConstraintModel;
+use super::model::TimeLimitConstraintModel;
 use routee_compass_core::config::ConfigJsonExtensions;
 use routee_compass_core::model::{
     constraint::{ConstraintModel, ConstraintModelError, ConstraintModelService},
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use uom::si::f64::Time;
 
 pub struct TimeLimitConstraintService {
-    time_limit: TimeLimitConfig,
+    time_limit: TimeLimit,
 }
 
 impl TimeLimitConstraintService {
@@ -29,7 +29,15 @@ impl ConstraintModelService for TimeLimitConstraintService {
         _state_model: Arc<StateModel>,
     ) -> Result<Arc<dyn ConstraintModel>, ConstraintModelError> {
         log::debug!("begin ConstraintModelService::build for TimeLimitConstraintService");
-        let conf = get_conf(query)?.unwrap_or_else(|| self.time_limit.clone());
+        let conf = match query.get(super::TIME_LIMIT_FIELD) {
+            Some(time_limit_json) => serde_json::from_value(time_limit_json.clone()).map_err(|e| {
+                ConstraintModelError::ConstraintModelError(format!(
+                    "failure reading query time_limit for isochrone frontier model: {e}"
+                ))
+            }),
+            None => Ok(self.time_limit.clone()),
+        }?;
+
         let time_limit = conf.time_limit()?;
         let model = TimeLimitConstraintModel { time_limit };
         Ok(Arc::new(model))

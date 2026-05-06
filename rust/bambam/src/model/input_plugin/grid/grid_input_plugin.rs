@@ -2,7 +2,7 @@ use super::{extent_format::ExtentFormat, grid_type::GridType};
 use crate::model::input_plugin::population::population_source::PopulationSource;
 use geo::{Area, Geometry};
 use geozero::{wkt::Wkt as WktReader, ToGeo};
-use kdam::{Bar, BarExt};
+use kdam::{tqdm, Bar, BarExt};
 use rayon::prelude::*;
 use routee_compass::{
     app::search::SearchApp,
@@ -214,7 +214,13 @@ fn add_population_source(
     eprintln!();
 
     // update the input queries with (proportioned) population values
-    for pop_chunk in populations_result.into_iter() {
+    let result_len = populations_result.len();
+    let merge_iter = tqdm!(
+        populations_result.into_iter(),
+        desc = "write population values to grid",
+        total = result_len
+    );
+    for pop_chunk in merge_iter {
         for row in pop_chunk.into_iter() {
             let (idx, pop) = row?;
             let row = queries[idx].to_owned();

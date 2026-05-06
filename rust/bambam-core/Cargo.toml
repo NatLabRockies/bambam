@@ -1,6 +1,6 @@
 [package]
 name = "bambam-core"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 license = "BSD-3-Clause"
 exclude = ["test", "**/.DS_Store", "target/"]
@@ -20,9 +20,9 @@ geozero = { workspace = true }
 hex = { workspace = true }
 itertools = { workspace = true }
 log = { workspace = true }
-routee-compass = { workspace = true }
+routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
-routee-compass-powertrain = { workspace = true }
+# routee-compass-powertrain = { workspace = true }
 rstar = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

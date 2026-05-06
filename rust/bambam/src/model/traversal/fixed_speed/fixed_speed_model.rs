@@ -68,7 +68,7 @@ impl TraversalModel for FixedSpeedModel {
 
     fn traverse_edge(
         &self,
-        ctx: &EdgeFrontierContext,
+        _ctx: &EdgeFrontierContext,
         state: &mut Vec<StateVariable>,
         state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
@@ -78,7 +78,7 @@ impl TraversalModel for FixedSpeedModel {
 
     fn estimate_traversal(
         &self,
-        od: (&Vertex, &Vertex),
+        _od: (&Vertex, &Vertex),
         state: &mut Vec<StateVariable>,
         tree: &SearchTree,
         state_model: &StateModel,

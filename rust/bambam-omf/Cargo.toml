@@ -1,6 +1,6 @@
 [package]
 name = "bambam-omf"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 license = "BSD-3-Clause"
 include = ["src/util/bambam-config-omf.toml"]
@@ -41,7 +41,7 @@ rayon = { workspace = true }
 reqwest = { workspace = true }
 routee-compass = { workspace = true }
 routee-compass-core = { workspace = true }
-routee-compass-powertrain = { workspace = true }
+# routee-compass-powertrain = { workspace = true }
 serde = { workspace = true }
 serde_arrow = { workspace = true }
 serde_bytes = { workspace = true }
