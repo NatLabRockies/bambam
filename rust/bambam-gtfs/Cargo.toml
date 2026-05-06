@@ -1,6 +1,6 @@
 [package]
 name = "bambam-gtfs"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2021"
 license = "BSD-3-Clause"
 exclude = ["test", "**/.DS_Store", "target/"]
@@ -12,7 +12,7 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
-bambam-core = { version = "0.2.3", path = "../bambam-core" }
+bambam-core = { version = "0.3.0", path = "../bambam-core" }
 chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
