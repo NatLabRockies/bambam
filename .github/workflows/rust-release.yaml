@@ -23,26 +23,32 @@ jobs:
           rustup component add rustfmt
           cargo fmt --all --manifest-path rust/Cargo.toml -- --check
           
+      - name: connect to crates.io
+        run: echo "${{ secrets.CRATES_IO_TOKEN }}" | cargo login
+
       - name: Run unit tests
         run: cargo test --workspace --manifest-path=rust/Cargo.toml -- --skip test_e2e
 
       - name: Publish bambam-core
-        run: cargo publish -p bambam-core --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+        run: cargo publish -p bambam-core --manifest-path=rust/Cargo.toml
       
       - name: Publish bambam-osm
-        run: cargo publish -p bambam-osm --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+        run: cargo publish -p bambam-osm --manifest-path=rust/Cargo.toml
 
       - name: Publish bambam-gtfs
-        run: cargo publish -p bambam-gtfs --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+        run: cargo publish -p bambam-gtfs --manifest-path=rust/Cargo.toml
 
       - name: Publish bambam-gbfs
-        run: cargo publish -p bambam-gbfs --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+        run: cargo publish -p bambam-gbfs --manifest-path=rust/Cargo.toml
 
       - name: Publish bambam-omf
-        run: cargo publish -p bambam-omf --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+        run: cargo publish -p bambam-omf --manifest-path=rust/Cargo.toml
+
+      - name: Publish bambam-gtfs-flex
+        run: cargo publish -p bambam-gtfs-flex --manifest-path=rust/Cargo.toml
 
       - name: Publish bambam
-        run: cargo publish -p bambam --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+        run: cargo publish -p bambam --manifest-path=rust/Cargo.toml
 
 #       - name: Publish bambam-py
-#         run: cargo publish -p bambam-py --manifest-path=rust/Cargo.toml --token "${{ secrets.CRATES_IO_TOKEN }}"
+#         run: cargo publish -p bambam-py --manifest-path=rust/Cargo.toml
