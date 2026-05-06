@@ -12,10 +12,10 @@ use crate::model::output_plugin::isochrone::isochrone_output_plugin_builder::Iso
 use crate::model::output_plugin::opportunity::OpportunityOutputPluginBuilder;
 use crate::model::traversal::multimodal::MultimodalTraversalBuilder;
 use crate::model::traversal::switch::switch_traversal_builder::SwitchTraversalBuilder;
-use crate::model::traversal::transit::TransitTraversalBuilder;
 use bambam_gbfs::model::constraint::boarding::BoardingConstraintBuilder;
 use bambam_gbfs::model::constraint::geofence::GeofenceConstraintBuilder;
 use bambam_gbfs::model::traversal::boarding::BoardingTraversalBuilder;
+use bambam_gtfs::model::traversal::transit::TransitTraversalBuilder;
 use bambam_gtfs_flex::model::traversal::flex::GtfsFlexBuilder;
 use inventory;
 use routee_compass::app::compass::BuilderRegistration;

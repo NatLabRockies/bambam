@@ -1,7 +1,6 @@
 use bambam_core::util::date_deserialization_ops::deserialize_naive_datetime;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use uom::si::f64::Time;
 
 #[derive(Serialize, Deserialize)]
 pub struct TransitTraversalQuery {

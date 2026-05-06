@@ -1,26 +1,16 @@
-use std::{
-    cmp,
-    collections::HashMap,
-    fs::File,
-    io::BufReader,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path, sync::Arc};
 
 use crate::model::traversal::transit::{
     config::TransitTraversalConfig,
-    metadata::{self, GtfsArchiveMetadata},
+    metadata::GtfsArchiveMetadata,
     schedule::{Departure, Schedule},
-    schedule_loading_policy::{self, ScheduleLoadingPolicy},
+    schedule_loading_policy::ScheduleLoadingPolicy,
     transit_ops,
 };
-use bambam_core::model::state::{MultimodalMapping, MultimodalStateMapping};
+use bambam_core::model::state::MultimodalStateMapping;
 use chrono::{NaiveDate, NaiveDateTime};
-use flate2::bufread::GzDecoder;
 use routee_compass_core::{model::traversal::TraversalModelError, util::fs::read_utils};
-use serde::{Deserialize, Serialize};
 use skiplist::OrderedSkipList;
-use uom::si::f64::Time;
 
 pub struct TransitTraversalEngine {
     pub edge_schedules: Box<[HashMap<i64, Schedule>]>,
@@ -28,11 +18,13 @@ pub struct TransitTraversalEngine {
 }
 
 impl TransitTraversalEngine {
+    /// traverses the schedule of departing trips to find the one that arrives soonest
+    /// at the destination of this edge when departing at the current time.
     pub fn get_next_departure(
         &self,
         edge_id: usize,
         current_datetime: &NaiveDateTime,
-    ) -> Result<(i64, Departure), TraversalModelError> {
+    ) -> Result<Option<(i64, Departure)>, TraversalModelError> {
         let departures_skiplists =
             self.edge_schedules
                 .get(edge_id)
@@ -40,43 +32,33 @@ impl TransitTraversalEngine {
                     "EdgeId {edge_id} exceeds schedules length"
                 )))?;
 
-        // Iterate over all routes that have schedules on this edge
-        let result = departures_skiplists
-            .iter()
-            .map(|(route_id_label, skiplist)| {
-                // reconcile with any date mappings. used to address date gaps across all GTFS archives.
-                let search_datetime = transit_ops::apply_date_mapping(
-                    &self.date_mapping,
-                    route_id_label,
-                    current_datetime,
-                );
+        let mut best = None;
+        for (route_id_label, skiplist) in departures_skiplists.iter() {
+            // reconcile with any date mappings. used to address date gaps across all GTFS archives.
+            let search_datetime = transit_ops::apply_date_mapping(
+                &self.date_mapping,
+                route_id_label,
+                current_datetime,
+            );
+            let schedule_search_result = find_best_departure(search_datetime, skiplist)?;
+            match (best, schedule_search_result) {
+                (None, Some(next)) => {
+                    let next_mapped =
+                        transit_ops::reverse_date_mapping(current_datetime, &search_datetime, next);
+                    best = Some((*route_id_label, next_mapped));
+                }
+                (Some((_, prev)), Some(next)) => {
+                    let next_mapped =
+                        transit_ops::reverse_date_mapping(current_datetime, &search_datetime, next);
+                    if next_mapped.dst_arrival_time < prev.dst_arrival_time {
+                        best = Some((*route_id_label, next_mapped));
+                    }
+                }
+                _ => {}
+            }
+        }
 
-                // Query the skiplist
-                // We need to create the struct shell to be able to search the
-                // skiplist. I tried several other approaches but I think this is the cleanest
-                let search_query = Departure::construct_query(search_datetime);
-
-                // get next or infinity. if infinity cannot be created: error
-                let next_route_departure = skiplist
-                    .lower_bound(std::ops::Bound::Included(&search_query))
-                    .cloned()
-                    .unwrap_or(Departure::infinity());
-
-                // Undo datemapping
-                let next_route_departure = transit_ops::reverse_date_mapping(
-                    current_datetime,
-                    &search_datetime,
-                    next_route_departure,
-                );
-
-                // Return next departure for route
-                (*route_id_label, next_route_departure)
-            })
-            .min_by_key(|(_, departure)| departure.dst_arrival_time)
-            .ok_or(TraversalModelError::InternalError(format!(
-                "failed to find next departure: schedules for edge_id {edge_id} appear to be empty"
-            )))?;
-        Ok(result)
+        Ok(best)
     }
 }
 
@@ -124,6 +106,51 @@ impl TryFrom<TransitTraversalConfig> for TransitTraversalEngine {
             edge_schedules,
             date_mapping,
         })
+    }
+}
+
+/// searches the schedule for a departure with the best arrival time, starting from
+/// the provided date and time.
+fn find_best_departure(
+    search_datetime: NaiveDateTime,
+    skiplist: &OrderedSkipList<Departure>,
+) -> Result<Option<Departure>, TraversalModelError> {
+    let search_query = Departure::construct_query(search_datetime);
+
+    let mut departures = skiplist.range(
+        std::ops::Bound::Included(&search_query),
+        std::ops::Bound::Unbounded,
+    );
+
+    let mut best_departure = departures
+        .next()
+        .copied()
+        .unwrap_or_else(Departure::infinity);
+
+    for departure in departures {
+        // Early break is sound only if each trip has non-negative travel time.
+        // ScheduleLoadingPolicy enforces this at ingest; keep a debug assertion here
+        // for schedules created through alternative code paths.
+        if departure.dst_arrival_time < departure.src_departure_time {
+            let arr = departure.dst_arrival_time.format("%Y-%m-%d %H:%M:%S");
+            let dep = departure.src_departure_time.format("%Y-%m-%d %H:%M:%S");
+            let msg = format!("schedule invariant violated: dst_arrival_time must be >= src_departure_time, but found {arr} < {dep}");
+            return Err(TraversalModelError::TraversalModelFailure(msg));
+        }
+
+        if departure.dst_arrival_time < best_departure.dst_arrival_time {
+            best_departure = *departure;
+        }
+
+        if departure.src_departure_time >= best_departure.dst_arrival_time {
+            break;
+        }
+    }
+
+    if best_departure.is_pos_infinity() {
+        Ok(None)
+    } else {
+        Ok(Some(best_departure))
     }
 }
 
@@ -226,9 +253,8 @@ mod test {
         engine::TransitTraversalEngine,
         schedule::{Departure, Schedule},
     };
-    use chrono::{Months, NaiveDate, NaiveDateTime};
+    use chrono::{NaiveDate, NaiveDateTime};
     use std::collections::HashMap;
-    use std::str::FromStr;
 
     fn internal_date(string: &str) -> NaiveDateTime {
         NaiveDateTime::parse_from_str(&format!("20250101 {string}"), "%Y%m%d %H:%M:%S").unwrap()
@@ -282,6 +308,7 @@ mod test {
         let mut current_time = internal_date("15:50:00");
         let mut next_tuple = engine
             .get_next_departure(current_edge, &current_time)
+            .unwrap()
             .unwrap();
         let mut next_route = next_tuple.0;
         let mut next_departure = next_tuple.1;
@@ -290,9 +317,10 @@ mod test {
         assert_eq!(next_departure.src_departure_time, internal_date("16:00:00"));
 
         // Traverse 3 times the next edge
-        for i in 0..3 {
+        for _ in 0..3 {
             next_tuple = engine
                 .get_next_departure(current_edge, &current_time)
+                .unwrap()
                 .unwrap();
             next_route = next_tuple.0;
             next_departure = next_tuple.1;
@@ -307,20 +335,20 @@ mod test {
         // Ride transit one more time
         next_tuple = engine
             .get_next_departure(current_edge, &current_time)
+            .unwrap()
             .unwrap();
-        next_route = next_tuple.0;
+        // next_route = next_tuple.0;
         next_departure = next_tuple.1;
 
         current_time = next_departure.dst_arrival_time;
         current_edge = 1 - current_edge;
 
         // If we wait now, we will find there are no more departures
-        next_tuple = engine
+        let result = engine
             .get_next_departure(current_edge, &current_time)
             .unwrap();
-        next_route = next_tuple.0;
-        next_departure = next_tuple.1;
-        assert_eq!(next_departure, Departure::infinity());
+        // next_route = next_tuple.0;
+        assert!(result.is_none());
     }
 
     #[test]
@@ -427,11 +455,12 @@ mod test {
         );
         let engine = get_dummy_engine(date_mapping);
 
-        let mut current_edge: usize = 0;
-        let mut current_time =
+        let current_edge: usize = 0;
+        let current_time =
             NaiveDateTime::parse_from_str("20250102 15:55:00", "%Y%m%d %H:%M:%S").unwrap();
-        let mut next_tuple = engine
+        let next_tuple = engine
             .get_next_departure(current_edge, &current_time)
+            .unwrap()
             .unwrap();
 
         assert!((next_tuple.1.src_departure_time - current_time).as_seconds_f64() >= 0.);
