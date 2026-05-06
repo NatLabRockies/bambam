@@ -48,7 +48,10 @@ jobs:
         run: cargo publish -p bambam-gtfs-flex --manifest-path=rust/Cargo.toml
 
       - name: Publish bambam
-        run: cargo publish -p bambam --manifest-path=rust/Cargo.toml
+
+        run: | 
+          sleep 2 # ensure all bambam-* crates are avaiable on crates.io
+          cargo publish -p bambam --manifest-path=rust/Cargo.toml
 
 #       - name: Publish bambam-py
 #         run: cargo publish -p bambam-py --manifest-path=rust/Cargo.toml
