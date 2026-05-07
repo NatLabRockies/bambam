@@ -298,13 +298,13 @@ pub fn process_archive(
                     &resolved_agency_id,
                     route_id,
                     trip_id,
-                    &src_loc_id,
+                    src_loc_id,
                 );
                 let dst_zone_id = ZoneId::from_full_namespace(
                     &resolved_agency_id,
                     route_id,
                     trip_id,
-                    &dst_loc_id,
+                    dst_loc_id,
                 );
                 let start_pickup_drop_off_window = src
                     .start_pickup_drop_off_window
@@ -321,7 +321,7 @@ pub fn process_archive(
                     GtfsFlexError::Runtime(msg)
                 })?;
 
-                let wkt_str = geo::Geometry::from(geom)
+                let wkt_str = geom
                     .to_wkt()
                     .map_err(|e| GtfsFlexError::Runtime(format!("WKT error: {e}")))?;
 
