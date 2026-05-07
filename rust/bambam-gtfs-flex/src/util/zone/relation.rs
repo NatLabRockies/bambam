@@ -5,7 +5,7 @@ use skiplist::OrderedSkipList;
 
 use crate::util::zone::ZoneSchedule;
 
-use super::{ZoneError, ZoneId, ZonalRelationRecord};
+use super::{ZonalRelationRecord, ZoneError, ZoneId};
 
 /// A directed travel relation between GTFS-Flex zones.
 ///

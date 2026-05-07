@@ -6,7 +6,7 @@ use routee_compass_core::util::fs::read_utils;
 
 use crate::util::zone::ZoneError;
 
-use super::{ZonalRelation, ZoneId, ZonalRelationRecord};
+use super::{ZonalRelation, ZonalRelationRecord, ZoneId};
 
 /// a directed graph between GTFS-Flex zones. this metadata lookup
 /// supports GTFS-Flex traversals, which must first lookup their current
@@ -81,8 +81,8 @@ impl TryFrom<&Path> for ZoneGraph {
 
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
         let bb = BarBuilder::default().desc("zone records");
-        let records: Box<[ZonalRelationRecord]> = read_utils::from_csv(&value, true, Some(bb), None)
-            .map_err(|e| {
+        let records: Box<[ZonalRelationRecord]> =
+            read_utils::from_csv(&value, true, Some(bb), None).map_err(|e| {
                 let msg = format!("failure reading zone records: {e}");
                 ZoneError::Build(msg)
             })?;

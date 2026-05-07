@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::util::zone::{ZoneError, ZoneGraph, ZoneId, ZoneLookupConfig, ZonalRelationRecord};
+use crate::util::zone::{ZonalRelationRecord, ZoneError, ZoneGraph, ZoneId, ZoneLookupConfig};
 
 use bambam_core::util::geo_utils::try_convert_f32;
 use chrono::NaiveDateTime;
