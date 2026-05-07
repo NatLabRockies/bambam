@@ -12,6 +12,7 @@ bambam-core = { version = "0.3.0", path = "../bambam-core" }
 chrono = { workspace = true }
 clap = { workspace = true }
 csv = { workspace = true }
+flate2 = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }
 geozero = { workspace = true }

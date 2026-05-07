@@ -2,6 +2,8 @@ use std::{io, path::PathBuf};
 
 use routee_compass_core::{algorithm::search::SearchTreeError, model::state::StateModelError};
 
+use crate::util::zone::ZoneId;
+
 #[derive(thiserror::Error, Debug)]
 pub enum GtfsFlexError {
     #[error("io error on file '{path}': {error}")]
@@ -22,10 +24,19 @@ pub enum GtfsFlexError {
     Chrono(String),
     #[error("gtfs flex modeling failed due to runtime error breaking model invariants: {0}")]
     Runtime(String),
+    #[error("input directory not found: {0}")]
+    InputDirectoryNotFound(PathBuf),
+    #[error("input path is not a directory: {0}")]
+    PathNotADirectory(PathBuf),
     #[error("gtfs flex modeling failed due to internal error: {0}")]
     Internal(String),
     #[error("error writing {path}: {error}")]
     CsvWrite { path: PathBuf, error: csv::Error },
     #[error("error writing {path}: {error}")]
     IoWrite { path: PathBuf, error: io::Error },
+    #[error("failure while working with geometry for zone_id {zone_id}: {error}")]
+    GeoZeroError {
+        zone_id: ZoneId,
+        error: geozero::error::GeozeroError,
+    },
 }

@@ -6,7 +6,7 @@ use routee_compass_core::util::fs::read_utils;
 
 use crate::util::zone::ZoneError;
 
-use super::{ZonalRelation, ZoneId, ZoneRecord};
+use super::{ZonalRelation, ZoneId, ZonalRelationRecord};
 
 /// a directed graph between GTFS-Flex zones. this metadata lookup
 /// supports GTFS-Flex traversals, which must first lookup their current
@@ -81,7 +81,7 @@ impl TryFrom<&Path> for ZoneGraph {
 
     fn try_from(value: &Path) -> Result<Self, Self::Error> {
         let bb = BarBuilder::default().desc("zone records");
-        let records: Box<[ZoneRecord]> = read_utils::from_csv(&value, true, Some(bb), None)
+        let records: Box<[ZonalRelationRecord]> = read_utils::from_csv(&value, true, Some(bb), None)
             .map_err(|e| {
                 let msg = format!("failure reading zone records: {e}");
                 ZoneError::Build(msg)
@@ -90,10 +90,10 @@ impl TryFrom<&Path> for ZoneGraph {
     }
 }
 
-impl TryFrom<&[ZoneRecord]> for ZoneGraph {
+impl TryFrom<&[ZonalRelationRecord]> for ZoneGraph {
     type Error = ZoneError;
 
-    fn try_from(value: &[ZoneRecord]) -> Result<Self, Self::Error> {
+    fn try_from(value: &[ZonalRelationRecord]) -> Result<Self, Self::Error> {
         let mut graph: ZoneGraphImpl = HashMap::new();
         for row in value.iter() {
             insert_row(row, &mut graph)?;
@@ -107,7 +107,7 @@ impl TryFrom<&[ZoneRecord]> for ZoneGraph {
 /// for each src_zone_id/dst_zone_id pair there exists a single [ZonalRelation] object.
 /// however, if multiple rows reference the same relation but different time ranges,
 /// we append the time range information to the existing [ZonalRelation].
-fn insert_row(row: &ZoneRecord, graph: &mut ZoneGraphImpl) -> Result<(), ZoneError> {
+fn insert_row(row: &ZonalRelationRecord, graph: &mut ZoneGraphImpl) -> Result<(), ZoneError> {
     let relation = ZonalRelation::try_from(row)?;
     let lookup_id = relation.lookup_id();
     let schedule_opt = row.get_zone_schedule();

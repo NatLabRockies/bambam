@@ -5,7 +5,7 @@ use skiplist::OrderedSkipList;
 
 use crate::util::zone::ZoneSchedule;
 
-use super::{ZoneError, ZoneId, ZoneRecord};
+use super::{ZoneError, ZoneId, ZonalRelationRecord};
 
 /// A directed travel relation between GTFS-Flex zones.
 ///
@@ -90,10 +90,10 @@ impl ZonalRelation {
     }
 }
 
-impl TryFrom<&ZoneRecord> for ZonalRelation {
+impl TryFrom<&ZonalRelationRecord> for ZonalRelation {
     type Error = ZoneError;
 
-    fn try_from(record: &ZoneRecord) -> Result<Self, Self::Error> {
+    fn try_from(record: &ZonalRelationRecord) -> Result<Self, Self::Error> {
         // depending on the presence of fields on the incoming record we build
         // a different kind of relation
         let dst_zone_id = record.dst_zone_id.as_ref();
@@ -113,8 +113,9 @@ impl TryFrom<&ZoneRecord> for ZonalRelation {
             }),
             _ => {
                 let msg = format!(
-                    "GTFS-Flex trip {} has invalid combination of optional fields",
-                    record.trip_id
+                    "GTFS-Flex record for {}-{} has invalid combination of optional fields",
+                    record.src_zone_id,
+                    record.dst_zone_id.clone().unwrap_or_default()
                 );
                 Err(ZoneError::Build(msg))
             }

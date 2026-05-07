@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::util::zone::{ZoneError, ZoneGraph, ZoneId, ZoneLookupConfig, ZoneRecord};
+use crate::util::zone::{ZoneError, ZoneGraph, ZoneId, ZoneLookupConfig, ZonalRelationRecord};
 
 use bambam_core::util::geo_utils::try_convert_f32;
 use chrono::NaiveDateTime;
@@ -90,7 +90,7 @@ impl TryFrom<&ZoneLookupConfig> for ZoneLookup {
 
 fn read_records(zone_record_input_file: &str) -> Result<ZoneGraph, ZoneError> {
     let bb = BarBuilder::default().desc("reading zone records");
-    let zone_records: Box<[ZoneRecord]> =
+    let zone_records: Box<[ZonalRelationRecord]> =
         read_utils::from_csv(&zone_record_input_file, true, Some(bb), None).map_err(|e| {
             let msg = format!("failure reading zone records: {e}");
             ZoneError::Build(msg)
@@ -186,7 +186,7 @@ fn get_zone_id_from_feature_id(
             path: geom_path.to_path_buf(),
             message: format!("cannot read GeoJSON Feature [{idx}] id as a string"),
         })?;
-    Ok(ZoneId(zone_id_str.to_string()))
+    Ok(ZoneId::from(zone_id_str))
 }
 
 fn get_zone_id_from_property(
@@ -216,5 +216,5 @@ fn get_zone_id_from_property(
                 "cannot read GeoJSON Feature [{idx}] property {zone_id_property} as a string"
             ),
         })?;
-    Ok(ZoneId(zone_id_str.to_string()))
+    Ok(ZoneId::from(zone_id_str))
 }
