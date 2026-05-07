@@ -102,7 +102,7 @@ mod test {
         })?;
         let reader = BufReader::new(query_file);
         let user_json: serde_json::Value = serde_json::from_reader(reader)?;
-        let mut user_queries = user_json.get_queries()?;
-        app.run(&mut user_queries, None)
+        let user_queries = user_json.get_queries()?;
+        app.run(user_queries, None)
     }
 }

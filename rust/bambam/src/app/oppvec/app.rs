@@ -2,7 +2,7 @@ use super::SourceFormat;
 use csv::Reader;
 use geo::{
     triangulate_delaunay::DelaunayTriangulationConfig, Area, BoundingRect, Contains, Convert,
-    TriangulateDelaunay,
+    TriangulateDelaunay, TriangulateDelaunayUnconstrained,
 };
 use geozero::ToWkt;
 use itertools::Itertools;
