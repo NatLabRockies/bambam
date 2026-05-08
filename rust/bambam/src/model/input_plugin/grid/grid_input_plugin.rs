@@ -24,6 +24,8 @@ pub struct GridInputPlugin {
     pub grid_type: GridType,
 }
 
+const NAME: &str = "grid";
+
 impl GridInputPlugin {
     pub fn new(
         population_source: Option<PopulationSource>,
@@ -120,6 +122,10 @@ impl InputPlugin for GridInputPlugin {
             &self.population_source,
         );
         Ok(())
+    }
+
+    fn name(&self) -> &str {
+        NAME
     }
 }
 

@@ -16,6 +16,8 @@ use serde_json::Value;
 
 pub struct IsochroneOutputPlugin {}
 
+const NAME: &str = "isochrone";
+
 impl OutputPlugin for IsochroneOutputPlugin {
     fn process(
         &self,
@@ -28,6 +30,10 @@ impl OutputPlugin for IsochroneOutputPlugin {
         };
         let mut row = bambam_typed::BambamOutputRow::new(output);
         run_isochrone(row, sr, si)
+    }
+
+    fn name(&self) -> &str {
+        NAME
     }
 }
 

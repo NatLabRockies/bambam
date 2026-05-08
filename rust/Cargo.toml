@@ -52,11 +52,11 @@ rand = "0.10.0"
 rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
-routee-compass = { git = "https://github.com/NatLabRockies/routee-compass.git", branch = "rjf/report-output-plugin-runtime", version = "0.19.3", default-features = false }
-routee-compass-core = { git = "https://github.com/NatLabRockies/routee-compass.git", branch = "rjf/report-output-plugin-runtime", version = "0.19.3" }
-routee-compass-macros = { git = "https://github.com/NatLabRockies/routee-compass.git", branch = "rjf/report-output-plugin-runtime", version = "0.19.3" }
+routee-compass = { git = "https://github.com/NatLabRockies/routee-compass.git", rev = "f0df1f3", version = "0.19.3", default-features = false }
+routee-compass-core = { git = "https://github.com/NatLabRockies/routee-compass.git", rev = "f0df1f3", version = "0.19.3" }
+routee-compass-macros = { git = "https://github.com/NatLabRockies/routee-compass.git", rev = "f0df1f3", version = "0.19.3" }
 # routee-compass-powertrain = { version = "0.19.3" }
-routee-compass-py = { git = "https://github.com/NatLabRockies/routee-compass.git", branch = "rjf/report-output-plugin-runtime", version = "0.19.3", default-features = false }
+routee-compass-py = { git = "https://github.com/NatLabRockies/routee-compass.git", rev = "f0df1f3", version = "0.19.3", default-features = false }
 rstar = { version = "0.12.2" }
 sanitize-filename = "0.6.0"
 serde = { version = "1.0.160", features = ["derive"] }

@@ -12,6 +12,8 @@ use routee_compass_core::algorithm::search::SearchInstance;
 /// BAMBAM output plugins.
 pub struct BambamOutputPlugin(pub BambamOutputConfig);
 
+const NAME: &str = "bambam";
+
 impl OutputPlugin for BambamOutputPlugin {
     fn process(
         &self,
@@ -52,5 +54,9 @@ impl OutputPlugin for BambamOutputPlugin {
             }
         }
         Ok(())
+    }
+
+    fn name(&self) -> &str {
+        NAME
     }
 }

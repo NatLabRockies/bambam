@@ -16,6 +16,8 @@ pub struct H3UtilOutputPlugin {
     util: H3Util,
 }
 
+const NAME: &str = "h3";
+
 impl H3UtilOutputPlugin {
     pub fn new(util: H3Util) -> H3UtilOutputPlugin {
         H3UtilOutputPlugin { util }
@@ -29,5 +31,9 @@ impl OutputPlugin for H3UtilOutputPlugin {
         result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
     ) -> Result<(), OutputPluginError> {
         self.util.apply(output)
+    }
+
+    fn name(&self) -> &str {
+        NAME
     }
 }

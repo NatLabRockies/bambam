@@ -21,6 +21,8 @@ pub struct OpportunityOutputPlugin {
     pub totals: HashMap<String, f64>,
 }
 
+const NAME: &str = "opportunity";
+
 impl OutputPlugin for OpportunityOutputPlugin {
     /// tags a result with opportunity counts
     fn process(
@@ -82,6 +84,10 @@ impl OutputPlugin for OpportunityOutputPlugin {
             info.set_opportunity_runtime(dur.hhmmss())?;
         }
         Ok(())
+    }
+
+    fn name(&self) -> &str {
+        NAME
     }
 }
 
