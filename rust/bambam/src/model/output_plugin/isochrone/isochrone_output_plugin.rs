@@ -22,13 +22,48 @@ impl OutputPlugin for IsochroneOutputPlugin {
         output: &mut serde_json::Value,
         result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
     ) -> Result<(), OutputPluginError> {
-        let (sr, si) = match result {
-            Ok(r) => r,
-            Err(_) => return Ok(()),
-        };
         let mut row = bambam_typed::BambamOutputRow::new(output);
-        run_isochrone(row, sr, si)
+        if !requires_isochrones(&row)? {
+            return Ok(());
+        }
+
+        match result {
+            Ok((sr, si)) => run_isochrone(row, sr, si),
+            Err(_) => empty_isochrones(row),
+        }
     }
+}
+
+/// checks if the row should require isochrones (is an aggregated opportunity row)
+pub fn requires_isochrones(row: &BambamOutputRow<'_>) -> Result<bool, OutputPluginError> {
+    let info = row.info_ref()?;
+    let format = info.get_opportunity_format()?;
+    let requires_isochrones = matches!(format, Some(OpportunityFormat::Aggregate));
+    Ok(requires_isochrones)
+}
+
+pub fn empty_isochrones(mut row: BambamOutputRow<'_>) -> Result<(), OutputPluginError> {
+    let get_isochrone_request = GetIsochroneRequest::try_from(&row)?;
+
+    let info = row.info_ref()?;
+    let bin_config = match info.get_bin_range()? {
+        Some(bc) => bc,
+        None => {
+            let msg = String::from("row with aggregate opportunities has no bin range config");
+            return Err(OutputPluginError::OutputPluginFailed(msg));
+        }
+    };
+    let mut agg = row.aggregate()?;
+    let bins = bin_config
+        .build_bins(false)
+        .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
+    for bin in bins.into_iter() {
+        let bin_key = bin.bin_key();
+        let result = get_isochrone_request.empty()?;
+        agg.set_isochrone(&bin_key, result.isochrone_value);
+        agg.set_n_destinations(&bin_key, result.tree_size);
+    }
+    Ok(())
 }
 
 /// generate isochrones for this row of data.
@@ -37,17 +72,9 @@ pub fn run_isochrone(
     sr: &SearchAppResult,
     si: &SearchInstance,
 ) -> Result<(), OutputPluginError> {
-    // only run this plugin for rows requesting Aggregate opportunities
-    let info = row.info_ref()?;
-    let format = info.get_opportunity_format()?;
-    let requires_isochrones = matches!(format, Some(OpportunityFormat::Aggregate));
-    if !requires_isochrones {
-        return Ok(());
-    }
-
     let get_isochrone_request = GetIsochroneRequest::try_from(&row)?;
 
-    // expect bin configuration if Aggregate
+    let info = row.info_ref()?;
     let bin_config = match info.get_bin_range()? {
         Some(bc) => bc,
         None => {
@@ -104,6 +131,15 @@ impl<'a> TryFrom<&'a BambamOutputRow<'a>> for GetIsochroneRequest {
 }
 
 impl GetIsochroneRequest {
+    pub fn empty(&self) -> Result<GetIsochroneResult, OutputPluginError> {
+        let empty = self.isochrone_format.empty_geometry()?;
+        let result = GetIsochroneResult {
+            isochrone_value: json![empty],
+            tree_size: 0,
+        };
+        Ok(result)
+    }
+
     pub fn run(
         &self,
         bin: &BinInterval,
