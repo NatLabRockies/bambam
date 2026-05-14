@@ -2,72 +2,72 @@
 parallelism = 1
 response_persistence_policy = "persist_response_in_memory"
 
-[system.response_output_policy]
-type = "combined"
+# [system.response_output_policy]
+# type = "combined"
 
-[[system.response_output_policy.policies]]
-type = "file"
-filename = "test-denver-result.json"
-[system.response_output_policy.policies.format]
-type = "json"
-newline_delimited = false
+# [[system.response_output_policy.policies]]
+# type = "file"
+# filename = "test-denver-result.json"
+# [system.response_output_policy.policies.format]
+# type = "json"
+# newline_delimited = false
 
-[[system.response_output_policy.policies]]
-type = "file"
-filename = "test-denver-result.csv"
-[system.response_output_policy.policies.format]
-type = "csv"
-sorted = true
-[system.response_output_policy.policies.format.mapping]
-grid_id = "request.grid_id"
-lon = "request.origin_x"
-lat = "request.origin_y"
-mode = "request.mode"
-runtime = "search_runtime"
-error = { optional = "error" }
-tree_size = "tree_size_count"
+# [[system.response_output_policy.policies]]
+# type = "file"
+# filename = "test-denver-result.csv"
+# [system.response_output_policy.policies.format]
+# type = "csv"
+# sorted = true
+# [system.response_output_policy.policies.format.mapping]
+# grid_id = "request.grid_id"
+# lon = "request.origin_x"
+# lat = "request.origin_y"
+# mode = "request.mode"
+# runtime = "search_runtime"
+# error = { optional = "error" }
+# tree_size = "tree_size_count"
 
-opps_entertainment_total = "opportunity_totals.entertainment"
-opps_retail_total = "opportunity_totals.retail"
-opps_healthcare_total = "opportunity_totals.healthcare"
-opps_services_total = "opportunity_totals.services"
-opps_food_total = "opportunity_totals.food"
-opps_jobs_total = "opportunity_totals.jobs"
+# opps_entertainment_total = "opportunity_totals.entertainment"
+# opps_retail_total = "opportunity_totals.retail"
+# opps_healthcare_total = "opportunity_totals.healthcare"
+# opps_services_total = "opportunity_totals.services"
+# opps_food_total = "opportunity_totals.food"
+# opps_jobs_total = "opportunity_totals.jobs"
 
-opps_count_10 = "aggregate_opportunities.10.n_destinations"
-opps_count_20 = "aggregate_opportunities.20.n_destinations"
-opps_count_30 = "aggregate_opportunities.30.n_destinations"
-opps_count_40 = "aggregate_opportunities.40.n_destinations"
+# opps_count_10 = "aggregate_opportunities.10.n_destinations"
+# opps_count_20 = "aggregate_opportunities.20.n_destinations"
+# opps_count_30 = "aggregate_opportunities.30.n_destinations"
+# opps_count_40 = "aggregate_opportunities.40.n_destinations"
 
-opps_entertainment_10 = "aggregate_opportunities.10.opportunities.entertainment"
-opps_retail_10 = "aggregate_opportunities.10.opportunities.retail"
-opps_healthcare_10 = "aggregate_opportunities.10.opportunities.healthcare"
-opps_services_10 = "aggregate_opportunities.10.opportunities.services"
-opps_food_10 = "aggregate_opportunities.10.opportunities.food"
-opps_jobs_10 = "aggregate_opportunities.10.opportunities.jobs"
-opps_entertainment_20 = "aggregate_opportunities.20.opportunities.entertainment"
-opps_retail_20 = "aggregate_opportunities.20.opportunities.retail"
-opps_healthcare_20 = "aggregate_opportunities.20.opportunities.healthcare"
-opps_services_20 = "aggregate_opportunities.20.opportunities.services"
-opps_food_20 = "aggregate_opportunities.20.opportunities.food"
-opps_jobs_20 = "aggregate_opportunities.20.opportunities.jobs"
-opps_entertainment_30 = "aggregate_opportunities.30.opportunities.entertainment"
-opps_retail_30 = "aggregate_opportunities.30.opportunities.retail"
-opps_healthcare_30 = "aggregate_opportunities.30.opportunities.healthcare"
-opps_services_30 = "aggregate_opportunities.30.opportunities.services"
-opps_food_30 = "aggregate_opportunities.30.opportunities.food"
-opps_jobs_30 = "aggregate_opportunities.30.opportunities.jobs"
-opps_entertainment_40 = "aggregate_opportunities.40.opportunities.entertainment"
-opps_retail_40 = "aggregate_opportunities.40.opportunities.retail"
-opps_healthcare_40 = "aggregate_opportunities.40.opportunities.healthcare"
-opps_services_40 = "aggregate_opportunities.40.opportunities.services"
-opps_food_40 = "aggregate_opportunities.40.opportunities.food"
-opps_jobs_40 = "aggregate_opportunities.40.opportunities.jobs"
+# opps_entertainment_10 = "aggregate_opportunities.10.opportunities.entertainment"
+# opps_retail_10 = "aggregate_opportunities.10.opportunities.retail"
+# opps_healthcare_10 = "aggregate_opportunities.10.opportunities.healthcare"
+# opps_services_10 = "aggregate_opportunities.10.opportunities.services"
+# opps_food_10 = "aggregate_opportunities.10.opportunities.food"
+# opps_jobs_10 = "aggregate_opportunities.10.opportunities.jobs"
+# opps_entertainment_20 = "aggregate_opportunities.20.opportunities.entertainment"
+# opps_retail_20 = "aggregate_opportunities.20.opportunities.retail"
+# opps_healthcare_20 = "aggregate_opportunities.20.opportunities.healthcare"
+# opps_services_20 = "aggregate_opportunities.20.opportunities.services"
+# opps_food_20 = "aggregate_opportunities.20.opportunities.food"
+# opps_jobs_20 = "aggregate_opportunities.20.opportunities.jobs"
+# opps_entertainment_30 = "aggregate_opportunities.30.opportunities.entertainment"
+# opps_retail_30 = "aggregate_opportunities.30.opportunities.retail"
+# opps_healthcare_30 = "aggregate_opportunities.30.opportunities.healthcare"
+# opps_services_30 = "aggregate_opportunities.30.opportunities.services"
+# opps_food_30 = "aggregate_opportunities.30.opportunities.food"
+# opps_jobs_30 = "aggregate_opportunities.30.opportunities.jobs"
+# opps_entertainment_40 = "aggregate_opportunities.40.opportunities.entertainment"
+# opps_retail_40 = "aggregate_opportunities.40.opportunities.retail"
+# opps_healthcare_40 = "aggregate_opportunities.40.opportunities.healthcare"
+# opps_services_40 = "aggregate_opportunities.40.opportunities.services"
+# opps_food_40 = "aggregate_opportunities.40.opportunities.food"
+# opps_jobs_40 = "aggregate_opportunities.40.opportunities.jobs"
 
-isochrone_10 = "aggregate_opportunities.10.isochrone"
-isochrone_20 = "aggregate_opportunities.20.isochrone"
-isochrone_30 = "aggregate_opportunities.30.isochrone"
-isochrone_40 = "aggregate_opportunities.40.isochrone"
+# isochrone_10 = "aggregate_opportunities.10.isochrone"
+# isochrone_20 = "aggregate_opportunities.20.isochrone"
+# isochrone_30 = "aggregate_opportunities.30.isochrone"
+# isochrone_40 = "aggregate_opportunities.40.isochrone"
 
 [graph]
 edge_list.input_file = "../denver_co/edges-compass.csv.gz"
@@ -133,12 +133,12 @@ available_modes = ["walk"]
 type = "grid"
 extent_format = "wkt"
 grid = { type = "h3", resolution = 8 }
-[plugin.input_plugins.population_source]
-type = "acs"
-acs_type = "five_year"
-acs_year = 2022
-acs_resolution = "census_tract"
-acs_categories = ["B01001_001E"]
+# [plugin.input_plugins.population_source]
+# type = "acs"
+# acs_type = "five_year"
+# acs_year = 2022
+# acs_resolution = "census_tract"
+# acs_categories = ["B01001_001E"]
 
 [[plugin.input_plugins]]
 type = "inject"
