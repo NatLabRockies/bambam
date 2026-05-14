@@ -15,8 +15,12 @@ pub enum GeometryColumnType {
 #[derive(Serialize, Deserialize, Clone, Debug, ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum GeometryFormat {
+    /// Well-Known Text, possibly enquoted
     Wkt,
+    /// Well-Known Binary, hex-encoded and possibly enquoted
     Wkb,
+    /// Well-Known Binary, byte-encoded and possibly enquoted
+    ByteWkb,
 }
 
 impl GeometryColumnType {
@@ -50,13 +54,28 @@ impl GeometryColumnType {
                     .ok_or_else(|| format!("header missing {col} column"))?;
                 let geom_str = row
                     .get(*geom_idx)
-                    .ok_or_else(|| format!("row missing {col} column at index {geom_idx}"))?;
+                    .ok_or_else(|| format!("row missing {col} column at index {geom_idx}"))?
+                    .trim_start_matches("\"")
+                    .trim_end_matches("\"");
+
                 match format {
                     GeometryFormat::Wkt => Wkt(geom_str).to_geo().map_err(|e| {
-                        format!("value at column {col} not a valid WKT geometry: {e}")
+                        format!(
+                            "value '{geom_str}' at column {col} is not a valid WKT geometry: {e}"
+                        )
                     }),
-                    GeometryFormat::Wkb => Wkb(geom_str).to_geo().map_err(|e| {
-                        format!("value at column {col} not a valid WKB geometry: {e}")
+                    GeometryFormat::Wkb => {
+                        let geom_bytes = hex::decode(geom_str).map_err(|e| {
+                            format!("value '{geom_str}' at column {col} is not hex-encoded: {e}")
+                        })?;
+                        Wkb(geom_bytes).to_geo().map_err(|e| {
+                            format!("value '{geom_str}' at column {col} is not a valid WKB geometry: {e}")
+                        })
+                    }
+                    GeometryFormat::ByteWkb => Wkb(geom_str).to_geo().map_err(|e| {
+                        format!(
+                            "value '{geom_str}' at column {col} is not a valid WKB geometry: {e}"
+                        )
                     }),
                 }
             }
