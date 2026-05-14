@@ -52,11 +52,14 @@ impl GeometryColumnType {
                 let geom_idx = lookup
                     .get(col)
                     .ok_or_else(|| format!("header missing {col} column"))?;
-                let geom_str = row
+                let mut geom_str = row
                     .get(*geom_idx)
-                    .ok_or_else(|| format!("row missing {col} column at index {geom_idx}"))?
-                    .trim_start_matches("\"")
-                    .trim_end_matches("\"");
+                    .ok_or_else(|| format!("row missing {col} column at index {geom_idx}"))?;
+                // remove enquoted values. for WKT, the first value cannot be a '"'; for WKB, the first value
+                // cannot be a 0x22 but the last value can be.
+                if geom_str.starts_with("\"") {
+                    geom_str.trim_start_matches("\"").trim_end_matches("\"");
+                }
 
                 match format {
                     GeometryFormat::Wkt => Wkt(geom_str).to_geo().map_err(|e| {
