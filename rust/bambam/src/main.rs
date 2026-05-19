@@ -70,7 +70,6 @@ mod test {
 
         match test_run_bambam(args) {
             Ok(rows) => {
-                assert_eq!(rows.len(), expected_grid_size);
                 for (idx, row) in rows.iter().enumerate() {
                     if let Some(error) = row.get("error") {
                         panic!(
@@ -79,6 +78,7 @@ mod test {
                         );
                     }
                 }
+                assert_eq!(rows.len(), expected_grid_size);
             }
             Err(e) => panic!("test failed: {e}"),
         }

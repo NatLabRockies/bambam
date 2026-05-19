@@ -32,9 +32,9 @@ impl OutputPlugin for OpportunityOutputPlugin {
         let (app_result, si) = match result {
             Ok((r, si)) => (r, si),
             Err(_) => {
+                // no matches found. inject zeroed-out opportunity data into the row.
                 let mut row = BambamOutputRow::new(output);
-                let mut info = row.info_mut()?;
-                info.set_opportunity_runtime(Duration::ZERO.hhmmss())?;
+                no_aggregate_opportunities(&mut row, &self.model.activity_types())?;
                 return Ok(());
             }
         };
@@ -121,6 +121,32 @@ fn process_disaggregate_opportunities(
         opportunity_ops::collect_disaggregate(&opportunities, &plugin.model.activity_types())?;
     let mut dis = row.disaggregate()?;
     dis.set_opportunities(&opps)?;
+    Ok(())
+}
+
+fn no_aggregate_opportunities(
+    row: &mut BambamOutputRow<'_>,
+    activity_types: &[String],
+) -> Result<(), OutputPluginError> {
+    let bin_config = row.info_ref()?.get_bin_range()?.ok_or_else(|| {
+        OutputPluginError::OutputPluginFailed(
+            "row with aggregate opportunities has no bin range config".to_string(),
+        )
+    })?;
+    let mut info = row.info_mut()?;
+    info.set_opportunity_runtime(Duration::ZERO.hhmmss())?;
+    let mut agg = row.aggregate()?;
+    let opps: HashMap<String, f64> = activity_types
+        .iter()
+        .map(|act| (act.clone(), 0.0))
+        .collect();
+    let bins = bin_config
+        .build_bins(false)
+        .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
+    for bin in bins.into_iter() {
+        let bin_key = bin.bin_key();
+        agg.set_opportunities(&bin_key, &opps)?;
+    }
     Ok(())
 }
 
