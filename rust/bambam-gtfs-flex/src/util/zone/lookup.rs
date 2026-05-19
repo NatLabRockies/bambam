@@ -1,11 +1,12 @@
-use std::path::Path;
+use std::path::PathBuf;
 
-use crate::util::zone::{ZonalRelationRecord, ZoneError, ZoneGraph, ZoneId, ZoneLookupConfig};
+use crate::util::zone::{
+    ZonalRelationRecord, ZoneError, ZoneGeometry, ZoneGraph, ZoneId, ZoneLookupConfig,
+};
 
-use bambam_core::util::geo_utils::try_convert_f32;
+use bambam_core::{model::state::CategoricalMapping, util::geo_utils::try_convert_f32};
 use chrono::NaiveDateTime;
-use geo::Geometry;
-use geozero::{geojson::GeoJsonString, ToGeo};
+use geozero::{wkt::Wkt, ToGeo};
 use kdam::BarBuilder;
 use routee_compass_core::{
     model::{constraint::ConstraintModelError, network::Vertex, traversal::TraversalModelError},
@@ -14,6 +15,9 @@ use routee_compass_core::{
 
 /// top-level API for working with GTFS-Flex zonal data.
 pub struct ZoneLookup {
+    /// mapping from ZoneId to an integer value in [0, i64::MAX).
+    /// the value -1 is reserved to model EMPTY (unassigned) in the state vector.
+    pub mapping: CategoricalMapping<ZoneId, i64>,
     /// graph of relations between zones.
     pub graph: ZoneGraph,
     /// spatial lookup from the road network into the zone graph.
@@ -79,15 +83,35 @@ impl TryFrom<&ZoneLookupConfig> for ZoneLookup {
     type Error = ZoneError;
 
     fn try_from(config: &ZoneLookupConfig) -> Result<Self, Self::Error> {
+        let mapping = read_zone_ids(&config.zone_ids_input_file)?;
         let graph = read_records(&config.zone_record_input_file)?;
-        let rtree = read_geometries(
-            &config.zone_geometry_input_file,
-            config.zone_id_property.as_ref(),
-        )?;
-        Ok(ZoneLookup { graph, rtree })
+        let rtree = read_geometries(&config.zone_geometry_input_file)?;
+        Ok(ZoneLookup {
+            mapping,
+            graph,
+            rtree,
+        })
     }
 }
 
+/// reads the zone ids from an enumerated file into a Categorical Mapping from i64 to ZoneId.
+fn read_zone_ids(zone_ids_input_file: &str) -> Result<CategoricalMapping<ZoneId, i64>, ZoneError> {
+    let bb = BarBuilder::default().desc("reading zone ids");
+    let zone_ids: Box<[ZoneId]> =
+        read_utils::read_raw_file(&zone_ids_input_file, parse_zone_id, Some(bb), None).map_err(
+            |e| {
+                let msg = format!("failure reading zone records: {e}");
+                ZoneError::Build(msg)
+            },
+        )?;
+    let mapping = CategoricalMapping::new(&zone_ids).map_err(|e| {
+        let msg = format!("failure reading zone ids from '{zone_ids_input_file}': {e}");
+        ZoneError::Build(msg)
+    })?;
+    Ok(mapping)
+}
+
+/// reads the records and builds a ZoneGraph from them.
 fn read_records(zone_record_input_file: &str) -> Result<ZoneGraph, ZoneError> {
     let bb = BarBuilder::default().desc("reading zone records");
     let zone_records: Box<[ZonalRelationRecord]> =
@@ -99,122 +123,50 @@ fn read_records(zone_record_input_file: &str) -> Result<ZoneGraph, ZoneError> {
     Ok(graph)
 }
 
-/// reads zonal geometries and ZoneIds from a GeoJSON geometry collection.
-///
-/// if the user provides an "id_property" then the ZoneId will be fished out
-/// from the feature's properties at `$.properties.{id_property}`. otherwise,
-/// the Feature id will be used.
-fn read_geometries(
-    geometry_input_file: &str,
-    id_property: Option<&String>,
-) -> Result<PolygonalRTree<f32, ZoneId>, ZoneError> {
-    let geom_path = Path::new(geometry_input_file);
-    let geojson_str = std::fs::read_to_string(geom_path).map_err(|e| ZoneError::Read {
-        path: geom_path.to_path_buf(),
-        source: e,
-    })?;
-
-    let geojson_value: serde_json::Value =
-        serde_json::from_str(&geojson_str).map_err(|e| ZoneError::Parse {
-            message: e.to_string(),
-            path: geom_path.to_path_buf(),
+/// reads zonal geometries and ZoneIds from a CSV geometry collection.
+fn read_geometries(geometry_input_file: &str) -> Result<PolygonalRTree<f32, ZoneId>, ZoneError> {
+    let bb = BarBuilder::default().desc("reading zone geometries");
+    let zone_records: Box<[ZoneGeometry]> =
+        read_utils::from_csv(&geometry_input_file, true, Some(bb), None).map_err(|e| {
+            let msg = format!("failure reading zone geometries: {e}");
+            ZoneError::Build(msg)
         })?;
-    let features = geojson_value["features"]
-        .as_array()
-        .ok_or_else(|| ZoneError::Parse {
-            message: "zonal geometry input GeoJSON does not have 'features' key as expected"
-                .to_string(),
-            path: geom_path.to_path_buf(),
-        })?;
-    let n_features: usize = features.len();
-    let mut zone_geometries = Vec::with_capacity(n_features);
-    for (idx, feature) in features.iter().enumerate() {
-        let zone_id = match id_property {
-            Some(property) => get_zone_id_from_property(feature, property, idx, geom_path)?,
-            None => get_zone_id_from_feature_id(feature, idx, geom_path)?,
-        };
-        let geometry_json =
-            serde_json::to_string(&feature["geometry"]).map_err(|e| ZoneError::Deserialize {
-                col: "geometry".to_string(),
-                path: geom_path.to_path_buf(),
-                message: format!("failure serializing geometry for GeoJSON Feature [{idx}] with id {zone_id}: {e}"),
-            })?;
-        let geometry: Geometry =
-            GeoJsonString(geometry_json)
+    let rtree_data = zone_records
+        .iter()
+        .enumerate()
+        .map(|(idx, zg)| {
+            let geometry = Wkt(&zg.geometry)
                 .to_geo()
                 .map_err(|e| ZoneError::Deserialize {
                     col: "geometry".to_string(),
-                    path: geom_path.to_path_buf(),
+                    path: PathBuf::from(geometry_input_file),
                     message: format!(
-                        "failure decoding GeoJson geometry to geo-types for ZoneId {zone_id}: {e}"
+                        "failure reading geometry for ZoneId {} at row {idx}: {e}",
+                        zg.zone_id
                     ),
                 })?;
-        let geom_f32 = try_convert_f32(&geometry).map_err(|e| ZoneError::Deserialize {
-            col: "geometry".to_string(),
-            path: geom_path.to_path_buf(),
-            message: format!(
-                "failure converting geometry to 32-bit FP representation for ZoneId {zone_id}: {e}"
-            ),
-        })?;
+            let geom_f32 = try_convert_f32(&geometry).map_err(|e| ZoneError::Deserialize {
+                col: "geometry".to_string(),
+                path: PathBuf::from(geometry_input_file),
+                message: format!(
+                    "failure converting geometry to 32-bit FP representation for ZoneId {}: {e}",
+                    zg.zone_id
+                ),
+            })?;
+            Ok((geom_f32, zg.zone_id.clone()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
-        zone_geometries.push((geom_f32, zone_id));
-    }
-
-    let rtree = PolygonalRTree::new(zone_geometries).map_err(|e| {
+    let rtree = PolygonalRTree::new(rtree_data).map_err(|e| {
         let msg = format!("failure building spatial index for GTFS Flex zones: {e}");
         ZoneError::Build(msg)
     })?;
-
     Ok(rtree)
 }
 
-fn get_zone_id_from_feature_id(
-    feature: &serde_json::Value,
-    idx: usize,
-    geom_path: &Path,
-) -> Result<ZoneId, ZoneError> {
-    let zone_id_str = feature
-        .get("id")
-        .ok_or_else(|| ZoneError::Deserialize {
-            col: "id".to_string(),
-            path: geom_path.to_path_buf(),
-            message: format!("GeoJSON Feature [{idx}] missing 'id' field"),
-        })?
-        .as_str()
-        .ok_or_else(|| ZoneError::Deserialize {
-            col: "id".to_string(),
-            path: geom_path.to_path_buf(),
-            message: format!("cannot read GeoJSON Feature [{idx}] id as a string"),
-        })?;
-    Ok(ZoneId::from(zone_id_str))
-}
-
-fn get_zone_id_from_property(
-    feature: &serde_json::Value,
-    zone_id_property: &str,
-    idx: usize,
-    geom_path: &Path,
-) -> Result<ZoneId, ZoneError> {
-    let zone_id_str = feature
-        .get("properties")
-        .ok_or_else(|| ZoneError::Deserialize {
-            col: "properties".to_string(),
-            path: geom_path.to_path_buf(),
-            message: String::from("GeoJSON Feature [{idx}] missing 'properties' field"),
-        })?
-        .get(zone_id_property)
-        .ok_or_else(|| ZoneError::Deserialize {
-            col: zone_id_property.to_string(),
-            path: geom_path.to_path_buf(),
-            message: format!("GeoJSON Feature [{idx}] missing property {zone_id_property}"),
-        })?
-        .as_str()
-        .ok_or_else(|| ZoneError::Deserialize {
-            col: zone_id_property.to_string(),
-            path: geom_path.to_path_buf(),
-            message: format!(
-                "cannot read GeoJSON Feature [{idx}] property {zone_id_property} as a string"
-            ),
-        })?;
-    Ok(ZoneId::from(zone_id_str))
+pub fn parse_zone_id(idx: usize, row: String) -> Result<ZoneId, std::io::Error> {
+    ZoneId::try_from(row.as_str()).map_err(|e| {
+        let msg = format!("failure decoding ZoneId at row {idx}. error: {e}");
+        std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
+    })
 }

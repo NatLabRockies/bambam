@@ -5,7 +5,7 @@ use super::ZoneId;
 use crate::util::zone::ZoneSchedule;
 
 /// a valid origin-destination zone pair for a trip
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ZoneRecord {
     pub agency_id: String,
     pub feed: String,
@@ -18,7 +18,7 @@ pub struct ZoneRecord {
 }
 
 /// geometry WKT for the fully-qualified [ZoneId].
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ZoneGeometry {
     pub zone_id: ZoneId,
     pub geometry: String,
