@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-bambam = { path = "../bambam", version = "0.3.0" }
+bambam = { path = "../bambam", version = "0.3.1" }
 chrono = { workspace = true }
 config = { workspace = true }
 inventory = { workspace = true }
