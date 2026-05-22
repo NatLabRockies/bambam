@@ -38,6 +38,31 @@ impl GridInputPlugin {
     }
 }
 
+impl InputPlugin for GridInputPlugin {
+    /// process the user input to a MEP query into a grid.
+    /// the user is expected to provide an extent, a grid_type, and an optional extent_format (assumed WKT).
+    /// the grid is built over the extent using the grid_type chosen.
+    /// any extra keys provided by user are copied into each resulting grid cell (for example, a batch identifier).   
+    fn process(
+        &self,
+        input: &mut serde_json::Value,
+        _: Arc<SearchApp>,
+    ) -> Result<(), InputPluginError> {
+        // check for correct and unambiguous fields on input
+        process_grid_input(
+            input,
+            self.extent_format,
+            self.grid_type,
+            &self.population_source,
+        );
+        Ok(())
+    }
+
+    fn name(&self) -> &str {
+        "grid"
+    }
+}
+
 //process like for InputPlugin below but without the SearchApp parameter
 pub fn process_grid_input(
     input: &mut serde_json::Value,
@@ -100,27 +125,6 @@ pub fn process_grid_input(
     let mut replacement = serde_json::json![grid_queries];
     std::mem::swap(&mut replacement, input);
     Ok(())
-}
-
-impl InputPlugin for GridInputPlugin {
-    /// process the user input to a MEP query into a grid.
-    /// the user is expected to provide an extent, a grid_type, and an optional extent_format (assumed WKT).
-    /// the grid is built over the extent using the grid_type chosen.
-    /// any extra keys provided by user are copied into each resulting grid cell (for example, a batch identifier).   
-    fn process(
-        &self,
-        input: &mut serde_json::Value,
-        _: Arc<SearchApp>,
-    ) -> Result<(), InputPluginError> {
-        // check for correct and unambiguous fields on input
-        process_grid_input(
-            input,
-            self.extent_format,
-            self.grid_type,
-            &self.population_source,
-        );
-        Ok(())
-    }
 }
 
 /// explains invalid query spatial arguments to users.

@@ -30,4 +30,8 @@ impl OutputPlugin for H3UtilOutputPlugin {
     ) -> Result<(), OutputPluginError> {
         self.util.apply(output)
     }
+
+    fn name(&self) -> &str {
+        "h3"
+    }
 }

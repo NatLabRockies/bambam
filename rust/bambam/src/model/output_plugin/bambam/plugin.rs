@@ -53,4 +53,8 @@ impl OutputPlugin for BambamOutputPlugin {
         }
         Ok(())
     }
+
+    fn name(&self) -> &str {
+        "bambam"
+    }
 }

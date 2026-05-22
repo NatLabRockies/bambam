@@ -26,7 +26,7 @@ downloader = { version = "0.2.8" }
 env_logger = "0.11.8"
 flate2 = "1.0"
 futures = { version = "0.3.31", features = ["executor"] }
-geo = { version = "0.32.0", features = ["use-serde"] }
+geo = { version = "0.33.1", features = ["use-serde"] }
 geo-buffer = "0.2.0"
 geo-traits = "0.3.0"
 geo-types = "=0.7.19"
@@ -52,11 +52,16 @@ rand = "0.10.0"
 rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
-routee-compass = { version = "0.19.3", default-features = false }
-routee-compass-core = { version = "0.19.3" }
-routee-compass-macros = { version = "0.19.3" }
-# routee-compass-powertrain = { version = "0.19.3" }
-routee-compass-py = { version = "0.19.3", default-features = false }
+# routee-compass = { version = "0.19.3", default-features = false }
+# routee-compass-core = { version = "0.19.3" }
+# routee-compass-macros = { version = "0.19.3" }
+# # routee-compass-powertrain = { version = "0.19.3" }
+# routee-compass-py = { version = "0.19.3", default-features = false }
+routee-compass = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35", default-features = false }
+routee-compass-core = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35" }
+routee-compass-macros = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35" }
+# routee-compass-powertrain = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35" }
+routee-compass-py = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35", default-features = false }
 rstar = { version = "0.12.2" }
 sanitize-filename = "0.6.0"
 serde = { version = "1.0.160", features = ["derive"] }

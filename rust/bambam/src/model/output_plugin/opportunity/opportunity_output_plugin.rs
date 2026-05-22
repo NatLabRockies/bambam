@@ -91,6 +91,10 @@ impl OutputPlugin for OpportunityOutputPlugin {
         }
         Ok(())
     }
+
+    fn name(&self) -> &str {
+        "opportunity"
+    }
 }
 
 impl TryFrom<&OpportunityPluginConfig> for OpportunityOutputPlugin {

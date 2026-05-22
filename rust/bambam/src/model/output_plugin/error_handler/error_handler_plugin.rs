@@ -28,4 +28,8 @@ impl OutputPlugin for ErrorHandlerPlugin {
             },
         }
     }
+
+    fn name(&self) -> &str {
+        "bambam_error"
+    }
 }

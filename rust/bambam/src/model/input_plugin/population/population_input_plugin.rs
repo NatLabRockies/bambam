@@ -29,4 +29,8 @@ impl InputPlugin for PopulationInputPlugin {
 
         todo!("not yet implemented, Population modeling is called from the Grid plugin")
     }
+
+    fn name(&self) -> &str {
+        "population"
+    }
 }
