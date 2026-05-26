@@ -29,15 +29,6 @@ impl OutputPlugin for OpportunityOutputPlugin {
         result: &Result<(SearchAppResult, SearchInstance), CompassAppError>,
     ) -> Result<(), OutputPluginError> {
         let start_time = Instant::now();
-        let (app_result, si) = match result {
-            Ok((r, si)) => (r, si),
-            Err(_) => {
-                // no matches found. inject zeroed-out opportunity data into the row.
-                let mut row = BambamOutputRow::new(output);
-                no_aggregate_opportunities(&mut row, &self.model.activity_types())?;
-                return Ok(());
-            }
-        };
 
         // grab parameters for this run from the row
         let mut row = BambamOutputRow::new(output);
@@ -47,6 +38,23 @@ impl OutputPlugin for OpportunityOutputPlugin {
                 let msg = String::from("opportunity plugin called on row with no opportunity_format set. the 'bambam' plugin should always run before this plugin.");
                 OutputPluginError::OutputPluginFailed(msg)
             })?;
+
+        let (app_result, si) = match result {
+            Ok((r, si)) => (r, si),
+            Err(_) => {
+                match format {
+                    OpportunityFormat::Aggregate => {
+                        // no matches found. inject zeroed-out opportunity data into the row.
+                        no_aggregate_opportunities(&mut row, &self.model.activity_types())?;
+                        return Ok(());
+                    }
+                    OpportunityFormat::Disaggregate => {
+                        log::warn!("zero row needs to be assigned zeroes in disaggregate run");
+                        return Ok(());
+                    }
+                }
+            }
+        };
 
         let mut info = row.info_mut()?;
 

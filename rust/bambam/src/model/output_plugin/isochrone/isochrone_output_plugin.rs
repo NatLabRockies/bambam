@@ -60,8 +60,8 @@ pub fn empty_isochrones(mut row: BambamOutputRow<'_>) -> Result<(), OutputPlugin
     for bin in bins.into_iter() {
         let bin_key = bin.bin_key();
         let result = get_isochrone_request.empty()?;
-        agg.set_isochrone(&bin_key, result.isochrone_value);
-        agg.set_n_destinations(&bin_key, result.tree_size);
+        agg.set_isochrone(&bin_key, result.isochrone_value)?;
+        agg.set_n_destinations(&bin_key, result.tree_size)?;
     }
     Ok(())
 }
