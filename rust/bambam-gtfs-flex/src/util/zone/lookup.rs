@@ -98,7 +98,7 @@ impl TryFrom<&ZoneLookupConfig> for ZoneLookup {
 fn read_zone_ids(zone_ids_input_file: &str) -> Result<CategoricalMapping<ZoneId, i64>, ZoneError> {
     let bb = BarBuilder::default().desc("reading zone ids");
     let zone_ids: Box<[ZoneId]> =
-        read_utils::read_raw_file(&zone_ids_input_file, parse_zone_id, Some(bb), None).map_err(
+        read_utils::read_raw_file(zone_ids_input_file, parse_zone_id, Some(bb), None).map_err(
             |e| {
                 let msg = format!("failure reading zone records: {e}");
                 ZoneError::Build(msg)
