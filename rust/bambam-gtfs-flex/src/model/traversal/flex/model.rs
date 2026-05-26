@@ -102,7 +102,7 @@ fn no_existing_trip(
 
 /// helper function to look up the ZoneId of this destination vertex and add it to the trip state.
 fn set_src_zone_id(
-    state: &mut Vec<StateVariable>,
+    state: &mut [StateVariable],
     state_model: &StateModel,
     dst: &Vertex,
     model: &GtfsFlexModel,
@@ -134,7 +134,7 @@ fn set_src_zone_id(
 ///
 /// Assumes a source zone has already been set on the state from a previous leg of the trip.
 fn validate_flex_destination(
-    state: &mut Vec<StateVariable>,
+    state: &mut [StateVariable],
     state_model: &StateModel,
     dst: &Vertex,
     model: &GtfsFlexModel,

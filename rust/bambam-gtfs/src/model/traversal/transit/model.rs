@@ -130,7 +130,7 @@ impl TraversalModel for TransitTraversalModel {
 /// runs a single edge traversal in this agency.
 fn run_transit_traversal(
     ctx: &EdgeFrontierContext,
-    state: &mut Vec<StateVariable>,
+    state: &mut [StateVariable],
     state_model: &StateModel,
     engine: &TransitTraversalEngine,
     start_datetime: &NaiveDateTime,

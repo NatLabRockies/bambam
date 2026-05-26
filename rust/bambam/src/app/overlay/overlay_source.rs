@@ -49,15 +49,11 @@ fn read_overlay_shapefile(
     for (idx, (shape, record)) in rows.into_iter().enumerate() {
         let geometry = match shape {
             shapefile::Shape::Polygon(generic_polygon) => {
-                let mp: geo::MultiPolygon<f64> = generic_polygon.try_into().map_err(|e| {
-                    format!("failed to convert shapefile polygon at row {idx}: {e}")
-                })?;
+                let mp: geo::MultiPolygon<f64> = generic_polygon.into();
                 geo::Geometry::MultiPolygon(mp)
             }
             shapefile::Shape::PolygonM(generic_polygon) => {
-                let mp: geo::MultiPolygon<f64> = generic_polygon.try_into().map_err(|e| {
-                    format!("failed to convert shapefile polygon at row {idx}: {e}")
-                })?;
+                let mp: geo::MultiPolygon<f64> = generic_polygon.into();
                 geo::Geometry::MultiPolygon(mp)
             }
             _ => {
