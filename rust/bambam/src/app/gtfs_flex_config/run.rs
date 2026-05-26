@@ -119,13 +119,13 @@ fn write_to_file(
     overwrite: bool,
 ) -> Result<(), GtfsFlexConfigError> {
     let path = Path::new(filepath);
-    let file_exists = std::fs::exists(&path).map_err(|e| {
+    let file_exists = std::fs::exists(path).map_err(|e| {
         let msg = format!("failure checking existence of {filepath}: {e}");
         GtfsFlexConfigError::RunFailure(msg)
     })?;
     if file_exists {
         if overwrite {
-            std::fs::remove_file(&path).map_err(|e| {
+            std::fs::remove_file(path).map_err(|e| {
                 let msg = format!("attempting to remove {filepath}: {e}",);
                 GtfsFlexConfigError::RunFailure(msg)
             })?;
@@ -136,7 +136,7 @@ fn write_to_file(
     }
     let mut file = std::fs::OpenOptions::new()
         .write(true)
-        .open(&path)
+        .open(path)
         .map_err(|e| {
             let msg = format!("cannot open '{filepath}': {e}",);
             GtfsFlexConfigError::RunFailure(msg)
@@ -272,10 +272,7 @@ pub fn updated_label_model(
     let mut result: MultimodalLabelConfig = serde_json::from_value(base_conf.label.clone())
         .map_err(|error| GtfsFlexConfigError::LabelModelRead { error })?;
 
-    let mut modes = match result.modes {
-        Some(modes) => modes,
-        None => vec![],
-    };
+    let mut modes = result.modes.unwrap_or_default();
 
     let has_mode = modes.iter().any(|m| m == consts::MODE_NAME);
     if !has_mode {
