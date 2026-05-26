@@ -294,18 +294,10 @@ pub fn process_archive(
                 let (src_loc, dst_loc) = get_locations(src, dst, trip)?;
                 let src_loc_id = &src_loc.id;
                 let dst_loc_id = &dst_loc.id;
-                let src_zone_id = ZoneId::from_full_namespace(
-                    &resolved_agency_id,
-                    route_id,
-                    trip_id,
-                    src_loc_id,
-                );
-                let dst_zone_id = ZoneId::from_full_namespace(
-                    &resolved_agency_id,
-                    route_id,
-                    trip_id,
-                    dst_loc_id,
-                );
+                let src_zone_id =
+                    ZoneId::from_full_namespace(&resolved_agency_id, route_id, trip_id, src_loc_id);
+                let dst_zone_id =
+                    ZoneId::from_full_namespace(&resolved_agency_id, route_id, trip_id, dst_loc_id);
                 let start_pickup_drop_off_window = src
                     .start_pickup_drop_off_window
                     .and_then(|s| NaiveTime::from_num_seconds_from_midnight_opt(s, 0));
