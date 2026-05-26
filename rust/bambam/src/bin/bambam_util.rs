@@ -1,3 +1,4 @@
+use bambam::app::gtfs_flex_config::CliGtfsFlexConfigApp;
 use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
@@ -199,6 +200,7 @@ pub enum App {
         #[arg(long)]
         inject_filepath: Option<String>,
     },
+    GtfsFlexConfigApp(CliGtfsFlexConfigApp),
 }
 
 impl App {
@@ -409,6 +411,10 @@ impl App {
                     *verbose,
                 )
             }
+            App::GtfsFlexConfigApp(app) => app
+                .clone() // shouldn't happen, App::run should pass owned self.
+                .run()
+                .map_err(|e| format!("failure running gtfs-flex config app due to {e}")),
         }
     }
 }

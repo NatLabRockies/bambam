@@ -1,9 +1,4 @@
-// use crate::agency::read_agency_from_flex;
-// use crate::calendar::{read_calendar_from_flex, Calendar};
-// use crate::routes::{read_routes_from_flex, Route};
-// use crate::stop_times::{read_stop_times_from_flex, StopTimes};
-// use crate::trips::{read_trips_from_flex, Trips};
-
+use crate::model::consts;
 use crate::model::GtfsFlexError;
 use crate::util::zone::ZoneGeometry;
 use crate::util::zone::ZoneId;
@@ -19,10 +14,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
-
-const ZONE_IDS_FILENAME: &str = "zone_ids_enumerated.txt.gz";
-const RECORDS_FILENAME: &str = "records.csv.gz";
-const GEOMETRIES_FILENAME: &str = "geometries.csv.gz";
 
 #[derive(Default, Debug)]
 pub struct GtfsFlexDataset {
@@ -42,21 +33,21 @@ impl GtfsFlexDataset {
     pub fn write(&self, dir: &Path) -> Result<(), GtfsFlexError> {
         let zones_writer = crate::util::fs::create_writer(
             dir,
-            ZONE_IDS_FILENAME,
+            consts::ZONE_IDS_FILENAME,
             false,
             csv::QuoteStyle::Necessary,
             false,
         );
         let geoms_writer = crate::util::fs::create_writer(
             dir,
-            GEOMETRIES_FILENAME,
+            consts::GEOMETRIES_FILENAME,
             true,
             csv::QuoteStyle::Necessary,
             false,
         );
         let records_writer = crate::util::fs::create_writer(
             dir,
-            RECORDS_FILENAME,
+            consts::RECORDS_FILENAME,
             true,
             csv::QuoteStyle::Necessary,
             false,
@@ -65,13 +56,13 @@ impl GtfsFlexDataset {
         if let Some(mut w) = zones_writer {
             let iter = tqdm!(
                 self.zone_ids.iter(),
-                desc = format!("writing {ZONE_IDS_FILENAME}"),
+                desc = format!("writing {}", consts::ZONE_IDS_FILENAME),
                 total = self.zone_ids.len()
             );
             for zone_id in iter {
                 w.serialize(zone_id)
                     .map_err(|error| GtfsFlexError::CsvWrite {
-                        path: dir.join(ZONE_IDS_FILENAME),
+                        path: dir.join(consts::ZONE_IDS_FILENAME),
                         error,
                     })?;
             }
@@ -79,13 +70,13 @@ impl GtfsFlexDataset {
         if let Some(mut w) = records_writer {
             let iter = tqdm!(
                 self.records.iter(),
-                desc = format!("writing {RECORDS_FILENAME}"),
+                desc = format!("writing {}", consts::RECORDS_FILENAME),
                 total = self.records.len()
             );
             for record in iter {
                 w.serialize(record)
                     .map_err(|error| GtfsFlexError::CsvWrite {
-                        path: dir.join(RECORDS_FILENAME),
+                        path: dir.join(consts::RECORDS_FILENAME),
                         error,
                     })?;
             }
@@ -93,13 +84,13 @@ impl GtfsFlexDataset {
         if let Some(mut w) = geoms_writer {
             let iter = tqdm!(
                 self.geometries.iter(),
-                desc = format!("writing {GEOMETRIES_FILENAME}"),
+                desc = format!("writing {}", consts::GEOMETRIES_FILENAME),
                 total = self.geometries.len()
             );
             for geometry in iter {
                 w.serialize(geometry)
                     .map_err(|error| GtfsFlexError::CsvWrite {
-                        path: dir.join(GEOMETRIES_FILENAME),
+                        path: dir.join(consts::GEOMETRIES_FILENAME),
                         error,
                     })?;
             }

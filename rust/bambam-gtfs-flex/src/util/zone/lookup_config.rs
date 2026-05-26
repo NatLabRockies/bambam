@@ -1,4 +1,8 @@
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
+
+use crate::model::consts;
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ZoneLookupConfig {
@@ -12,4 +16,20 @@ pub struct ZoneLookupConfig {
     // pub zone_id_property: Option<String>,
     /// geometries for zones
     pub zone_geometry_input_file: String,
+}
+
+impl From<&Path> for ZoneLookupConfig {
+    fn from(path: &Path) -> Self {
+        let zone_ids_input_filepath = path.join(consts::ZONE_IDS_FILENAME);
+        let zone_record_input_filepath = path.join(consts::RECORDS_FILENAME);
+        let zone_geometry_input_filepath = path.join(consts::GEOMETRIES_FILENAME);
+        let zone_ids_input_file = zone_ids_input_filepath.to_string_lossy().into_owned();
+        let zone_record_input_file = zone_record_input_filepath.to_string_lossy().into_owned();
+        let zone_geometry_input_file = zone_geometry_input_filepath.to_string_lossy().into_owned();
+        ZoneLookupConfig {
+            zone_ids_input_file,
+            zone_record_input_file,
+            zone_geometry_input_file,
+        }
+    }
 }
