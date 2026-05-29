@@ -1,6 +1,10 @@
 # bambam-gtfs-flex
 A set of extensions that enable On-Demand Transit modeling in BAMBAM using [GTFS-Flex](https://gtfs.org/community/extensions/flex/) datasets.
 
+## run example
+
+find a working example at [script/bambam_gtfs_flex_test.sh](/script/bambam_gtfs_flex_test.sh).
+
 ## GTFS Flex Service Types
 
 We have observed four types of services:
