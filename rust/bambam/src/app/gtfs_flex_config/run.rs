@@ -349,7 +349,7 @@ pub fn updated_label_model(
 // hack to avoid complications when writing to TOML.
 fn to_toml_safe(data: &CompassAppConfig) -> Result<String, GtfsFlexConfigError> {
     // convert to JSON
-    let mut json_value = serde_json::to_value(&data).map_err(|e| {
+    let mut json_value = serde_json::to_value(data).map_err(|e| {
         GtfsFlexConfigError::RunFailure(format!("Failed to serialize to JSON Value: {e}"))
     })?;
 
