@@ -22,6 +22,7 @@ use bambam_gtfs_flex::{
     },
     util::zone::ZoneLookupConfig,
 };
+use config::Config;
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use itertools::Itertools;
@@ -136,16 +137,14 @@ fn write_to_file(
     }
     let mut file = std::fs::OpenOptions::new()
         .write(true)
+        .create(true)
         .open(path)
         .map_err(|e| {
-            let msg = format!("cannot open '{filepath}': {e}",);
+            let msg = format!("cannot create output file '{filepath}': {e}",);
             GtfsFlexConfigError::RunFailure(msg)
         })?;
-    let out = serde_json::to_string(data).map_err(|e| {
-        let msg = format!("while serializing updated config, {e}");
-        GtfsFlexConfigError::RunFailure(msg)
-    })?;
-    write!(file, "{}", out).map_err(|e| {
+    let data_toml = to_toml_safe(data)?;
+    write!(file, "{}", data_toml).map_err(|e| {
         let msg = format!("while writing updated config to file '{filepath}', {e}");
         GtfsFlexConfigError::RunFailure(msg)
     })?;
@@ -162,24 +161,30 @@ pub fn updated_multimodal_models(
         let mut constraint = vec![];
         let mut found_mmcm = false;
         for c in vec_models(&s.constraint)? {
-            let c_type = c.get("type");
-            if matches!(Some(&json!("multimodal")), c_type) {
+            let c_type = get_type(&c)?;
+            if c_type == "multimodal" {
                 found_mmcm = true;
+                log::debug!("updating '{c_type}' - {c:?}");
                 let mmcm = update_mmcm(&c)?;
+                log::debug!("storing updated '{c_type}' - {mmcm:?}");
                 constraint.push(mmcm);
             } else {
+                log::debug!("storing - {c:?}");
                 constraint.push(c)
             }
         }
         let mut traversal = vec![];
         let mut found_mmtm = false;
         for t in vec_models(&s.traversal)? {
-            let t_type = t.get("type");
-            if matches!(Some(&json!("multimodal")), t_type) {
+            let t_type = get_type(&t)?;
+            if t_type == "multimodal" {
                 found_mmtm = true;
+                log::debug!("updating '{t_type}' - {t:?}");
                 let mmtm = update_mmtm(&t)?;
+                log::debug!("storing updated '{t_type}' - {mmtm:?}");
                 traversal.push(mmtm);
             } else {
+                log::debug!("storing - {t:?}");
                 traversal.push(t)
             }
         }
@@ -192,8 +197,14 @@ pub fn updated_multimodal_models(
             return Err(GtfsFlexConfigError::RunFailure(msg));
         }
         result.push(SearchConfig {
-            traversal: json!(traversal),
-            constraint: json!(constraint),
+            traversal: json!({
+                "type": "combined",
+                "models": json!(traversal)
+            }),
+            constraint: json!({
+                "type": "combined",
+                "models": json!(constraint)
+            }),
         })
     }
 
@@ -250,17 +261,68 @@ pub fn iter_models<'a>(
 }
 
 pub fn update_mmcm(config: &Value) -> Result<Value, GtfsFlexConfigError> {
-    let mut mmcm: MultimodalConstraintConfig = serde_json::from_value(config.clone())
+    let mut config_clean = config.clone();
+    strip_type(&mut config_clean)?;
+    let mut mmcm: MultimodalConstraintConfig = serde_json::from_value(config_clean)
         .map_err(|e| GtfsFlexConfigError::RunFailure(e.to_string()))?;
     mmcm.available_modes.push(MODE_NAME.to_string());
-    serde_json::to_value(mmcm).map_err(|e| GtfsFlexConfigError::RunFailure(e.to_string()))
+    let mut result =
+        serde_json::to_value(mmcm).map_err(|e| GtfsFlexConfigError::RunFailure(e.to_string()))?;
+    set_type(&mut result, "multimodal")?;
+    Ok(result)
 }
 
 pub fn update_mmtm(config: &Value) -> Result<Value, GtfsFlexConfigError> {
-    let mut mmcm: MultimodalTraversalConfig = serde_json::from_value(config.clone())
+    let mut config_clean = config.clone();
+    strip_type(&mut config_clean)?;
+    let mut mmcm: MultimodalTraversalConfig = serde_json::from_value(config_clean)
         .map_err(|e| GtfsFlexConfigError::RunFailure(e.to_string()))?;
     mmcm.available_modes.push(MODE_NAME.to_string());
-    serde_json::to_value(mmcm).map_err(|e| GtfsFlexConfigError::RunFailure(e.to_string()))
+    let mut result =
+        serde_json::to_value(mmcm).map_err(|e| GtfsFlexConfigError::RunFailure(e.to_string()))?;
+    set_type(&mut result, "multimodal");
+    Ok(result)
+}
+
+pub fn strip_type(config: &mut Value) -> Result<(), GtfsFlexConfigError> {
+    let obj = match config.as_object_mut() {
+        Some(obj) => obj,
+        None => {
+            let msg = format!("config value should be a JSON object but found {config:?}");
+            return Err(GtfsFlexConfigError::RunFailure(msg));
+        }
+    };
+    match obj.remove("type") {
+        None => {
+            let msg = "object expected to have a 'type' field: {config:?}";
+            Err(GtfsFlexConfigError::RunFailure(msg.to_string()))
+        }
+        Some(_) => Ok(()),
+    }
+}
+
+pub fn set_type(config: &mut Value, type_name: &str) -> Result<(), GtfsFlexConfigError> {
+    let obj = match config.as_object_mut() {
+        Some(obj) => obj,
+        None => {
+            let msg = format!("config value should be a JSON object but found {config:?}");
+            return Err(GtfsFlexConfigError::RunFailure(msg));
+        }
+    };
+    let _ = obj.insert("type".into(), json!(type_name));
+    Ok(())
+}
+
+pub fn get_type(config: &Value) -> Result<&str, GtfsFlexConfigError> {
+    let c_type = config.get("type").ok_or_else(|| {
+        let msg = format!("model config missing 'type' key: {config:?}");
+        GtfsFlexConfigError::RunFailure(msg)
+    })?;
+    let type_str = c_type.as_str().ok_or_else(|| {
+        let msg = format!("model config 'type' has non-string value: {config:?}");
+        GtfsFlexConfigError::RunFailure(msg)
+    })?;
+    Ok(type_str)
 }
 
 /// finds what modes are already available via other edge lists via the Label model in the config.
@@ -282,4 +344,44 @@ pub fn updated_label_model(
     result.modes = Some(modes);
 
     Ok(result)
+}
+
+// hack to avoid complications when writing to TOML.
+fn to_toml_safe(data: &CompassAppConfig) -> Result<String, GtfsFlexConfigError> {
+    // convert to JSON
+    let mut json_value = serde_json::to_value(&data).map_err(|e| {
+        GtfsFlexConfigError::RunFailure(format!("Failed to serialize to JSON Value: {e}"))
+    })?;
+
+    strip_nulls(&mut json_value);
+
+    // JSON to TOML
+    let data_toml = toml::to_string_pretty(&json_value).map_err(|e| {
+        GtfsFlexConfigError::RunFailure(format!(
+            "failed to convert configuration back to TOML string: {e}"
+        ))
+    })?;
+
+    Ok(data_toml)
+}
+
+/// recursively strip away null values in this JSON
+fn strip_nulls(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            // Remove any keys where the value is null
+            map.retain(|_, v| !v.is_null());
+            // Recurse into the remaining values
+            for v in map.values_mut() {
+                strip_nulls(v);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            // Recurse into array elements
+            for v in arr.iter_mut() {
+                strip_nulls(v);
+            }
+        }
+        _ => {}
+    }
 }

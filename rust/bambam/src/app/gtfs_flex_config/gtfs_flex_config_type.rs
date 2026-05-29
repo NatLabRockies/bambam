@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 
 use crate::{
     app::gtfs_flex_config::{
-        run::{iter_models, vec_models},
+        run::{iter_models, set_type, vec_models},
         CliGtfsFlexConfig, GtfsFlexConfigError,
     },
     model::{
@@ -46,11 +46,11 @@ impl GtfsFlexConfigType {
     ) -> Result<SearchConfig, GtfsFlexConfigError> {
         // set up the GTFS-Flex configurations, both a ZoneLookupConfig with a "type": "gtfs-flex"
         let flex_path = Path::new(flex_dir);
-        let flex_conf = ZoneLookupConfig::from(flex_path);
-        let mut flex_cm = json!(flex_conf.clone());
-        flex_cm["type"] = json!(MODE_NAME);
-        let mut flex_tm = json!(flex_conf.clone());
-        flex_tm["type"] = json!(MODE_NAME);
+        // let flex_conf = ZoneLookupConfig::from(flex_path);
+        // let mut flex_cm = json!(flex_conf.clone());
+        // flex_cm["type"] = json!(MODE_NAME);
+        // let mut flex_tm = json!(flex_conf.clone());
+        // flex_tm["type"] = json!(MODE_NAME);
 
         match self {
             GtfsFlexConfigType::FromConfigEdgeList { index } => {
@@ -130,6 +130,10 @@ fn inject_gtfs_flex_models(
         this_mode: MODE_NAME.to_string(),
         available_modes: available_modes.to_vec(),
     };
+    let mut mmcm_json = json!(mmcm);
+    set_type(&mut mmcm_json, "multimodal")?;
+    let mut mmtm_json = json!(mmtm);
+    set_type(&mut mmtm_json, "multimodal")?;
 
     // setup for GTFS-Flex models
     let flex_dir = Path::new(flex_dir);
@@ -139,22 +143,31 @@ fn inject_gtfs_flex_models(
     let mut flex_tm = json!(flex_conf.clone());
     flex_tm["type"] = json!(MODE_NAME);
 
-    let mut constraint = vec_models(&conf.constraint)?
+    let mut c_models = vec_models(&conf.constraint)?
         .into_iter()
         .filter(remove_multimodal_model)
         .collect_vec();
-    let mut traversal = vec_models(&conf.traversal)?
+    let mut t_models = vec_models(&conf.traversal)?
         .into_iter()
         .filter(remove_multimodal_model)
         .collect_vec();
 
-    constraint.push(flex_cm);
-    constraint.push(json!(mmcm));
-    traversal.push(flex_tm);
-    traversal.push(json!(mmtm));
+    c_models.push(flex_cm);
+    c_models.push(mmcm_json);
+    t_models.push(flex_tm);
+    t_models.push(mmtm_json);
+
+    let constraint = json!({
+        "type": "combined",
+        "models": json!(c_models)
+    });
+    let traversal = json!({
+        "type": "combined",
+        "models": json!(t_models)
+    });
 
     Ok(SearchConfig {
-        traversal: json!(traversal),
-        constraint: json!(constraint),
+        traversal,
+        constraint,
     })
 }
