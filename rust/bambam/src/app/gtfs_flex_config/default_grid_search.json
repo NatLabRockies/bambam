@@ -1,5 +1,6 @@
 {
   "max_trip_legs": 3,
+  "start_time": "2024-09-03T06:00:00",
   "trip_mode": "gtfs-flex",
   "constraints": [
     {
