@@ -16,6 +16,11 @@ pub struct CliGtfsFlexConfigApp {
     #[arg(long)]
     flex_directory: String,
 
+    /// file containing the travel mode configuration for gtfs-flex, added to the grid_search
+    /// plugin value.
+    #[arg(long)]
+    flex_mode_config: Option<String>,
+
     #[command(flatten)]
     graph: CliGraphConfig,
 
@@ -78,6 +83,7 @@ impl CliGtfsFlexConfigApp {
             &self.base_file,
             &self.out_file,
             &self.flex_directory,
+            self.flex_mode_config.as_ref(),
             graph_config,
             map_config,
             gtfs_config,

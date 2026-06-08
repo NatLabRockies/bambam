@@ -65,6 +65,7 @@ pub fn run(
     base_config_filepath: &str,
     output_path: &str,
     gtfs_flex_directory: &str,
+    gtfs_flex_mode_conf_filepath: Option<&String>,
     graph_config: GraphConfigType,
     map_model_config: MapConfigType,
     flex_config: GtfsFlexConfigType,
@@ -78,11 +79,14 @@ pub fn run(
             error: e.to_string(),
         })?;
 
+    let gtfs_flex_mode_conf = load_gtfs_flex_mode_conf(gtfs_flex_mode_conf_filepath)?;
+
     // update configuration sections
     let graph = graph_config.build_graph(&base)?;
     let mapping = map_model_config.build_map_config(&base)?;
     let label_model = updated_label_model(&base)?;
     let mut search_rows = updated_multimodal_models(&base)?;
+    let input_plugins = updated_input_plugins(&base, &gtfs_flex_mode_conf, "_modes")?;
 
     let gtfs_flex_search_config = flex_config.build_flex_search_config(
         &base.search.into_vec(),
@@ -96,6 +100,8 @@ pub fn run(
         search_rows.push(gtfs_flex_search_config);
         OneOrMany::Many(search_rows)
     };
+    let mut plugin = base.plugin.clone();
+    plugin.input_plugins = input_plugins;
 
     let result = CompassAppConfig {
         algorithm: base.algorithm.clone(),
@@ -105,7 +111,7 @@ pub fn run(
         mapping,
         graph,
         search,
-        plugin: base.plugin.clone(),
+        plugin,
         termination: base.termination.clone(),
         system: base.system.clone(),
         map_matching: base.map_matching.clone(),
@@ -325,6 +331,21 @@ pub fn get_type(config: &Value) -> Result<&str, GtfsFlexConfigError> {
     Ok(type_str)
 }
 
+pub fn get_optional_str<'a>(
+    config: &'a Value,
+    key: &str,
+) -> Result<Option<&'a str>, GtfsFlexConfigError> {
+    let c_type = match config.get(key) {
+        Some(value) => value,
+        None => return Ok(None),
+    };
+    let type_str = c_type.as_str().ok_or_else(|| {
+        let msg = format!("model config '{key}' has non-string value: {config:?}");
+        GtfsFlexConfigError::RunFailure(msg)
+    })?;
+    Ok(Some(type_str))
+}
+
 /// finds what modes are already available via other edge lists via the Label model in the config.
 /// assumes that each edge list has a "multimodal" TraversalModel type.
 /// enforces that the mode list matches the listing in the label model.
@@ -344,6 +365,88 @@ pub fn updated_label_model(
     result.modes = Some(modes);
 
     Ok(result)
+}
+
+/// injects a grid_search mode configuration for gtfs-flex travel.
+pub fn updated_input_plugins(
+    base_conf: &CompassAppConfig,
+    gtfs_flex_mode_configuration: &Value,
+    modes_key: &str,
+) -> Result<Vec<Value>, GtfsFlexConfigError> {
+    let input_plugins = &base_conf.plugin.input_plugins;
+    let mut found = false;
+    let mut updated = vec![];
+    for (index, c) in input_plugins.iter().enumerate() {
+        let c_type = get_type(&c)?;
+        let inject_key = get_optional_str(c, "key")?;
+        if c_type == "inject" && inject_key == Some("grid_search") {
+            found = true;
+            log::debug!("updating '{c_type}' - {c:?}");
+            let result = update_grid_search(c, gtfs_flex_mode_configuration, modes_key)?;
+            log::debug!("storing updated '{c_type}' - {result:?}");
+            updated.push(result);
+        } else {
+            updated.push(c.clone());
+        }
+    }
+
+    if found {
+        Ok(updated)
+    } else {
+        let msg = "did not find grid_search in input plugins".to_string();
+        Err(GtfsFlexConfigError::RunFailure(msg))
+    }
+}
+
+/// pushes the provided gtfs-flex mode configuration onto the grid search list of modes.
+pub fn update_grid_search(
+    conf: &Value,
+    gtfs_flex_mode_configuration: &Value,
+    modes_key: &str,
+) -> Result<Value, GtfsFlexConfigError> {
+    let mut result = conf.clone();
+    // grid_search
+    let value = result.get_mut("value").ok_or_else(|| {
+        let msg = format!("inject plugin with key 'grid_search' missing 'value' field: {conf:?}");
+        GtfsFlexConfigError::RunFailure(msg)
+    })?;
+    let modes = value.get_mut(modes_key).ok_or_else(|| {
+        let msg = format!(
+            "inject plugin with key 'grid_search' missing 'value.{modes_key}' field: {conf:?}"
+        );
+        GtfsFlexConfigError::RunFailure(msg)
+    })?;
+    let modes_array = modes.as_array_mut().ok_or_else(|| {
+        let msg = format!("inject plugin with key 'grid_search' has 'value.{modes_key}' field that is not an array: {conf:?}");
+        GtfsFlexConfigError::RunFailure(msg)
+    })?;
+    modes_array.push(gtfs_flex_mode_configuration.clone());
+    Ok(result)
+}
+
+/// reads the JSON file containing a gtfs-flex grid_search mode configuration. if none provided, loads the default.
+fn load_gtfs_flex_mode_conf(path: Option<&String>) -> Result<Value, GtfsFlexConfigError> {
+    let gtfs_flex_fp = match path {
+        Some(fp) => PathBuf::from(fp),
+        None => {
+            // load the default configuration
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("src")
+                .join("app")
+                .join("gtfs_flex_config")
+                .join("default_grid_search.json")
+        }
+    };
+    let conf_str =
+        std::fs::read_to_string(&gtfs_flex_fp).map_err(|e| GtfsFlexConfigError::ReadFailure {
+            filepath: gtfs_flex_fp.to_string_lossy().to_string(),
+            error: e.to_string(),
+        })?;
+    let conf = serde_json::from_str(&conf_str).map_err(|e| GtfsFlexConfigError::ReadFailure {
+        filepath: gtfs_flex_fp.to_string_lossy().to_string(),
+        error: e.to_string(),
+    })?;
+    Ok(conf)
 }
 
 // hack to avoid complications when writing to TOML.
