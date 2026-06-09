@@ -60,9 +60,10 @@ pub enum App {
         /// (Optional) String for comma-separated categories
         #[arg(long)]
         acs_categories: Option<String>,
-        /// (Optional) String for api token
-        #[arg(long)]
-        api_token: Option<String>,
+        /// census.gov token for ACS data access (required as of 06/2026). must be passed
+        /// via the CENSUS_API_TOKEN environment variable when calling this application.
+        #[arg(env = "CENSUS_API_TOKEN")]
+        api_token: String,
         /// format of the extent in ExtentFormat, Wkt
         #[arg(long)]
         extent_format: ExtentFormat,

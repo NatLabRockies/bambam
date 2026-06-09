@@ -14,7 +14,7 @@ pub enum PopulationSourceConfig {
         acs_year: u64,
         acs_resolution: Option<GeoidType>,
         acs_categories: Option<Vec<String>>,
-        api_token: Option<String>,
+        api_token: String,
     },
 }
 
