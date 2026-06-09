@@ -6,6 +6,15 @@ edge_list = [
 ]
 vertex_list_input_file = "vertices-compass.csv.gz"
 
+[label]
+type = "multimodal"
+max_trip_legs = 3
+modes = [
+    "walk",
+    "bike",
+    "drive"
+]
+
 [mapping]
 type = "edge"
 geometry = [
