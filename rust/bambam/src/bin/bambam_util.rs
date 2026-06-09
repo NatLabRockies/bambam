@@ -240,7 +240,7 @@ impl App {
                     acs_year: *acs_year,
                     acs_resolution: *acs_resolution,
                     acs_categories,
-                    api_token: api_token.clone(),
+                    api_token: Ok(api_token.clone()),
                 };
 
                 // Using grid_resolution, build grid_type:Gridtype
