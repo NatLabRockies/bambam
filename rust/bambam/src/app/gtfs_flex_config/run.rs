@@ -383,7 +383,7 @@ pub fn updated_input_plugins(
     let mut grid_search_found = false;
     let mut updated = vec![];
     for (index, c) in input_plugins.iter().enumerate() {
-        let c_type = get_type(&c)?;
+        let c_type = get_type(c)?;
         let inject_key = get_optional_str(c, "key")?;
         if c_type == "inject" && inject_key == Some("grid_search") {
             grid_search_found = true;

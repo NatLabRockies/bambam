@@ -41,7 +41,7 @@ impl PopulationSourceConfig {
                     acs_year: *acs_year,
                     acs_resolution: *acs_resolution,
                     acs_categories: acs_categories.clone(),
-                    api_token: api_token,
+                    api_token,
                 };
                 Ok(source)
             }
