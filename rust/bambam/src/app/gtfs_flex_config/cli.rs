@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use clap::Args;
 
 use crate::app::gtfs_flex_config::{
@@ -20,6 +21,12 @@ pub struct CliGtfsFlexConfigApp {
     /// plugin value.
     #[arg(long)]
     flex_mode_config: Option<String>,
+
+    /// start time argument for the gtfs-flex trip. some zones are defined for a specific
+    /// date and time which must be explicitly set by the user. should be provided in
+    /// '%Y-%m-%dT%H:%M:%S' format.
+    #[arg(long)]
+    start_time: String,
 
     #[command(flatten)]
     graph: CliGraphConfig,
@@ -79,11 +86,17 @@ impl CliGtfsFlexConfigApp {
         let graph_config = GraphConfigType::try_from(self.graph)?;
         let map_config = MapConfigType::try_from(self.map)?;
         let gtfs_config = GtfsFlexConfigType::try_from(self.flex)?;
+        let start_time = NaiveDateTime::parse_from_str(&self.start_time, "%Y-%m-%dT%H:%M:%S")
+            .map_err(|e| {
+                let msg = format!("invalid start_time argument provided, must be in '%Y-%m-%dT%H:%M:%S' format: {e}");
+                GtfsFlexConfigError::RunFailure(msg)
+            })?;
         crate::app::gtfs_flex_config::run(
             &self.base_file,
             &self.out_file,
             &self.flex_directory,
             self.flex_mode_config.as_ref(),
+            start_time,
             graph_config,
             map_config,
             gtfs_config,

@@ -16,7 +16,7 @@ rust/target/release/bambam-omf network -n minnesota-flex -c configuration/bambam
 rust/target/release/bambam-gtfs-flex import rust/bambam-gtfs-flex/src/test/assets/flex "$WORKING_DIR" 20240903
 
 # 4. inject the GTFS-Flex 
-rust/target/release/bambam_util gtfs-flex-config-app --base-file "$WORKING_DIR"/bambam.toml --out-file "$WORKING_DIR"/bambam-gtfs-flex.toml --flex-directory "$WORKING_DIR" --graph-edge-list 2 --map-edge-list 2 --gtfs-flex-edge-list 2
+rust/target/release/bambam_util gtfs-flex-config-app --base-file "$WORKING_DIR"/bambam.toml --out-file "$WORKING_DIR"/bambam-gtfs-flex.toml --flex-directory "$WORKING_DIR" --start-time '2024-09-03T06:00:00' --graph-edge-list 2 --map-edge-list 2 --gtfs-flex-edge-list 2
 
 # 5. prepare the grid region
 echo '{ "extent": "POLYGON((-95.14435 44.01652, -95.14435 44.568947, -93.76282 44.568947, -93.76282 44.01652, -95.14435 44.01652))" }' > "$WORKING_DIR"/query.json

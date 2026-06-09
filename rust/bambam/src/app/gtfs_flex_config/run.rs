@@ -22,6 +22,7 @@ use bambam_gtfs_flex::{
     },
     util::zone::ZoneLookupConfig,
 };
+use chrono::NaiveDateTime;
 use config::Config;
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
@@ -61,11 +62,13 @@ use serde_json::{json, Value};
 /// * `map_model_config` - source of the link geometries for the network used by GTFS-Flex
 /// * `flex_config` - source of the traversal and constraint configuration for the GTFS-Flex edge list.
 /// * `overwrite` - if true, allow overwriting the write file location.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     base_config_filepath: &str,
     output_path: &str,
     gtfs_flex_directory: &str,
     gtfs_flex_mode_conf_filepath: Option<&String>,
+    gtfs_flex_start_time: NaiveDateTime,
     graph_config: GraphConfigType,
     map_model_config: MapConfigType,
     flex_config: GtfsFlexConfigType,
@@ -86,7 +89,8 @@ pub fn run(
     let mapping = map_model_config.build_map_config(&base)?;
     let label_model = updated_label_model(&base)?;
     let mut search_rows = updated_multimodal_models(&base)?;
-    let input_plugins = updated_input_plugins(&base, &gtfs_flex_mode_conf, "_modes")?;
+    let input_plugins =
+        updated_input_plugins(&base, &gtfs_flex_mode_conf, "_modes", gtfs_flex_start_time)?;
 
     let gtfs_flex_search_config = flex_config.build_flex_search_config(
         &base.search.into_vec(),
@@ -372,15 +376,17 @@ pub fn updated_input_plugins(
     base_conf: &CompassAppConfig,
     gtfs_flex_mode_configuration: &Value,
     modes_key: &str,
+    start_time: NaiveDateTime,
 ) -> Result<Vec<Value>, GtfsFlexConfigError> {
+    // find (via linear scan) the grid_search injection so we can update it∂
     let input_plugins = &base_conf.plugin.input_plugins;
-    let mut found = false;
+    let mut grid_search_found = false;
     let mut updated = vec![];
     for (index, c) in input_plugins.iter().enumerate() {
         let c_type = get_type(&c)?;
         let inject_key = get_optional_str(c, "key")?;
         if c_type == "inject" && inject_key == Some("grid_search") {
-            found = true;
+            grid_search_found = true;
             log::debug!("updating '{c_type}' - {c:?}");
             let result = update_grid_search(c, gtfs_flex_mode_configuration, modes_key)?;
             log::debug!("storing updated '{c_type}' - {result:?}");
@@ -390,12 +396,16 @@ pub fn updated_input_plugins(
         }
     }
 
-    if found {
-        Ok(updated)
-    } else {
+    if !grid_search_found {
         let msg = "did not find grid_search in input plugins".to_string();
-        Err(GtfsFlexConfigError::RunFailure(msg))
+        return Err(GtfsFlexConfigError::RunFailure(msg));
     }
+
+    // add inject plugin with start_time value
+    let start_time = inject_plugin_start_time(start_time);
+    updated.push(start_time);
+
+    Ok(updated)
 }
 
 /// pushes the provided gtfs-flex mode configuration onto the grid search list of modes.
@@ -422,6 +432,16 @@ pub fn update_grid_search(
     })?;
     modes_array.push(gtfs_flex_mode_configuration.clone());
     Ok(result)
+}
+
+fn inject_plugin_start_time(start_time: NaiveDateTime) -> Value {
+    json!({
+        "type": "inject",
+        "write_mode": "overwrite",
+        "format": "key_value",
+        "key": "start_time",
+        "value": json!(start_time)
+    })
 }
 
 /// reads the JSON file containing a gtfs-flex grid_search mode configuration. if none provided, loads the default.
