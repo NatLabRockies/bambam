@@ -5,6 +5,13 @@ set -e
 export RUST_LOG="info"
 WORKING_DIR="out/minnesota-flex"
 
+# requirement from population source configuration of bambam app (step 6)
+# in order to download census population data.
+if [ -z "${CENSUS_API_TOKEN+x}" ]; then
+    echo "CENSUS_API_TOKEN must be set"
+    exit 1
+fi
+
 # 1. compile bambam
 cargo build -r --manifest-path rust/Cargo.toml
 
@@ -21,5 +28,5 @@ rust/target/release/bambam_util gtfs-flex-config-app --base-file "$WORKING_DIR"/
 # 5. prepare the grid region
 echo '{ "extent": "POLYGON((-95.14435 44.01652, -95.14435 44.568947, -93.76282 44.568947, -93.76282 44.01652, -95.14435 44.01652))" }' > "$WORKING_DIR"/query.json
 
-# 6. run BAMBAM
+# 6. run BAMBAM (requires CENSUS_API_TOKEN)
 rust/target/release/bambam -c "$WORKING_DIR"/bambam-gtfs-flex.toml -q "$WORKING_DIR"/query.json
