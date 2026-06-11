@@ -16,6 +16,8 @@ pub enum ScheduleError {
     SpatialIndexIncorrectMap,
     #[error("Error matching stop '{stop_id}': {error}")]
     MapMatchError { stop_id: String, error: String },
+    #[error("StopTime in archive missing 'stop' field. this omission is only valid in GTFS-Flex archives.")]
+    StopTimeMissingStop,
     #[error("Missing both arrival and departure times: {0}")]
     MissingAllStopTimes(String),
     #[error("At least one of the stops in edge is missing shape distance traveled: {0} or {1}")]

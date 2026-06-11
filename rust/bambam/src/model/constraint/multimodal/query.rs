@@ -1,5 +1,6 @@
 use std::{num::NonZeroU64, sync::Once};
 
+use itertools::Itertools;
 use routee_compass_core::model::constraint::ConstraintModelError;
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +32,14 @@ static EMPTY_CONSTRAINTS_WARNING: Once = Once::new();
 
 impl MultimodalConstraintModelQuery {
     pub fn build_constraints(&self) -> Result<Vec<Constraint>, ConstraintModelError> {
+        log::debug!(
+            "query provided the following modal constraints: {}",
+            self.constraints
+                .as_ref()
+                .map(|cs| cs.iter().map(|c| c.to_string()).join("; "))
+                .unwrap_or_else(|| "NONE!".to_string())
+        );
+
         let constraints = self
             .constraints
             .as_deref()

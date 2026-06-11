@@ -14,8 +14,13 @@ pub enum PopulationSourceConfig {
         acs_year: u64,
         acs_resolution: Option<GeoidType>,
         acs_categories: Option<Vec<String>>,
-        api_token: Option<String>,
+        #[serde(skip_deserializing, default = "env_census_api_token")]
+        api_token: Result<String, String>,
     },
+}
+
+fn env_census_api_token() -> Result<String, String> {
+    std::env::var("CENSUS_API_TOKEN").map_err(|e| format!("ACS token required, {e}"))
 }
 
 impl PopulationSourceConfig {
@@ -29,13 +34,14 @@ impl PopulationSourceConfig {
                 api_token,
             } => {
                 let states = us_states_lookup::load()?;
+                let api_token = api_token.clone()?;
                 let source = PopulationSource::UsCensusAcs {
                     states,
                     acs_type: *acs_type,
                     acs_year: *acs_year,
                     acs_resolution: *acs_resolution,
                     acs_categories: acs_categories.clone(),
-                    api_token: api_token.clone(),
+                    api_token,
                 };
                 Ok(source)
             }

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, num::NonZeroU64};
 
 use bambam_core::model::state::{
-    multimodal_state_ops as state_ops, MultimodalMapping, MultimodalStateMapping,
+    multimodal_state_ops as state_ops, CategoricalMapping, CategoricalStateMapping,
 };
 use itertools::Itertools;
 use routee_compass_core::model::{
@@ -16,7 +16,7 @@ pub fn get_mode_counts(
     state: &[StateVariable],
     state_model: &StateModel,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalStateMapping,
+    mode_to_state: &CategoricalStateMapping,
 ) -> Result<HashMap<String, usize>, ConstraintModelError> {
     let modes = state_ops::get_mode_sequence(state, state_model, max_trip_legs, mode_to_state)
         .map_err(|e| {

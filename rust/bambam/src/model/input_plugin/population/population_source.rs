@@ -15,7 +15,7 @@ pub enum PopulationSource {
         acs_year: u64,
         acs_resolution: Option<GeoidType>,
         acs_categories: Option<Vec<String>>, // comma delimited string (split on commas)
-        api_token: Option<String>,
+        api_token: String,                   // now required
     },
 }
 
@@ -66,7 +66,7 @@ impl PopulationSource {
                             *acs_type,
                             acs_get_query.to_vec(),
                             acs_geoid_query,
-                            api_token.clone(),
+                            Some(api_token.clone()),
                         );
                         Ok(params)
                     })

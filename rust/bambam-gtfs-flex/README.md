@@ -1,6 +1,10 @@
 # bambam-gtfs-flex
 A set of extensions that enable On-Demand Transit modeling in BAMBAM using [GTFS-Flex](https://gtfs.org/community/extensions/flex/) datasets.
 
+## run example
+
+find a working example at [script/bambam_gtfs_flex_test.sh](/script/bambam_gtfs_flex_test.sh).
+
 ## GTFS Flex Service Types
 
 We have observed four types of services:
@@ -54,14 +58,10 @@ To process GTFS Flex feeds, you can use the provided command-line interface (CLI
 3. **Run the CLI Tool**  
   Use the following command to process a GTFS Flex feed:
   ```bash
-  ./target/release/bambam-gtfs-flex process-feeds ./src/test/assets 20240903 valid_zone.csv
+  RUST_LOG=info ./rust/target/release/bambam-gtfs-flex import rust/bambam-gtfs-flex/src/test/assets/flex out/flex-test 20240903
   ```
-  If you want to process GTFS-Flex feeds without completing `cargo build --release` in Step 2, you can simply use the following command:
-  ```bash
-  cd rust/bambam-gtfs-flex
-  cargo run -- process-feeds ./src/test/assets 20240903
-  ```
-  Replace `./src/test/assets` with the path to the folder where your GTFS-Flex feeds (.zip files) are located, `20240903` with the desired date in `YYYYMMDD` format for which you want to process the feeds, and `valid_zones.csv` (optional) with the name of the output CSV file, which will be written to the GTFS-Flex feeds directory.
+
+  Replace `rust/bambam-gtfs-flex/src/test/assets/flex` with the path to the folder where your GTFS-Flex feeds (.zip files) are located, `20240903` with the desired date in `YYYYMMDD` format for which you want to process the feeds, and `out/flex-test` with the output directory.
 
 4. **Verify Output**  
   After processing, the output directory will contain the processed valid zone CSV for the requested date, ready for use in BAMBAM.

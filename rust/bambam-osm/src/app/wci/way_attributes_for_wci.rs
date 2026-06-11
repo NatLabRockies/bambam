@@ -185,14 +185,8 @@ impl WayAttributesForWCI {
             // Sidewalk: +2 if present, -2 if not
             fn sidewalk_score(way: &WayAttributesForWCI) -> i32 {
                 match way.sidewalk_exists {
-                    Some(value) => {
-                        if value {
-                            2
-                        } else {
-                            -2
-                        }
-                    }
-                    None => -2,
+                    Some(value) if value => 2,
+                    _ => -2,
                 }
             }
 

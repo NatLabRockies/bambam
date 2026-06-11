@@ -14,14 +14,15 @@ use std::{collections::HashMap, fmt::Debug, path::Path};
 /// can be used to index a Vec<T>.
 ///
 #[derive(Clone, Debug)]
-pub struct MultimodalMapping<T: Clone + Debug, U: Clone + Debug> {
+pub struct CategoricalMapping<T: Clone + Debug, U: Clone + Debug> {
     cat_to_label: HashMap<T, U>,
     label_to_cat: Vec<T>,
 }
 
-/// a common type of multimodal mapping which maps strings to i64 values.
-/// categories begin from zero. negative values denote an empty class label (None case).
-pub type MultimodalStateMapping = MultimodalMapping<String, i64>;
+/// a common instance of categorical mapping which maps strings to i64 values to be
+/// stored in a Compass state vector. categories begin from zero. negative values denote
+/// an empty class label (None case).
+pub type CategoricalStateMapping = CategoricalMapping<String, i64>;
 
 /// A trait for types that can be used as categorical identifiers
 #[allow(dead_code)]
@@ -41,7 +42,7 @@ impl<U> IndexType for U where
 {
 }
 
-impl MultimodalStateMapping {
+impl CategoricalStateMapping {
     pub fn from_enumerated_category_file(filepath: &Path) -> Result<Self, StateModelError> {
         let contents = read_utils::read_raw_file(filepath, read_decoders::string, None, None)
             .map_err(|e| {
@@ -50,18 +51,18 @@ impl MultimodalStateMapping {
                     filepath.to_string_lossy()
                 ))
             })?;
-        MultimodalMapping::new(&contents)
+        CategoricalMapping::new(&contents)
     }
 }
 
-impl<T, U> MultimodalMapping<T, U>
+impl<T, U> CategoricalMapping<T, U>
 where
     T: Eq + std::hash::Hash + Clone + Debug,
     U: Eq + std::hash::Hash + Clone + Copy + TryFrom<usize> + TryInto<usize> + PartialOrd + Debug,
 {
     /// create an empty mapping
     pub fn empty() -> Self {
-        MultimodalMapping {
+        CategoricalMapping {
             cat_to_label: HashMap::new(),
             label_to_cat: Vec::new(),
         }

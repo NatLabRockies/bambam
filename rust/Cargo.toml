@@ -19,7 +19,7 @@ bamcensus-acs = { version = "0.1.0" }
 bamcensus-core = { version = "0.1.0" }
 bamcensus-lehd = { version = "0.1.0" }
 chrono = { version = "0.4.42", features = ["serde"] }
-clap = { version = "4.5.52", features = ["derive"] }
+clap = { version = "4.5.52", features = ["derive", "env"] }
 config = "0.15.19"
 csv = "1.3.1"
 downloader = { version = "0.2.8" }
@@ -31,7 +31,7 @@ geo-buffer = "0.2.0"
 geo-traits = "0.3.0"
 geo-types = "=0.7.19"
 geozero = { version = "0.14.0", features = ["with-geo", "with-wkb", "with-wkt", "with-geojson"] }
-gtfs-structures = "0.43.0"
+gtfs-structures = { git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
 h3o = { version = "0.9.4", features = ["serde", "geo"] }
 hex = "0.4.3"
 humantime = "2.3.0"

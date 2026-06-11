@@ -1,6 +1,6 @@
 use std::num::NonZeroU64;
 
-use crate::model::state::{LegIdx, MultimodalStateMapping};
+use crate::model::state::{CategoricalStateMapping, LegIdx};
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
 use uom::si::f64::{Energy, Length, Time};
@@ -31,7 +31,7 @@ pub fn get_active_leg_mode<'a>(
     state: &[StateVariable],
     state_model: &StateModel,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &'a MultimodalStateMapping,
+    mode_to_state: &'a CategoricalStateMapping,
 ) -> Result<Option<&'a str>, StateModelError> {
     match get_active_leg_idx(state, state_model)? {
         None => Ok(None),
@@ -68,7 +68,7 @@ pub fn appending_edge_mode_is_valid(
     state_model: &StateModel,
     leg_mode: &str,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalStateMapping,
+    mode_to_state: &CategoricalStateMapping,
 ) -> Result<bool, StateModelError> {
     // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
     let active_mode = get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state)
@@ -127,7 +127,7 @@ pub fn get_existing_leg_mode<'a>(
     leg_idx: LegIdx,
     state_model: &StateModel,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &'a MultimodalStateMapping,
+    mode_to_state: &'a CategoricalStateMapping,
 ) -> Result<&'a str, StateModelError> {
     let label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
     match label_opt {
@@ -176,7 +176,7 @@ pub fn get_leg_route_id<'a>(
     state: &[StateVariable],
     leg_idx: LegIdx,
     state_model: &StateModel,
-    route_id_mapping: &'a MultimodalStateMapping,
+    route_id_mapping: &'a CategoricalStateMapping,
 ) -> Result<Option<&'a String>, StateModelError> {
     let name = fieldname::leg_route_id_fieldname(leg_idx);
     let route_id_label = state_model.get_custom_i64(state, &name)?;
@@ -230,7 +230,7 @@ pub fn get_mode_sequence(
     state: &[StateVariable],
     state_model: &StateModel,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &MultimodalStateMapping,
+    mode_to_state: &CategoricalStateMapping,
 ) -> Result<Vec<String>, StateModelError> {
     let mut modes: Vec<String> = vec![];
     let mut leg_idx = 0;
@@ -280,7 +280,7 @@ pub fn set_leg_mode(
     leg_idx: LegIdx,
     mode: &str,
     state_model: &StateModel,
-    mode_to_state: &MultimodalStateMapping,
+    mode_to_state: &CategoricalStateMapping,
 ) -> Result<(), StateModelError> {
     let mode_label = mode_to_state.get_label(mode).ok_or_else(|| {
         StateModelError::RuntimeError(format!("mode mapping has no entry for '{mode}' mode"))
@@ -296,7 +296,7 @@ pub fn set_leg_route_id(
     leg_idx: LegIdx,
     route_id: &str,
     state_model: &StateModel,
-    route_id_to_state: &MultimodalStateMapping,
+    route_id_to_state: &CategoricalStateMapping,
 ) -> Result<(), StateModelError> {
     let route_id_label = route_id_to_state.get_label(route_id).ok_or_else(|| {
         StateModelError::RuntimeError(format!(
