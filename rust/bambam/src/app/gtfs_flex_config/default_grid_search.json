@@ -1,0 +1,46 @@
+{
+  "max_trip_legs": 3,
+  "trip_mode": "gtfs-flex",
+  "constraints": [
+    {
+      "limit": 40.0,
+      "type": "time_limit",
+      "unit": "minutes"
+    },
+    {
+      "type": "mode_leg_distance_limit",
+      "values": {
+        "walk": {
+          "constraint": {
+            "limit": 0.5,
+            "unit": "miles"
+          },
+          "leg": {
+            "type": "first"
+          }
+        }
+      }
+    },
+    {
+      "type": "mode_leg_distance_limit",
+      "values": {
+        "walk": {
+          "constraint": {
+            "limit": 0.5,
+            "unit": "miles"
+          },
+          "leg": {
+            "type": "last"
+          }
+        }
+      }
+    },
+    {
+      "type": "allowed_modes",
+      "values": [
+        "walk",
+        "gtfs-flex"
+      ]
+    }
+  ]
+}

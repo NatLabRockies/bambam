@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::model::constraint::multimodal::Constraint;
 use crate::model::constraint::multimodal::{ConstraintConfig, MultimodalConstraintEngine};
 use bambam_core::model::state::{
-    multimodal_state_ops as state_ops, LegIdx, MultimodalMapping, MultimodalStateMapping,
+    multimodal_state_ops as state_ops, CategoricalMapping, CategoricalStateMapping, LegIdx,
 };
 use routee_compass_core::model::traversal::EdgeFrontierContext;
 use routee_compass_core::model::{
@@ -41,7 +41,7 @@ impl MultimodalConstraintModel {
         modes: &[&str],
     ) -> Result<Self, ConstraintModelError> {
         let mode_to_state =
-            MultimodalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
+            CategoricalMapping::new(&modes.iter().map(|s| s.to_string()).collect::<Vec<String>>())
                 .map_err(|e| {
                 ConstraintModelError::BuildError(format!(
                     "while building local MultimodalConstraintModel, failure constructing mode mapping: {e}"
@@ -128,8 +128,51 @@ fn validate_frontier(
     Ok(true)
 }
 
+fn evaluate_multimodal_constraints(
+    edge: &Edge,
+    state: &[StateVariable],
+    state_model: &StateModel,
+    model: &MultimodalConstraintModel,
+) -> Result<bool, ConstraintModelError> {
+    // if adding this edge would exceed max_trip_legs, we can skip running the constraints
+    // and directly reject this edge.
+    let valid_leg_count = state_ops::appending_edge_mode_is_valid(
+        state,
+        state_model,
+        &model.engine.mode,
+        model.max_trip_legs,
+        &model.engine.mode_to_state,
+    )
+    .map_err(|e| {
+        let msg = format!("in multimodal constraint model, {e}");
+        ConstraintModelError::ConstraintModelError(msg)
+    })?;
+    if !valid_leg_count {
+        return Ok(false);
+    }
+
+    for constraint in model.constraints.iter() {
+        let valid = constraint.valid_frontier(
+            &model.engine.mode,
+            edge,
+            state,
+            state_model,
+            &model.engine.mode_to_state,
+            model.max_trip_legs,
+        )?;
+        if !valid {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
 #[cfg(test)]
 mod test {
+
+    use super::evaluate_multimodal_constraints;
+
     use std::{
         collections::{HashMap, HashSet},
         num::NonZeroU64,
@@ -152,7 +195,7 @@ mod test {
         },
         traversal::multimodal::MultimodalTraversalModel,
     };
-    use bambam_core::model::state::{multimodal_state_ops as state_ops, MultimodalStateMapping};
+    use bambam_core::model::state::{multimodal_state_ops as state_ops, CategoricalStateMapping};
 
     #[test]
     fn test_valid_max_trip_legs_empty_state() {
@@ -474,7 +517,7 @@ mod test {
         legs: &[&str],
         state: &mut [StateVariable],
         state_model: &StateModel,
-        mode_to_state: &MultimodalStateMapping,
+        mode_to_state: &CategoricalStateMapping,
         max_trip_legs: NonZeroU64,
     ) {
         for (leg_idx, mode) in legs.iter().enumerate() {

@@ -1,7 +1,7 @@
 pub mod fieldname {
     //! the state variable fieldnames used in GTFS-Flex routing
 
-    pub const TRIP_SRC_ZONE_ID: &str = "trip_src_zone_id";
+    pub const LEG_SRC_ZONE_ID: &str = "leg_src_zone_id";
     pub const EDGE_IS_GTFS_FLEX_DESTINATION: &str = "edge_is_gtfs_flex_destination";
     pub const EDGE_POOLING_DELAY: &str = "edge_pooling_delay";
 }
@@ -9,7 +9,6 @@ pub mod fieldname {
 pub mod variable {
     //! the configuration for state variables in GTFS-Flex routing
 
-    use ordered_float::OrderedFloat;
     use routee_compass_core::model::state::{CustomVariableConfig, StateVariableConfig};
 
     /// stores a zone id in a state variable
@@ -39,8 +38,6 @@ pub mod variable {
 
     /// empty value is "-1" for categoricals mapped to real numbers
     pub fn empty() -> CustomVariableConfig {
-        CustomVariableConfig::FloatingPoint {
-            initial: OrderedFloat(-1.0),
-        }
+        CustomVariableConfig::SignedInteger { initial: -1 }
     }
 }

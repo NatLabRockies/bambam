@@ -1,3 +1,4 @@
+use bambam::app::gtfs_flex_config::CliGtfsFlexConfigApp;
 use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
@@ -59,9 +60,10 @@ pub enum App {
         /// (Optional) String for comma-separated categories
         #[arg(long)]
         acs_categories: Option<String>,
-        /// (Optional) String for api token
-        #[arg(long)]
-        api_token: Option<String>,
+        /// census.gov token for ACS data access (required as of 06/2026). must be passed
+        /// via the CENSUS_API_TOKEN environment variable when calling this application.
+        #[arg(env = "CENSUS_API_TOKEN")]
+        api_token: String,
         /// format of the extent in ExtentFormat, Wkt
         #[arg(long)]
         extent_format: ExtentFormat,
@@ -199,6 +201,7 @@ pub enum App {
         #[arg(long)]
         inject_filepath: Option<String>,
     },
+    GtfsFlexConfigApp(CliGtfsFlexConfigApp),
 }
 
 impl App {
@@ -237,7 +240,7 @@ impl App {
                     acs_year: *acs_year,
                     acs_resolution: *acs_resolution,
                     acs_categories,
-                    api_token: api_token.clone(),
+                    api_token: Ok(api_token.clone()),
                 };
 
                 // Using grid_resolution, build grid_type:Gridtype
@@ -409,6 +412,10 @@ impl App {
                     *verbose,
                 )
             }
+            App::GtfsFlexConfigApp(app) => app
+                .clone() // shouldn't happen, App::run should pass owned self.
+                .run()
+                .map_err(|e| format!("failure running gtfs-flex config app due to {e}")),
         }
     }
 }

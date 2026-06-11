@@ -104,6 +104,8 @@ pub fn run(
     Ok(())
 }
 
+type SpatialLookupResult = Result<Vec<(String, (csv::StringRecord, Geometry))>, String>;
+
 /// performs batch geospatial intersection operations to assign each [`MepRow`] its
 /// grouping identifier (GEOID). run in parallel over the rows argument, a chunk of
 /// the source MEP dataset.
@@ -113,7 +115,7 @@ fn spatial_lookup(
     headers: &HashMap<String, usize>,
     col_type: &GeometryColumnType,
     verbose: bool,
-) -> Result<Vec<(String, (csv::StringRecord, Geometry))>, String> {
+) -> SpatialLookupResult {
     let iter = tqdm!(reader.into_records(), desc = "spatial lookup");
 
     let mut result = vec![];
