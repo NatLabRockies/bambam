@@ -52,16 +52,11 @@ rand = "0.10.0"
 rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
-# routee-compass = { version = "0.19.3", default-features = false }
-# routee-compass-core = { version = "0.19.3" }
-# routee-compass-macros = { version = "0.19.3" }
-# # routee-compass-powertrain = { version = "0.19.3" }
-# routee-compass-py = { version = "0.19.3", default-features = false }
-routee-compass = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35", default-features = false }
-routee-compass-core = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35" }
-routee-compass-macros = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35" }
-# routee-compass-powertrain = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35" }
-routee-compass-py = { git = "https://github.com/NatLabRockies/routee-compass.git", rev="9d16cbbdc3576dc5e03f3f7db86fb64db9f50d35", default-features = false }
+routee-compass = { version = "0.19.4", default-features = false }
+routee-compass-core = { version = "0.19.4" }
+routee-compass-macros = { version = "0.19.4" }
+# routee-compass-powertrain = { version = "0.19.4" }
+routee-compass-py = { version = "0.19.4", default-features = false }
 rstar = { version = "0.12.2" }
 sanitize-filename = "0.6.0"
 serde = { version = "1.0.160", features = ["derive"] }
