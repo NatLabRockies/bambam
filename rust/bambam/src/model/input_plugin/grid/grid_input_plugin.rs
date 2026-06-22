@@ -54,8 +54,7 @@ impl InputPlugin for GridInputPlugin {
             self.extent_format,
             self.grid_type,
             &self.population_source,
-        );
-        Ok(())
+        )
     }
 
     fn name(&self) -> &str {
