@@ -32,6 +32,10 @@ impl OutputPlugin for IsochroneOutputPlugin {
             Err(_) => empty_isochrones(row),
         }
     }
+
+    fn name(&self) -> &str {
+        "isochrone"
+    }
 }
 
 /// checks if the row should require isochrones (is an aggregated opportunity row)

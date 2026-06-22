@@ -169,9 +169,6 @@ value = 1
 type = "grid_search"
 
 [[plugin.output_plugins]]
-type = "summary"
-
-[[plugin.output_plugins]]
 type = "traversal"
 tree = "geo_json"
 

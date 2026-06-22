@@ -100,9 +100,6 @@ type = "traversal"
 tree = "geo_json"
 
 [[plugin.output_plugins]]
-type = "summary"
-
-[[plugin.output_plugins]]
 type = "bambam"
 format = "aggregate"
 binning = { type = "time", feature = "trip_time", values = [10,20,30,40], unit = "minutes" }
