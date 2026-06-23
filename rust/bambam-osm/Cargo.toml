@@ -24,7 +24,7 @@ flate2 = { workspace = true }
 geo = { workspace = true }
 geo-buffer = { workspace = true }
 geozero = { workspace = true }
-gtfs-structures = { version = "0.46.1", git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
+gtfs-structures = { version = "=0.46.1", git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
 h3o = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
