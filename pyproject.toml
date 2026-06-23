@@ -1,6 +1,6 @@
 [project]
 name = "bambam"
-version = "0.3.1"
+version = "0.3.2"
 description = "The Behavior and Advanced Mobility Big Access Model"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
@@ -16,8 +16,8 @@ classifiers = [
 ]
 keywords = ["access modeling"]
 dependencies = [
-    "nrel-routee-compass>=0.15.2",
-    "tomlkit>=0.11.0,<1.0"
+    "nrel-routee-compass==0.19.4",
+    "tomlkit~=0.15.0"
 ]
 
 [project.optional-dependencies]

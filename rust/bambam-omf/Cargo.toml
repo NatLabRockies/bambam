@@ -1,6 +1,6 @@
 [package]
 name = "bambam-omf"
-version = "0.3.1"
+version.workspace = true
 edition = "2021"
 license = "BSD-3-Clause"
 include = ["Cargo.toml", "README.md", "src/**/*.rs", "src/util/bambam-config-omf.toml"]

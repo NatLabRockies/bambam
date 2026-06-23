@@ -1,6 +1,6 @@
 [package]
 name = "bambam"
-version = "0.3.1"
+version.workspace = true
 edition = "2021"
 license = "BSD-3-Clause"
 exclude = ["test", "**/.DS_Store", "target/"]
@@ -12,12 +12,12 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
-bambam-core = { version = "0.3.1", path = "../bambam-core" }
-bambam-gbfs = { version = "0.3.1", path = "../bambam-gbfs" } 
-bambam-gtfs = { version = "0.3.1", path = "../bambam-gtfs" } 
-bambam-gtfs-flex = { version = "0.3.1", path = "../bambam-gtfs-flex" } 
-bambam-omf = { version = "0.3.1", path = "../bambam-omf" }
-bambam-osm = { version = "0.3.1", path = "../bambam-osm" }
+bambam-core = { workspace = true }
+bambam-gbfs = { workspace = true } 
+bambam-gtfs = { workspace = true } 
+bambam-gtfs-flex = { workspace = true } 
+bambam-omf = { workspace = true }
+bambam-osm = { workspace = true }
 bamcensus = { workspace = true }
 bamcensus-acs = { workspace = true }
 bamcensus-core = { workspace = true }
