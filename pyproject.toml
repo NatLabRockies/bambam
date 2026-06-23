@@ -16,8 +16,8 @@ classifiers = [
 ]
 keywords = ["access modeling"]
 dependencies = [
-    "nrel-routee-compass>=0.19.4",
-    "tomlkit=0.15.0"
+    "nrel-routee-compass==0.19.4",
+    "tomlkit~=0.15.0"
 ]
 
 [project.optional-dependencies]
