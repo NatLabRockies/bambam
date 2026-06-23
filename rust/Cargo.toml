@@ -8,7 +8,7 @@ members = [
     "bambam-gtfs-flex",
     "bambam-omf",
     "bambam-osm",
-    "bambam-py",
+    # "bambam-py",
 ]
 
 [workspace.package]
@@ -41,6 +41,7 @@ geo-buffer = "0.2.0"
 geo-traits = "0.3.0"
 geo-types = "=0.7.19"
 geozero = { version = "0.14.0", features = ["with-geo", "with-wkb", "with-wkt", "with-geojson"] }
+gtfs-structures = { git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
 h3o = { version = "0.9.4", features = ["serde", "geo"] }
 hex = "0.4.3"
 humantime = "2.3.0"
