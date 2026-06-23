@@ -22,13 +22,13 @@ env_logger = { workspace = true }
 flate2 = { workspace = true }
 geo = { workspace = true }
 geozero = { workspace = true }
-gtfs-structures = { version = "0.46.1", git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
+gtfs-structures = { git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
 h3o = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
 rayon = { workspace = true }
-routee-compass = { workspace = true }
+routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 rstar = { workspace = true }
 serde = { workspace = true }

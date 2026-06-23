@@ -44,7 +44,7 @@ log = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
-routee-compass = { workspace = true }
+routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 # routee-compass-powertrain = { workspace = true }
 rstar = { workspace = true }
