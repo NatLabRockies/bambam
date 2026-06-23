@@ -1,6 +1,6 @@
 [package]
 name = "bambam-gbfs"
-version = "0.3.1"
+version.workspace = true
 edition = "2024"
 license = "BSD-3-Clause"
 description = "GBFS Extensions for The Behavior and Advanced Mobility Big Access Model"
