@@ -12,18 +12,18 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.2"
+version = "0.3.3"
 
 [workspace.dependencies]
 
 arrow = { version = "58.0.0" }
-bambam = { version = "0.3.2", path = "bambam" }
-bambam-core = { version = "0.3.2", path = "bambam-core" }
-bambam-gbfs = { version = "0.3.2", path = "bambam-gbfs" } 
-bambam-gtfs = { version = "0.3.2", path = "bambam-gtfs" } 
-bambam-gtfs-flex = { version = "0.3.2", path = "bambam-gtfs-flex" } 
-bambam-omf = { version = "0.3.2", path = "bambam-omf" }
-bambam-osm = { version = "0.3.2", path = "bambam-osm" }
+bambam = { version = "0.3.3", path = "bambam" }
+bambam-core = { version = "0.3.3", path = "bambam-core" }
+bambam-gbfs = { version = "0.3.3", path = "bambam-gbfs" } 
+bambam-gtfs = { version = "0.3.3", path = "bambam-gtfs" } 
+bambam-gtfs-flex = { version = "0.3.3", path = "bambam-gtfs-flex" } 
+bambam-omf = { version = "0.3.3", path = "bambam-omf" }
+bambam-osm = { version = "0.3.3", path = "bambam-osm" }
 bamcensus = { version = "0.1.0" }
 bamcensus-acs = { version = "0.1.0" }
 bamcensus-core = { version = "0.1.0" }
