@@ -9,6 +9,7 @@ description = "GBFS Extensions for The Behavior and Advanced Mobility Big Access
 chrono = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }
+gbfs_types = { workspace = true }
 geo = { workspace = true }
 humantime = { workspace = true }
 kdam = { workspace = true }

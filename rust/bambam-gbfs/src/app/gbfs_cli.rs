@@ -33,17 +33,20 @@ pub enum GbfsOperation {
 }
 
 impl GbfsOperation {
-    pub fn run(&self) -> Result<(), String> {
+    pub async fn run(&self) -> Result<(), String> {
         match self {
             GbfsOperation::Download {
                 gbfs_url,
                 output_directory,
                 collect_duration,
-            } => crate::app::download::run_gbfs_download(
-                gbfs_url,
-                Path::new(output_directory),
-                collect_duration,
-            ),
+            } => {
+                crate::app::download::run_gbfs_download(
+                    gbfs_url,
+                    Path::new(output_directory),
+                    collect_duration,
+                )
+                .await
+            }
         }
     }
 }
