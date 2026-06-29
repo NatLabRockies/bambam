@@ -38,7 +38,7 @@ ordered-float = { workspace = true }
 parquet = { workspace = true }
 rayon = { workspace = true }
 reqwest = { workspace = true }
-routee-compass = { workspace = true }
+routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 # routee-compass-powertrain = { workspace = true }
 serde = { workspace = true }
