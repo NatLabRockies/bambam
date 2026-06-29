@@ -12,18 +12,18 @@ members = [
 ]
 
 [workspace.package]
-version = "0.3.2"
+version = "0.3.3"
 
 [workspace.dependencies]
 
 arrow = { version = "58.0.0" }
-bambam = { version = "0.3.2", path = "bambam" }
-bambam-core = { version = "0.3.2", path = "bambam-core" }
-bambam-gbfs = { version = "0.3.2", path = "bambam-gbfs" } 
-bambam-gtfs = { version = "0.3.2", path = "bambam-gtfs" } 
-bambam-gtfs-flex = { version = "0.3.2", path = "bambam-gtfs-flex" } 
-bambam-omf = { version = "0.3.2", path = "bambam-omf" }
-bambam-osm = { version = "0.3.2", path = "bambam-osm" }
+bambam = { version = "0.3.3", path = "bambam" }
+bambam-core = { version = "0.3.3", path = "bambam-core" }
+bambam-gbfs = { version = "0.3.3", path = "bambam-gbfs" } 
+bambam-gtfs = { version = "0.3.3", path = "bambam-gtfs" } 
+bambam-gtfs-flex = { version = "0.3.3", path = "bambam-gtfs-flex" } 
+bambam-omf = { version = "0.3.3", path = "bambam-omf" }
+bambam-osm = { version = "0.3.3", path = "bambam-osm" }
 bamcensus = { version = "0.1.0" }
 bamcensus-acs = { version = "0.1.0" }
 bamcensus-core = { version = "0.1.0" }
@@ -63,11 +63,11 @@ rand = "0.10.0"
 rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
-routee-compass = { version = "0.19.4", default-features = false }
-routee-compass-core = { version = "0.19.4" }
-routee-compass-macros = { version = "0.19.4" }
-# routee-compass-powertrain = { version = "0.19.4" }
-routee-compass-py = { version = "0.19.4", default-features = false }
+routee-compass = { version = "0.19.5", default-features = false }
+routee-compass-core = { version = "0.19.5" }
+routee-compass-macros = { version = "0.19.5" }
+# routee-compass-powertrain = { version = "0.19.5" }
+routee-compass-py = { version = "0.19.5", default-features = false }
 rstar = { version = "0.12.2" }
 sanitize-filename = "0.6.0"
 serde = { version = "1.0.160", features = ["derive"] }

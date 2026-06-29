@@ -33,7 +33,7 @@ geo = { workspace = true }
 geo-traits = { workspace = true }
 geo-types = { workspace = true }
 geozero = { workspace = true }
-gtfs-structures = { workspace = true }
+# gtfs-structures = { workspace = true }
 h3o = { workspace = true }
 hex = { workspace = true }
 inventory = { workspace = true }
@@ -44,7 +44,7 @@ log = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
-routee-compass = { workspace = true }
+routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 # routee-compass-powertrain = { workspace = true }
 rstar = { workspace = true }
