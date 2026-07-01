@@ -17,7 +17,7 @@ use bambam::model::input_plugin::grid::grid_input_plugin;
 use bambam::model::input_plugin::grid::grid_input_plugin_builder;
 use bambam::model::input_plugin::grid::grid_type::GridType;
 use bambam::model::input_plugin::population::population_source_config::PopulationSourceConfig;
-use bambam_osm::app::wci;
+use bambam_osm::app::network::wci;
 use bamcensus_acs::model::AcsType;
 use bamcensus_core::model::identifier::GeoidType;
 use h3o::Resolution;
@@ -213,7 +213,7 @@ impl App {
                 edges_osm,
                 vertices_osm,
             } => {
-                if let Err(error) = wci::process_wci(edges_osm, vertices_osm, wci_file) {
+                if let Err(error) = wci::bulk_compute_wci(edges_osm, vertices_osm, wci_file) {
                     eprintln!("error! {error:?}");
                 }
                 Ok(())

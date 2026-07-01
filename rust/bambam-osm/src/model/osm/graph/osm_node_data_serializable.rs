@@ -1,7 +1,6 @@
+use super::{OsmNodeData, OsmNodeId};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-
-use super::{OsmNodeData, OsmNodeId};
 
 /// used for IO in flat (CSV) format
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -21,6 +20,22 @@ impl OsmNodeDataSerializable {
     /// a delimter for aggregated fields which does not collide with CSV delimiters
     /// which can be used to replace OsmNodeData::VALUE_DELIMITER
     pub const VALUE_DELIMITER: &'static str = ";";
+
+    /// returns true if the node has a stop sign
+    pub fn has_stop_sign(&self) -> bool {
+        self.clone()
+            .highway
+            .as_ref()
+            .is_some_and(|highway| highway.contains("stop"))
+    }
+
+    /// returns true if the node has a traffic light
+    pub fn has_traffic_light(&self) -> bool {
+        self.clone()
+            .highway
+            .as_ref()
+            .is_some_and(|highway| highway.contains("traffic_light"))
+    }
 }
 
 impl From<&OsmNodeData> for OsmNodeDataSerializable {

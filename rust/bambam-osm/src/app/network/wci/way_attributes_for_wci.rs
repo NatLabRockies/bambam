@@ -1,61 +1,75 @@
 //! WayAttributesForWCI struct is used to store information needed to calculate the Walking Comfort Index (wci.rs)
 //! Information in the struct is derived from OSM data and neighbors in the RTree
 //! August 2025 EG
-
-use super::WayGeometryData;
-use crate::model::feature::highway::Highway;
+use crate::{
+    app::network::common::way_rtree_entry::WayRTreeEntry,
+    model::{
+        feature::highway::Highway,
+        osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable},
+    },
+};
 use geo::prelude::*;
+use geo::{Centroid, Point};
 use rstar::RTree;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct WayAttributesForWCI {
-    pub speed_imp: Option<i32>,
-    pub sidewalk_exists: Option<bool>,
-    pub cycleway_exists: Option<(String, i32)>,
-    pub traffic_signals_exists: Option<bool>,
-    pub stops_exists: Option<bool>,
-    pub dedicated_foot: Option<bool>,
-    pub no_adjacent_roads: Option<bool>,
-    pub walk_eligible: Option<bool>,
+    pub speed_imp: Option<i32>, // TODO: Remove and replace with CommonWayAttributes::max_speed
+    pub sidewalk_exists: Option<bool>, // WCI-specific
+    pub cycleway_exists: Option<(String, i32)>, // TODO: Somehow, remove and replace with CommonWayAttributes::cycleway_tag
+    pub traffic_signals_exists: Option<bool>,   // WCI-specific
+    pub stops_exists: Option<bool>,             // WCI-specific
+    pub dedicated_foot: Option<bool>,           // WCI-specific
+    pub no_adjacent_ways: Option<bool>,         // WCI-specific? ask RJF
+    pub walk_eligible: Option<bool>,            // WCI-specific
 }
 
 impl WayAttributesForWCI {
     pub fn new(
-        centroid: geo::Point<f32>,
-        rtree: &RTree<WayGeometryData>,
-        geo_data: &WayGeometryData,
+        rtree: &RTree<WayRTreeEntry>,
+        way: &OsmWayDataSerializable,
+        src_node: &OsmNodeDataSerializable,
     ) -> Option<WayAttributesForWCI> {
-        let query_pointf32 = [centroid.x(), centroid.y()];
-        let query_point = geo::Point::new(centroid.x(), centroid.y());
+        // unsure why two objects for point are used. we should just try to typecast a reference.
+        let centroid = way.linestring.centroid()?;
 
-        let mut sidewalk = match &geo_data.data.sidewalk {
+        let query_point = geo::Point::new(centroid.x(), centroid.y()); // Point<f32> for querying the RTree
+
+        // check if the way has a sidewalk
+        let mut has_sidewalk = match &way.sidewalk {
             Some(string) => !(string == "no" || string == "none"),
-            _ => false,
+            None => false,
         };
 
-        let foot = match &geo_data.data.footway {
+        // check if the way is a footway
+        let has_footway = match &way.footway {
             Some(string) => !(string == "no" || string == "none"),
-            _ => false,
+            None => false,
         };
 
-        if geo_data.data.footway == Some("sidewalk".to_string()) {
-            sidewalk = true;
+        // Check if the footway has a sidewalk. If so, set has_sidewalk to true.
+        if way.footway == Some("sidewalk".to_string()) {
+            has_sidewalk = true;
         }
 
-        let walk_el = walk_eligible(rtree, geo_data, query_pointf32, sidewalk, foot);
-        if !walk_el {
+        let is_walk_eligible = walk_eligible(rtree, way, query_point, has_sidewalk, has_footway);
+
+        if !is_walk_eligible {
             // return immediately
             return None;
         }
 
+        // Find neighboring ways within a distance.
         let mut neighbors = vec![];
-        for neighbor in rtree.locate_within_distance(query_pointf32, 0.0001378) {
+        for neighbor in rtree.locate_within_distance([query_point.x(), query_point.y()], 0.0001378)
+        {
             neighbors.push(neighbor);
         }
-        let no_adj = neighbors.is_empty();
+        let no_adjacent_ways = neighbors.is_empty();
 
-        let cycle = match &geo_data.data.cycleway {
+        // cycleway matching
+        let cycle = match &way.cycleway {
             Some(string) => {
                 if string == "lane" || string == "designated" || string == "track" {
                     ("dedicated", 2)
@@ -70,12 +84,14 @@ impl WayAttributesForWCI {
                 // let weighted_cycle = 0;
                 let mut total_lengths: f32 = 0.0;
                 let mut cyclescores = vec![];
-                for neighbor in rtree.locate_within_distance(query_pointf32, 0.0001378) {
-                    let origin = neighbor.geo.centroid();
+                for neighbor in
+                    rtree.locate_within_distance([query_point.x(), query_point.y()], 0.0001378)
+                {
+                    let origin = neighbor.way.linestring.centroid();
                     if let Some(origin) = origin {
                         let int_length = Euclidean::distance(&geo::Euclidean, origin, query_point);
                         total_lengths += int_length;
-                        if let Some(ref cycleway) = neighbor.data.cycleway {
+                        if let Some(ref cycleway) = neighbor.way.cycleway {
                             let neighbor_cycle_score = if cycleway == "lane"
                                 || cycleway == "designated"
                                 || cycleway == "track"
@@ -108,17 +124,19 @@ impl WayAttributesForWCI {
             }
         };
 
-        let speed: i32 = match geo_data.data.maxspeed.clone() {
+        let speed: i32 = match way.maxspeed.clone() {
             Some(speed_str) => speed_str.parse::<i32>().unwrap_or_default(),
             None => {
                 // look at neighbors, weighted average
                 let mut speeds = vec![];
                 let mut total_lengths: f32 = 0.0;
-                for neighbor in rtree.locate_within_distance(query_pointf32, 0.0001378) {
-                    if let Some(origin) = neighbor.geo.centroid() {
+                for neighbor in
+                    rtree.locate_within_distance([query_point.x(), query_point.y()], 0.0001378)
+                {
+                    if let Some(origin) = neighbor.way.linestring.centroid() {
                         let int_length = Euclidean::distance(&geo::Euclidean, origin, query_point);
                         total_lengths += int_length;
-                        if let Some(neighbor_speed_str) = &neighbor.data.maxspeed {
+                        if let Some(neighbor_speed_str) = &neighbor.way.maxspeed {
                             if let Ok(int_neighbor_speed) = neighbor_speed_str.parse::<i32>() {
                                 speeds.push((int_neighbor_speed, int_length));
                             }
@@ -140,13 +158,13 @@ impl WayAttributesForWCI {
 
         let way_info = WayAttributesForWCI {
             speed_imp: Some(speed),
-            sidewalk_exists: Some(sidewalk),
+            sidewalk_exists: Some(has_sidewalk),
             cycleway_exists: Some((cycle.0.to_string(), cycle.1)),
-            traffic_signals_exists: Some(geo_data.traf_sig),
-            stops_exists: Some(geo_data.stop),
-            dedicated_foot: Some(foot),
-            no_adjacent_roads: Some(no_adj),
-            walk_eligible: Some(walk_el),
+            traffic_signals_exists: Some(src_node.has_traffic_light()),
+            stops_exists: Some(src_node.has_stop_sign()),
+            dedicated_foot: Some(has_footway),
+            no_adjacent_ways: Some(no_adjacent_ways),
+            walk_eligible: Some(is_walk_eligible),
         };
 
         Some(way_info)
@@ -157,7 +175,7 @@ impl WayAttributesForWCI {
         if self.walk_eligible == Some(false) {
             None
         } else if self.dedicated_foot == Some(true)
-            || (self.no_adjacent_roads == Some(true) && self.sidewalk_exists == Some(true))
+            || (self.no_adjacent_ways == Some(true) && self.sidewalk_exists == Some(true))
         {
             Some(super::MAX_WCI_SCORE)
         } else {
@@ -230,15 +248,15 @@ impl WayAttributesForWCI {
 }
 
 /// determines if the road is eligible for walking comfort index calculation
-/// if one is true: has sidewalk, has footway, has correct highway type, or adjacent sidewalk
+/// if one is true: has sidewalk, has footway, has correct highway type, or adjacent sidewalklk  
 fn walk_eligible(
-    rtree: &RTree<WayGeometryData>,
-    geo_data: &WayGeometryData,
-    query_pointf32: [f32; 2],
+    rtree: &RTree<WayRTreeEntry>,
+    way: &OsmWayDataSerializable,
+    query_point: Point<f32>,
     sidewalk: bool,
     foot: bool,
 ) -> bool {
-    let this_highway: Highway = geo_data.data.highway.clone();
+    let this_highway: Highway = way.highway.clone();
     let walk_highway_tag = matches!(
         this_highway,
         Highway::Residential
@@ -261,13 +279,14 @@ fn walk_eligible(
         return true;
     } else {
         // check for adjacent sidewalks
-        for neighbor in rtree.locate_within_distance(query_pointf32, 0.0001378) {
-            if let Some(ref sidewalk) = neighbor.data.sidewalk {
+        for neighbor in rtree.locate_within_distance([query_point.x(), query_point.y()], 0.0001378)
+        {
+            if let Some(ref sidewalk) = neighbor.way.sidewalk {
                 if sidewalk != "no" && sidewalk != "none" {
                     return true;
                 }
             } // could also be neighboring footway=sidewalk
-            if neighbor.data.footway == Some("sidewalk".to_string()) {
+            if neighbor.way.footway == Some("sidewalk".to_string()) {
                 return true;
             }
         }
