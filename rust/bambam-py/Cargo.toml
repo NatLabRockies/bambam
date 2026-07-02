@@ -14,11 +14,11 @@ inventory = { workspace = true }
 
 itertools = { workspace = true }
 
-pyo3 = { version = "0.28.0", features = ["extension-module", "serde"] }
-routee-compass = { workspace = true }
+pyo3 = { version = "0.29.0", features = ["extension-module", "serde"] }
+routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 routee-compass-macros = { workspace = true }
-routee-compass-py = { workspace = true }
+routee-compass-py = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
