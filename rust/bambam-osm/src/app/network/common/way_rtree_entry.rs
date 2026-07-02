@@ -3,7 +3,7 @@ use geo::{BoundingRect, Centroid, Distance, Euclidean};
 use rstar::{PointDistance, RTreeObject, AABB};
 
 /// `WayRTreeEntry` wraps `OsmWayDataSerializable` and caches the bounding box
-/// of the way's `linestring`. It is used solely for efficient spatial queries
+/// and centroid of the way's `linestring`. It is used solely for efficient spatial queries
 /// in an R-tree data structure.
 ///
 /// It is used in spatial queries for network analysis, such as computing
@@ -14,11 +14,12 @@ use rstar::{PointDistance, RTreeObject, AABB};
 /// we would have to compute the bounding box every time the `envelope()` method
 /// is called, which is inefficient.
 ///
-/// This allows us to compute the bounding box once, and reuse it in O(1) for multiple
-/// spatial queries.
+/// This allows us to compute the bounding box and centroid once, and reuse them in O(1)
+/// for multiple spatial queries.
 #[derive(Clone)]
 pub struct WayRTreeEntry {
     bbox: AABB<[f32; 2]>,
+    pub centroid: geo::Point<f32>,
     pub way: OsmWayDataSerializable,
 }
 
@@ -27,9 +28,13 @@ impl WayRTreeEntry {
         // Grab the bounding rectangle of the linestring. If it doesn't exist, return None.
         let rect = way.linestring.bounding_rect()?;
 
+        // Compute the centroid of the linestring. If it doesn't exist, return None.
+        let centroid = way.linestring.centroid()?;
+
         // Create the bounding box from the linestring's bounding rectangle
         Some(Self {
             bbox: AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]),
+            centroid,
             way,
         })
     }
@@ -52,14 +57,7 @@ impl PointDistance for WayRTreeEntry {
     // However, for small distances (in the case of local navigation), the difference may be negligible.
     fn distance_2(&self, point: &[f32; 2]) -> f32 {
         let query_point = geo::Point::new(point[0], point[1]);
-        let linestring = &self.way.linestring;
-        let midpoint = linestring.centroid();
-
-        if let Some(midpoint) = midpoint {
-            let distance = Euclidean.distance(midpoint, query_point);
-            distance * distance
-        } else {
-            f32::MAX
-        }
+        let distance = Euclidean.distance(self.centroid, query_point);
+        distance * distance
     }
 }

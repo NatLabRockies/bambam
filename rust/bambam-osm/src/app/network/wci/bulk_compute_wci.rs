@@ -1,10 +1,5 @@
-// Walk Comfort Index (WCI) Calculation in Rust
-// Input: OSM data with attributes, Output: file with WCI scores for each way, one score per line
-// August 2025 EG
-
-use super::way_attributes_for_wci::WayAttributesForWCI;
 use crate::app::network::common::load_way_rtree_entry::load_way_rtree_entries;
-use crate::app::network::common::way_rtree_entry::WayRTreeEntry;
+use crate::app::network::wci::compute_wci::compute_wci;
 use crate::model::osm::graph::OsmNodeDataSerializable;
 use rayon::prelude::*;
 use routee_compass_core::util::fs::read_utils;
@@ -22,6 +17,7 @@ use std::{
 /// computes the WCI score for each way in parallel, and writes the scores to an output file.
 ///
 /// WCI scores are computed in parallel and written line-by-line to `output_file`.
+/// Authors: EG (2025 original), AM (2026 refactor)
 pub fn bulk_compute_wci(
     edges_file: &str,
     vertices_file: &str,
@@ -31,34 +27,34 @@ pub fn bulk_compute_wci(
     let nodes: Box<[OsmNodeDataSerializable]> =
         read_utils::from_csv(&vertices_file, true, None, None)?;
 
-    // load all ways into memory as type WayRTreeEntry and create R-tree entries for each way
-    let way_rtree_entries: Vec<WayRTreeEntry> = load_way_rtree_entries(edges_file, &nodes)?;
+    // load all ways into memory as type WayRTreeEntry for insertion into the R-tree
+    let way_rtree_entries = load_way_rtree_entries(edges_file, &nodes)?;
 
     // bulk-load a copy of the entries into the r-tree; we keep `entries` around
     // so each centroid can be paired with its own way during the WCI calculation
     let rtree = RTree::bulk_load(way_rtree_entries.clone());
 
-    // calculate the WCI score for each (centroid, way) pair in parallel
-    // I don't think we need to use centroids, since WayRTreeEntry already has the linestring.
-    // We can just use way.linestring.centroid() in WayAttributesForWCI::new() instead of passing in the centroid.
-    let wci_vec: Vec<i32> = way_rtree_entries
-        .par_iter() // parallel iterator over way entries
-        .filter_map(|entry| {
-            WayAttributesForWCI::new(
+    // calculate the WCI score for each way in parallel using the compute_wci function
+    let wci_vec: Vec<Option<i32>> = way_rtree_entries
+        .par_iter()
+        .map(|way_entry| {
+            compute_wci(
                 &rtree,
-                &entry.way,
+                way_entry,
                 nodes
-                    .get(entry.way.src_vertex_id.0)
+                    .get(way_entry.way.src_vertex_id.0)
                     .unwrap_or(&OsmNodeDataSerializable::default()),
-            ) // need to change the signature to &rtree, &OsmWayDataSerializable
-            .and_then(|w: WayAttributesForWCI| w.wci_calculate()) // calculate the WCI score for this way
-        }) // filter out any None values (failed calculations)
-        .collect(); // collect the wci scores into a vector
+            )
+        })
+        .collect();
 
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);
     for wci in wci_vec {
-        writeln!(writer, "{wci}")?;
+        match wci {
+            Some(v) => writeln!(writer, "{v}")?,
+            None => writeln!(writer, "NA")?, // i don't love this. this is when an edge is unwalkable. thoughts @RJF?
+        }
     }
     writer.flush()?;
 

@@ -3,6 +3,8 @@ use crate::model::osm::graph::OsmNodeDataSerializable;
 use crate::model::osm::graph::OsmWayDataSerializable;
 use std::error::Error;
 
+/// Load ways from a CSV file and create R-tree entries for each way.
+/// TODO: incorporate Overture's way attributes and move the logic for WayRTreeEntry up to bambam-core.
 pub fn load_way_rtree_entries(
     edges_file: &str,
     nodes: &[OsmNodeDataSerializable],
