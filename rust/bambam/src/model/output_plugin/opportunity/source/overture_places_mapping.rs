@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 
 pub type PlacesMapping = HashMap<String, Vec<String>>;
 
+/// sources a mapping from OvertureMaps Places categories into MEP categories.
+///
+/// # Serde
+///
+/// untagged deserialization. attempts to first deserialize directly as a HashMap.
+/// if that fails, attempts to read as a FromCsv object.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum OverturePlacesMappingConfig {
