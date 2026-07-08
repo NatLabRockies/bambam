@@ -63,10 +63,7 @@ impl OutputPlugin for OpportunityOutputPlugin {
         row.set_opportunity_totals(&self.totals)?;
 
         // read destination filter from the row info
-        let filter = row
-            .info_ref()?
-            .get_destination_filter()?
-            .map(DestinationFilter);
+        let filter = row.get_destination_filter()?;
 
         match format {
             OpportunityFormat::Aggregate => {
