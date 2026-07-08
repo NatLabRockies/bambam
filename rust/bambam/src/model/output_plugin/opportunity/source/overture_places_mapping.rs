@@ -61,7 +61,12 @@ impl OverturePlacesMappingConfig {
                         mep_category_column,
                         mep_category_separator,
                     )?;
-                    let _ = result.insert(omf_label, mep_labels);
+                    for mep_label in mep_labels.into_iter() {
+                        result
+                            .entry(mep_label.clone())
+                            .and_modify(|omf: &mut Vec<String>| omf.push(omf_label.clone()))
+                            .or_insert(vec![omf_label.clone()]);
+                    }
                 }
                 Ok(result)
             }
