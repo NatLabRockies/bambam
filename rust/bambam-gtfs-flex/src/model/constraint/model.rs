@@ -47,12 +47,13 @@ impl ConstraintModel for GtfsFlexDepartureConstraintModel {
         // there is no supporting relation in the ZoneGraph, otherwise, accept as we will board here.
         let current_time = current_datetime(self.params.start_time, state, state_model)?;
         let lookup_result = current_zone(&self.lookup, ctx.dst)?;
-        let is_valid = match lookup_result {
+        let is_valid = match &lookup_result {
             Some(src_zone_id) => is_valid_departure(&self.lookup, &src_zone_id, &current_time),
             None => Ok(false),
         }?;
         log::debug!(
-            "gtfs-flex frontier is valid (can board here)? {is_valid}, {}",
+            "gtfs-flex frontier is valid (can board here)? {is_valid}, with current_time={}, current_zone={lookup_result:?}, context:\n {}",
+            current_time.format("%Y-%m-%d %H:%M:%S"),
             log_context(ctx, state, state_model)
         );
         Ok(is_valid)
