@@ -3,6 +3,8 @@ use crate::model::feature::highway::Highway;
 use crate::model::osm::graph::OsmWayDataSerializable;
 use rstar::RTree;
 
+const MIN_DISTANCE_NEIGHBOR: f32 = 0.0001378; // minimum distance to consider a way as a neighbor [deg] ~ 15m
+
 /// Determines if a way is walk-eligible based on sidewalk/footway attributes or highway type.
 ///
 /// Args:
@@ -47,7 +49,7 @@ fn is_walkable(way: &OsmWayDataSerializable) -> bool {
 /// - `entry`: The way of interest (as WayRTreeEntry)
 pub fn way_is_walk_eligible(rtree: &RTree<WayRTreeEntry>, entry: &WayRTreeEntry) -> bool {
     is_walkable(&entry.way) // check the way itself
-        || rtree // check neighboring ways within 15 meters (0.0001378 degrees) for walkability (should this be a config param?)
-            .locate_within_distance([entry.centroid.x(), entry.centroid.y()], 0.0001378)
+        || rtree // check neighboring ways
+            .locate_within_distance([entry.centroid.x(), entry.centroid.y()], MIN_DISTANCE_NEIGHBOR)
             .any(|neighbor| is_walkable(&neighbor.way))
 }
