@@ -48,7 +48,7 @@ impl ConstraintModel for GtfsFlexDepartureConstraintModel {
         let current_time = current_datetime(self.params.start_time, state, state_model)?;
         let lookup_result = current_zone(&self.lookup, ctx.dst)?;
         let is_valid = match &lookup_result {
-            Some(src_zone_id) => is_valid_departure(&self.lookup, &src_zone_id, &current_time),
+            Some(src_zone_id) => is_valid_departure(&self.lookup, src_zone_id, &current_time),
             None => Ok(false),
         }?;
         log::debug!(

@@ -142,7 +142,7 @@ fn no_aggregate_opportunities(
     activity_types: &[String],
     opportunity_totals: &HashMap<String, f64>,
 ) -> Result<(), OutputPluginError> {
-    row.set_opportunity_totals(&opportunity_totals)?;
+    row.set_opportunity_totals(opportunity_totals)?;
 
     let bin_config = row.info_ref()?.get_bin_range()?.ok_or_else(|| {
         OutputPluginError::OutputPluginFailed(
