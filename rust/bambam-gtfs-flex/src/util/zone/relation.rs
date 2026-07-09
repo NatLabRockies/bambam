@@ -113,7 +113,7 @@ impl TryFrom<&ZonalRelationRecord> for ZonalRelation {
             }),
             _ => {
                 let msg = format!(
-                    "GTFS-Flex record for {}-{} has invalid combination of optional fields",
+                    "GTFS-Flex record for pair {} -> {} has invalid combination of optional fields. all 3 may be omitted, dst_zone_id may be by itself, or all 3 must be present. found dst_zone_id: {dst_zone_id:?} start_time: {start_time:?} end_time: {end_time:?}",
                     record.src_zone_id,
                     record.dst_zone_id.clone().unwrap_or_default()
                 );
