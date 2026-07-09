@@ -19,9 +19,14 @@ pub fn compute_wci(
 ) -> Option<i32> {
     let way_is_walk_eligible = way_is_walk_eligible(rtree, entry);
 
-    // We choose to exclude non-walkable ways from WCI computation completely.
+    // Return the worst WCI score if the way is not eligible for walking
+    // The worst WCI score is:
+    // -2 (speed limit 50+ mph) +
+    // -2 (no cycleway nor signage) +
+    // -2 (no sidewalks) +
+    // 0 (no traffic signals or stop signs)
     if !way_is_walk_eligible {
-        return None;
+        return Some(-6);
     }
 
     let sidewalk_score = match &entry.way.sidewalk {
