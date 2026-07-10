@@ -76,12 +76,20 @@ impl WayAttributesForWCI {
             }
         }
 
-        let speed = speed_score(self);
-        let walk = sidewalk_score(self);
-        let cycle = cycleway_score(self);
-        let signal = signal_score(self);
+        if self.walk_eligible == Some(false) {
+            (-6, 0, 0, 0, 0)
+        } else if self.dedicated_foot == Some(true)
+            || (self.no_adjacent_roads == Some(true) && self.sidewalk_exists == Some(true))
+        {
+            (super::MAX_WCI_SCORE, 0, 0, 0, 0)
+        } else {
+            let speed = speed_score(self);
+            let walk = sidewalk_score(self);
+            let cycle = cycleway_score(self);
+            let signal = signal_score(self);
 
-        (speed + walk + cycle + signal, walk, speed, cycle, signal)
+            (speed + walk + cycle + signal, walk, speed, cycle, signal)
+        }
     }
     pub fn new(
         centroid: geo::Point<f32>,
