@@ -21,6 +21,68 @@ pub struct WayAttributesForWCI {
 }
 
 impl WayAttributesForWCI {
+    pub fn wci_components(&self) -> (i32, i32, i32, i32, i32) {
+        fn speed_score(way: &WayAttributesForWCI) -> i32 {
+            match way.speed_imp {
+                Some(speed) => {
+                    let mph = (speed as f64 / 1.61).round();
+                    if mph <= 25.0 {
+                        2
+                    } else if mph <= 30.0 {
+                        1
+                    } else if mph <= 40.0 {
+                        0
+                    } else if mph <= 45.0 {
+                        -1
+                    } else {
+                        -2
+                    }
+                }
+                None => -2,
+            }
+        }
+
+        fn sidewalk_score(way: &WayAttributesForWCI) -> i32 {
+            match way.sidewalk_exists {
+                Some(true) => 2,
+                _ => -2,
+            }
+        }
+
+        fn cycleway_score(way: &WayAttributesForWCI) -> i32 {
+            match way.cycleway_exists.as_ref() {
+                Some(cycle_score) => {
+                    if cycle_score.0 == "dedicated" {
+                        2
+                    } else if cycle_score.0 == "some_cycleway" {
+                        0
+                    } else if cycle_score.0 == "from_neighbors" {
+                        cycle_score.1
+                    } else {
+                        -2
+                    }
+                }
+                None => -2,
+            }
+        }
+
+        fn signal_score(way: &WayAttributesForWCI) -> i32 {
+            if way.traffic_signals_exists == Some(true) {
+                2
+            } else if way.stops_exists == Some(true) {
+                1
+            } else {
+                0
+            }
+        }
+
+        let speed = speed_score(self);
+        let walk = sidewalk_score(self);
+        let cycle = cycleway_score(self);
+        let signal = signal_score(self);
+
+        (speed + walk + cycle + signal, walk, speed, cycle, signal)
+    }
     pub fn new(
         centroid: geo::Point<f32>,
         rtree: &RTree<WayGeometryData>,

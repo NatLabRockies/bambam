@@ -86,24 +86,25 @@ pub fn process_wci(
             .total(centroids.len())
             .build()?,
     ));
-    let wci_vec: Vec<i32> = centroids
+    let wci_vec: Vec<(i32, i32, i32, i32, i32)> = centroids
         .into_par_iter()
         .enumerate()
-        .filter_map(|(idx, centroid)| {
-            if let Ok(mut bar) = bar.clone().lock() {
-                let _ = bar.update(1);
-            }
-            WayAttributesForWCI::new(centroid, &rtree, &rtree_data[idx])
-                .and_then(|w: WayAttributesForWCI| w.wci_calculate())
-        })
+        .map(
+            |(idx, centroid)| match WayAttributesForWCI::new(centroid, &rtree, &rtree_data[idx]) {
+                Some(w) => w.wci_components(),
+                None => (-6, 0, 0, 0, 0),
+            },
+        )
         .collect();
     println!("wci_vec is {wci_vec:?}");
 
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);
 
-    for wci in wci_vec {
-        writeln!(writer, "{wci:?}")?;
+    writeln!(writer, "wci_total,wci_walk,wci_speed,wci_cycle,wci_signal")?;
+
+    for (total, walk, speed, cycle, signal) in wci_vec {
+        writeln!(writer, "{},{},{},{},{}", total, walk, speed, cycle, signal)?;
     }
 
     Ok(())
