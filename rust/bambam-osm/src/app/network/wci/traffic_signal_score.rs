@@ -1,5 +1,9 @@
 use crate::model::osm::graph::OsmNodeDataSerializable;
 
+/// Computes the traffic signal score, a component of the total WCI score.
+///
+/// A way is more walkable if there are traffic signals -- traffic signals usually
+/// mean crosswalks, or at least speed reduction of nearby cars.
 pub fn compute_traffic_signal_score(src_node: &OsmNodeDataSerializable) -> i32 {
     if has_traffic_signals(src_node) {
         2

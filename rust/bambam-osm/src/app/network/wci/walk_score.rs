@@ -4,24 +4,10 @@ use crate::model::feature::highway::Highway;
 use crate::model::osm::graph::OsmWayDataSerializable;
 use rstar::RTree;
 
-/*
-let mut sidewalk = match &geo_data.data.sidewalk {
-            Some(string) => !(string == "no" || string == "none"),
-            _ => false,
-        };
-
-let foot = match &geo_data.data.footway {
-    Some(string) => !(string == "no" || string == "none"),
-    _ => false,
-};
-
-if geo_data.data.footway == Some("sidewalk".to_string()) {
-    sidewalk = true;
-}
-*/
-
-// minimum distance to consider a way as a neighbor [deg] ~ 15m
-
+/// Computes the walk score, which is determined by
+/// if it has a sidewalk or a footway.
+/// Args:
+/// - way: the OsmWayDataSerializable to compute the score for
 pub fn compute_walk_score(way: &OsmWayDataSerializable) -> i32 {
     if way_has_sidewalk(way) || way_has_footway(way) {
         2
@@ -56,6 +42,7 @@ pub fn way_is_walk_eligible(rtree: &RTree<WayRTreeEntry>, entry: &WayRTreeEntry)
             .any(|neighbor| way_has_sidewalk(&neighbor.way))
 }
 
+// Checks if the way has a sidewalk
 pub fn way_has_sidewalk(way: &OsmWayDataSerializable) -> bool {
     way.sidewalk
         .as_ref()
@@ -63,12 +50,15 @@ pub fn way_has_sidewalk(way: &OsmWayDataSerializable) -> bool {
         || way.footway == Some("sidewalk".to_string())
 }
 
+/// Checks if the way has a footway
 pub fn way_has_footway(way: &OsmWayDataSerializable) -> bool {
     way.footway
         .as_ref()
         .is_some_and(|s| s != "no" && s != "none")
 }
 
+/// A walkable highway is a normal roadway that is typically low traffic or
+/// low speed.
 pub fn way_has_walkable_highway(way: &OsmWayDataSerializable) -> bool {
     matches!(
         way.highway,

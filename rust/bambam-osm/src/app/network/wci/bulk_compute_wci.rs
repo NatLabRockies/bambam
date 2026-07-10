@@ -1,6 +1,6 @@
 use crate::app::network::wci::compute_wci::compute_wci;
 use crate::app::network::{
-    common::load_way_rtree_entry::load_way_rtree_entries, wci::compute_wci::WCIScoreByComponent,
+    common::load_way_rtree_entry::load_way_rtree_entries, wci::compute_wci::WCIComponentScores,
 };
 use crate::model::osm::graph::OsmNodeDataSerializable;
 use rayon::prelude::*;
@@ -36,8 +36,8 @@ pub fn bulk_compute_wci(
     // so each centroid can be paired with its own way during the WCI calculation
     let rtree = RTree::bulk_load(way_rtree_entries.clone());
 
-    // calculate the WCI score for each way in parallel using the compute_wci function
-    let wci_vec_with_components: Vec<WCIScoreByComponent> = way_rtree_entries
+    // calculate the WCI component scores for each way in parallel using the compute_wci function
+    let wci_vec_with_components: Vec<WCIComponentScores> = way_rtree_entries
         .par_iter()
         .map(|way_entry| {
             compute_wci(

@@ -23,8 +23,7 @@ pub fn cycle_score_from_tag(tag: &CyclewayTag) -> i32 {
     }
 }
 
-/// Computes an inverse-distance-weighted cycleway score from neighboring
-/// ways, so neighbors closer to the center way have more influence.
+/// Computes the cycleway score from neighboring ways
 pub fn cycle_score_from_neighbors(
     entry: &WayRTreeEntry,
     neighboring_ways: &[&WayRTreeEntry],

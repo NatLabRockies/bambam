@@ -7,3 +7,4 @@ mod walk_score;
 pub use bulk_compute_wci::bulk_compute_wci;
 pub use compute_wci::compute_wci;
 pub const MAX_WCI_SCORE: i32 = 9;
+pub const MIN_WCI_SCORE: i32 = -6;

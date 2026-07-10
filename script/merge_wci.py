@@ -1,7 +1,21 @@
-#!/usr/bin/env python3
 """
-Merges wci scores with edge-complete file
+Merges wci scores with edges-complete.csv file
 """
+
+# Usage:
+#   Merge WCI scores with an OSM edges-complete CSV before generating maps:
+#
+#       python merge_wci.py \
+#           --edges edge_complete.csv \
+#           --wci wci_scores.csv \
+#           --output merged_wci.csv
+#
+# The input files must have matching row order and row counts:
+#   - --edges: edge network CSV containing geometry and OSM edge attributes
+#   - --wci: WCI score CSV with columns such as total_score, walk_score,
+#            traffic_speed_score, cycle_score, and traffic_signal_score
+#   - --output: combined CSV used by the WCI mapping script
+
 from __future__ import annotations
 
 import argparse

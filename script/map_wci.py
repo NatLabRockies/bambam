@@ -1,7 +1,13 @@
-#!/usr/bin/env python3
 """Create interactive WCI maps from two edge CSV files."""
-# use merge_wci.py and then this script to develop nice plots of wci scores
-# for your edge network
+
+# Usage:
+#   1. Run merge_wci.py to generate a CSV containing WCI scores and geometry.
+#   2. Generate an interactive map:
+#        python wci_map.py --input merged_wci.csv --output wci_map.html
+#   3. Open the resulting HTML file in a browser to explore WCI scores.
+#
+# The input CSV must contain a 'linestring' WKT geometry column and WCI fields
+# such as wci_total, wci_walk, wci_speed, wci_cycle, and wci_signal.
 
 from __future__ import annotations
 
@@ -13,7 +19,7 @@ import pandas as pd
 
 
 def load_wci_gdf(path: Path) -> gpd.GeoDataFrame:
-    """Load an edges CSV containing WKT linestring geometry."""
+    """Load an OSM edges CSV containing WKT linestring geometry."""
     df = pd.read_csv(path)
 
     if "linestring" not in df.columns:

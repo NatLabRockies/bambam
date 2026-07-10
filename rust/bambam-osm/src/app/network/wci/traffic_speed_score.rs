@@ -2,6 +2,10 @@ use geo::{Distance, Euclidean};
 
 use crate::app::network::common::way_rtree_entry::WayRTreeEntry;
 
+/// Computes the traffic speed score for a way.
+///
+/// If the way does not have a speed limit sign, we perform a nearest neighbor search
+/// with the RTree and use neighboring ways to compute a weighted score.
 pub fn compute_traffic_speed_score(entry: &WayRTreeEntry, neighbors: &Vec<&WayRTreeEntry>) -> i32 {
     traffic_speed_from_maxspeed(entry)
         .map(|speed_mph| score_from_speed(speed_mph.round() as i32))
@@ -35,6 +39,8 @@ pub fn traffic_speed_from_maxspeed(entry: &WayRTreeEntry) -> Option<f32> {
     }
 }
 
+/// Computes a weighted traffic speed score from nearby ways if the
+/// way of interest does not have a speed limit
 pub fn traffic_speed_score_from_neighbors(
     entry: &WayRTreeEntry,
     neighboring_ways: &Vec<&WayRTreeEntry>,
