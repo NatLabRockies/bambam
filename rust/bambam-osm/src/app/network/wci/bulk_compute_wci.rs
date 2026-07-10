@@ -1,5 +1,7 @@
-use crate::app::network::common::load_way_rtree_entry::load_way_rtree_entries;
 use crate::app::network::wci::compute_wci::compute_wci;
+use crate::app::network::{
+    common::load_way_rtree_entry::load_way_rtree_entries, wci::compute_wci::WCIScoreByComponent,
+};
 use crate::model::osm::graph::OsmNodeDataSerializable;
 use rayon::prelude::*;
 use routee_compass_core::util::fs::read_utils;
@@ -35,7 +37,7 @@ pub fn bulk_compute_wci(
     let rtree = RTree::bulk_load(way_rtree_entries.clone());
 
     // calculate the WCI score for each way in parallel using the compute_wci function
-    let wci_vec: Vec<Option<i32>> = way_rtree_entries
+    let wci_vec_with_components: Vec<WCIScoreByComponent> = way_rtree_entries
         .par_iter()
         .map(|way_entry| {
             compute_wci(
@@ -50,11 +52,21 @@ pub fn bulk_compute_wci(
 
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);
-    for wci in wci_vec {
-        match wci {
-            Some(v) => writeln!(writer, "{v}")?,
-            None => writeln!(writer, "NA")?, // i don't love this. this is when an edge is unwalkable. thoughts @RJF?
-        }
+    // write header
+    writeln!(writer, "wci_total,wci_walk,wci_speed,wci_cycle,wci_signal")?;
+    // write values
+    for wci in &wci_vec_with_components {
+        writeln!(
+            writer,
+            "{},{},{},{},{}",
+            wci.total_score,
+            wci.walk_score.map_or(String::new(), |v| v.to_string()),
+            wci.traffic_speed_score
+                .map_or(String::new(), |v| v.to_string()),
+            wci.cycle_score.map_or(String::new(), |v| v.to_string()),
+            wci.traffic_signal_score
+                .map_or(String::new(), |v| v.to_string()),
+        )?;
     }
     writer.flush()?;
 

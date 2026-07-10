@@ -29,34 +29,31 @@ pub fn cycle_score_from_neighbors(
     entry: &WayRTreeEntry,
     neighboring_ways: &[&WayRTreeEntry],
 ) -> i32 {
-    // Guards against division by zero for coincident centroids.
-    const EPSILON: f32 = 1e-6;
     const NO_CYCLEWAY_FOUND_SCORE: i32 = -2;
-    // (score, weight) for each neighbor that actually has a cycleway tag
-    let scored: Vec<(i32, f32)> = neighboring_ways
-        .iter()
-        .filter_map(|neighbor| {
-            // grab the neighbor's cycleway attribute
-            let tag = neighbor.way.cycleway.as_ref()?;
 
-            // create the score from this neighbor's cycleway spec
-            let score = cycle_score_from_tag(&CyclewayTag::new(tag));
+    // NOTE (old-pipeline parity): the denominator sums distances over ALL
+    // neighbors, tagged or not, so weights don't sum to 1 and the result is
+    // attenuated toward 0. Farther neighbors also weigh MORE (direct, not
+    // inverse, distance weighting). Both quirks are inherited deliberately.
+    let mut total_distance: f32 = 0.0;
+    let mut scored: Vec<(i32, f32)> = Vec::new();
 
-            // compute distance from the centroid to the neighbor.
-            let distance = Euclidean.distance(entry.centroid, neighbor.centroid);
+    for neighbor in neighboring_ways {
+        let distance = Euclidean.distance(entry.centroid, neighbor.centroid);
+        total_distance += distance;
+        if let Some(tag) = neighbor.way.cycleway.as_ref() {
+            scored.push((cycle_score_from_tag(&CyclewayTag::new(tag)), distance));
+        }
+    }
 
-            // inverse of distance weights closer weighs higher.
-            let weight = 1.0 / (distance + EPSILON);
-            Some((score, weight))
-        })
-        .collect();
-
-    if scored.is_empty() {
+    if scored.is_empty() || total_distance == 0.0 {
         return NO_CYCLEWAY_FOUND_SCORE;
     }
 
-    let total_weight: f32 = scored.iter().map(|&(_, w)| w).sum();
-    let weighted_score: f32 = scored.iter().map(|&(s, w)| s as f32 * w).sum::<f32>() / total_weight;
+    let weighted: f32 = scored
+        .iter()
+        .map(|&(score, d)| score as f32 * (d / total_distance))
+        .sum();
 
-    weighted_score.round() as i32
+    weighted as i32 // truncation, matching the old `result_cycle as i32`
 }

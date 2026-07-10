@@ -13,4 +13,5 @@ uv.lock
 configuration/test_gtfs_config_boulder_gtfs.toml
 denver_*
 boulder_*
+san_francisco_*
 out/

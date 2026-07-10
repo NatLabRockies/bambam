@@ -2,53 +2,76 @@ use crate::{
     app::network::{
         common::{way_ops::find_neighboring_ways, way_rtree_entry::WayRTreeEntry},
         wci::{
-            cycle_score::compute_cycle_score, traffic_speed_score::compute_traffic_speed_score,
-            wci_ops::*,
+            cycle_score::compute_cycle_score,
+            traffic_signal_score::compute_traffic_signal_score,
+            traffic_speed_score::compute_traffic_speed_score,
+            walk_score::{
+                compute_walk_score, way_has_footway, way_has_sidewalk, way_is_walk_eligible,
+            },
         },
     },
     model::osm::graph::OsmNodeDataSerializable,
 };
 use rstar::RTree;
 
-/// Computes the WCI score for a given way (as WayRTreeEntry), the way's source node,
-/// and the R-tree of all ways in the network.
+const MIN_WCI_SCORE: i32 = -6;
+const MAX_WCI_SCORE: i32 = 9;
+/// Computes the walking comfort index (WCI) score for a given way (as WayRTreeEntry),
+/// the way's source node, and the R-tree of all ways in the network.
+
+pub struct WCIScoreByComponent {
+    pub walk_score: Option<i32>,
+    pub traffic_speed_score: Option<i32>,
+    pub cycle_score: Option<i32>,
+    pub traffic_signal_score: Option<i32>,
+    pub total_score: i32,
+}
+
 pub fn compute_wci(
     rtree: &RTree<WayRTreeEntry>,
     entry: &WayRTreeEntry,
     src_node: &OsmNodeDataSerializable,
-) -> Option<i32> {
+) -> WCIScoreByComponent {
     let way_is_walk_eligible = way_is_walk_eligible(rtree, entry);
 
-    // Return the worst WCI score if the way is not eligible for walking
-    // The worst WCI score is:
-    // -2 (speed limit 50+ mph) +
-    // -2 (no cycleway nor signage) +
-    // -2 (no sidewalks) +
-    // 0 (no traffic signals or stop signs)
+    let neighboring_ways = find_neighboring_ways(entry, rtree);
+
     if !way_is_walk_eligible {
-        return Some(-6);
-    }
-
-    let sidewalk_score = match &entry.way.sidewalk {
-        Some(_) => 2,
-        None => -2,
-    };
-
-    let neighboring_ways = find_neighboring_ways(rtree, &entry.centroid);
-
-    let cycle_score = compute_cycle_score(entry, &neighboring_ways);
-
-    let speed_score = compute_traffic_speed_score(entry, &neighboring_ways);
-
-    let signal_or_stop_score: i32;
-
-    if src_node.has_traffic_light() {
-        signal_or_stop_score = 2;
-    } else if src_node.has_stop_sign() {
-        signal_or_stop_score = 1;
+        // Min WCI score (the way is not eligible for walking)
+        return WCIScoreByComponent {
+            total_score: MIN_WCI_SCORE,
+            walk_score: None,
+            traffic_speed_score: None,
+            cycle_score: None,
+            traffic_signal_score: None,
+        };
+    } else if way_has_footway(&entry.way)
+        || (neighboring_ways.is_empty() && way_has_sidewalk(&entry.way))
+    {
+        // Max WCI score (walking path away from roads)
+        return WCIScoreByComponent {
+            total_score: MAX_WCI_SCORE,
+            walk_score: None,
+            traffic_speed_score: None,
+            cycle_score: None,
+            traffic_signal_score: None,
+        };
     } else {
-        signal_or_stop_score = 0;
-    }
+        let walk_score = compute_walk_score(&entry.way);
 
-    Some(cycle_score + speed_score + sidewalk_score + signal_or_stop_score)
+        let cycle_score = compute_cycle_score(entry, &neighboring_ways);
+
+        let traffic_speed_score = compute_traffic_speed_score(entry, &neighboring_ways);
+
+        let traffic_signal_score = compute_traffic_signal_score(&src_node);
+
+        // component score
+        WCIScoreByComponent {
+            total_score: walk_score + traffic_speed_score + cycle_score + traffic_signal_score,
+            walk_score: Some(walk_score),
+            traffic_speed_score: Some(traffic_speed_score),
+            cycle_score: Some(cycle_score),
+            traffic_signal_score: Some(traffic_signal_score),
+        }
+    }
 }
