@@ -20,11 +20,11 @@ const MAX_WCI_SCORE: i32 = 9;
 /// the way's source node, and the R-tree of all ways in the network.
 
 pub struct WCIScoreByComponent {
+    pub total_score: i32,
     pub walk_score: Option<i32>,
     pub traffic_speed_score: Option<i32>,
     pub cycle_score: Option<i32>,
     pub traffic_signal_score: Option<i32>,
-    pub total_score: i32,
 }
 
 pub fn compute_wci(
