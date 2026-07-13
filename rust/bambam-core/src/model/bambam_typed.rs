@@ -37,13 +37,14 @@
 
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::model::cost::TraversalCost;
 use serde_json::{json, Value};
 
 use crate::model::{
     bambam_field,
-    destination::{BinningConfig, DestinationPredicate},
+    destination::{BinningConfig, DestinationFilter, DestinationPredicate},
     output_plugin::{
         isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
         opportunity::{OpportunityFormat, OpportunityOrientation},
@@ -116,6 +117,26 @@ impl<'a> BambamOutputRow<'a> {
     ) -> Result<(), OutputPluginError> {
         set_field(self.0, bambam_field::OPPORTUNITY_TOTALS, totals)
     }
+
+    /// grabs any destination filters from both two places:
+    ///  - info section (set via the config file)
+    ///  - request section (set via the search query)
+    pub fn get_destination_filter(&self) -> Result<Option<DestinationFilter>, OutputPluginError> {
+        let info = self.info_ref()?;
+        let info_filter = info.get_config_destination_predicates()?;
+        let req = self.request()?;
+        let req_filter: Option<Vec<DestinationPredicate>> =
+            get_field_opt(req.0, bambam_field::DESTINATION_FILTER)?;
+        match (info_filter, req_filter) {
+            (None, None) => Ok(None),
+            (None, Some(preds)) => Ok(Some(DestinationFilter(preds))),
+            (Some(preds), None) => Ok(Some(DestinationFilter(preds))),
+            (Some(preds_config), Some(preds_query)) => {
+                let preds = preds_config.into_iter().chain(preds_query).collect_vec();
+                Ok(Some(DestinationFilter(preds)))
+            }
+        }
+    }
 }
 
 // ─── request section ──────────────────────────────────────────────────────────
@@ -152,7 +173,8 @@ impl<'a> InfoSectionRef<'a> {
         get_field_opt(self.0, bambam_field::BIN_RANGE)
     }
 
-    pub fn get_destination_filter(
+    /// gets any destination predicates set on the BAMBAM config.
+    pub fn get_config_destination_predicates(
         &self,
     ) -> Result<Option<Vec<DestinationPredicate>>, OutputPluginError> {
         get_field_opt(self.0, bambam_field::DESTINATION_FILTER)
@@ -541,7 +563,7 @@ mod tests {
         let info = row.info_ref().unwrap();
         assert!(info.get_activity_types().unwrap().is_none());
         assert!(info.get_bin_range().unwrap().is_none());
-        assert!(info.get_destination_filter().unwrap().is_none());
+        assert!(info.get_config_destination_predicates().unwrap().is_none());
         assert!(info.get_opportunity_format().unwrap().is_none());
         assert!(info.get_opportunity_orientation().unwrap().is_none());
         assert!(info.get_geometry_model().unwrap().is_none());

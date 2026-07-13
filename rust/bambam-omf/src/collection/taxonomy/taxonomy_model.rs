@@ -113,9 +113,10 @@ impl TaxonomyModel {
                         Ok::<bool, OvertureMapsCollectionError>(
                             self.group_mappings
                                 .get(group)
-                                .ok_or(OvertureMapsCollectionError::GroupMappingError(format!(
-                                    "Group {group} was not found in mapping"
-                                )))?
+                                .ok_or(OvertureMapsCollectionError::GroupMappingError(
+                                    group.clone(),
+                                    self.group_mappings.keys().cloned().collect(),
+                                ))?
                                 .contains(category),
                         )
                     })

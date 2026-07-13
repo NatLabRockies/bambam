@@ -106,7 +106,7 @@ pub fn process_gtfs_flex_bundle(
     out_directory_path: &Path,
     date_requested: &str,
 ) -> Result<(), GtfsFlexError> {
-    println!("=== Processing GTFS-Flex bundle ===");
+    log::info!("=== Processing GTFS-Flex bundle ===");
 
     // discover gtfs-flex feeds
     discover_gtfs_flex_feeds(flex_directory_path)?;
@@ -116,7 +116,7 @@ pub fn process_gtfs_flex_bundle(
 
     gtfs_flex_dataset.write(out_directory_path)?;
 
-    println!("=== GTFS-Flex processing complete ===");
+    log::info!("=== GTFS-Flex processing complete ===");
     Ok(())
 }
 
@@ -132,7 +132,7 @@ pub fn discover_gtfs_flex_feeds(flex_directory_path: &Path) -> Result<(), GtfsFl
         error,
     })?;
 
-    println!("Found zip files in {:?}:", flex_directory_path);
+    log::info!("Found zip files in {:?}:", flex_directory_path);
 
     let mut count = 0;
     for entry in entries {
@@ -144,13 +144,13 @@ pub fn discover_gtfs_flex_feeds(flex_directory_path: &Path) -> Result<(), GtfsFl
 
         if path.is_file() && path.extension().is_some_and(|e| e == "zip") {
             if let Some(name) = path.file_name() {
-                println!("      {}", name.to_string_lossy());
+                log::info!("      {}", name.to_string_lossy());
                 count += 1;
             }
         }
     }
 
-    println!("Total GTFS-flex feeds found: {}", count);
+    log::info!("Total GTFS-flex feeds found: {}", count);
 
     Ok(())
 }
@@ -161,7 +161,7 @@ pub fn process_flex_files(
     flex_directory_path: &Path,
     date_requested: &str,
 ) -> Result<GtfsFlexDataset, GtfsFlexError> {
-    println!("Processing GTFS-Flex feeds in {:?}", flex_directory_path);
+    log::info!("Processing GTFS-Flex feeds in {:?}", flex_directory_path);
 
     let iter = std::fs::read_dir(flex_directory_path).map_err(|error| GtfsFlexError::Io {
         path: flex_directory_path.to_path_buf(),
@@ -178,14 +178,14 @@ pub fn process_flex_files(
         let path = entry.path();
 
         if path.is_file() && path.extension().is_some_and(|e| e == "zip") {
-            println!("  Processing {:?}", path);
-
             // extract feed name
             let feed_name = path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown_feed")
                 .to_string();
+
+            log::info!("Processing feed {feed_name} in file {:?}", path);
 
             // load GTFS
             let gtfs = Gtfs::from_path(&path).map_err(|error| GtfsFlexError::GtfsRead {
@@ -195,11 +195,15 @@ pub fn process_flex_files(
 
             // process files for requested date and time and get valid zones
             let archive_dataset = process_archive(&gtfs, date_requested, &feed_name, idx)?;
+            log::info!(
+                "BAMBAM dataset created with {} records",
+                archive_dataset.records.len()
+            );
             dataset.extend(archive_dataset);
         }
     }
 
-    println!("GTFS-Flex feeds processed!");
+    log::info!("GTFS-Flex feeds processed!");
 
     Ok(dataset)
 }
@@ -217,7 +221,7 @@ pub fn process_archive(
         GtfsFlexError::Runtime(msg)
     })?;
 
-    println!("          requested date: {:?}", date);
+    log::info!("requested date: {:?}", date);
 
     // filter calendar for the requested date
     let weekday = match date.weekday() {
@@ -229,7 +233,7 @@ pub fn process_archive(
         chrono::Weekday::Sat => |c: &Calendar| c.saturday,
         chrono::Weekday::Sun => |c: &Calendar| c.sunday,
     };
-    println!("          requested day: {:?}", date.weekday());
+    log::info!("requested day: {:?}", date.weekday());
 
     let active_service_ids: Vec<&str> = gtfs
         .calendar
@@ -238,7 +242,10 @@ pub fn process_archive(
         .map(|c| c.id.as_str())
         .collect();
 
-    // println!("          active service_ids: {:?}", active_service_ids);
+    log::info!(
+        "ServiceIds active on date {date_requested}: [{}]",
+        active_service_ids.join(", ")
+    );
 
     // 1. Map route_id -> agency_id (fallback to archive_idx if missing)
     // at the end, route_to_agency contains ALL AgencyIds referenced by
@@ -327,9 +334,12 @@ pub fn process_archive(
                     geometry: wkt_str,
                 });
             }
+            [_src, _dst] => {
+                log::debug!("GTFS-Flex Trip {} has 2 StopTime entries but not valid_flex_trip_stops, skipping.", trip.id)
+            }
             other => {
                 log::warn!(
-                    "GTFS-Flex Trip {} has {} StopTime entries, assumed should always be 2",
+                    "GTFS-Flex Trip {} has {} StopTime entries, assumed should always be 2.",
                     trip.id,
                     other.len()
                 );

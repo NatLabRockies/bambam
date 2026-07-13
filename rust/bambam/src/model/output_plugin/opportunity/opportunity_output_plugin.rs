@@ -45,7 +45,11 @@ impl OutputPlugin for OpportunityOutputPlugin {
                 match format {
                     OpportunityFormat::Aggregate => {
                         // no matches found. inject zeroed-out opportunity data into the row.
-                        no_aggregate_opportunities(&mut row, &self.model.activity_types())?;
+                        no_aggregate_opportunities(
+                            &mut row,
+                            &self.model.activity_types(),
+                            &self.totals,
+                        )?;
                         return Ok(());
                     }
                     OpportunityFormat::Disaggregate => {
@@ -63,10 +67,7 @@ impl OutputPlugin for OpportunityOutputPlugin {
         row.set_opportunity_totals(&self.totals)?;
 
         // read destination filter from the row info
-        let filter = row
-            .info_ref()?
-            .get_destination_filter()?
-            .map(DestinationFilter);
+        let filter = row.get_destination_filter()?;
 
         match format {
             OpportunityFormat::Aggregate => {
@@ -139,7 +140,10 @@ fn process_disaggregate_opportunities(
 fn no_aggregate_opportunities(
     row: &mut BambamOutputRow<'_>,
     activity_types: &[String],
+    opportunity_totals: &HashMap<String, f64>,
 ) -> Result<(), OutputPluginError> {
+    row.set_opportunity_totals(opportunity_totals)?;
+
     let bin_config = row.info_ref()?.get_bin_range()?.ok_or_else(|| {
         OutputPluginError::OutputPluginFailed(
             "row with aggregate opportunities has no bin range config".to_string(),
