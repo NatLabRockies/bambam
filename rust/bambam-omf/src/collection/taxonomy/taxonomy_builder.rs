@@ -58,7 +58,7 @@ impl TaxonomyModelBuilder {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct TaxonomyCSVRecord {
     #[serde(rename = "Category code")]
     category: String,

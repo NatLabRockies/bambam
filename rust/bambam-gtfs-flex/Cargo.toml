@@ -12,6 +12,7 @@ bambam-core = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 csv = { workspace = true }
+env_logger = { workspace = true }
 flate2 = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }

@@ -30,8 +30,8 @@ pub enum OvertureMapsCollectionError {
     PredicateColumnNotFoundError(String),
     #[error("Error creating a runtime to handle async code: {0}")]
     TokioError(String),
-    #[error("Group Mapping operation Failed: {0}")]
-    GroupMappingError(String),
+    #[error("Group Mapping operation Failed, key '{0}' not found in mapping, found {1:?}")]
+    GroupMappingError(String, Vec<String>),
     #[error("Processing records into opportunities failed: {0}")]
     ProcessingError(String),
     #[error("Serializing record into compass format failed: {0}")]
