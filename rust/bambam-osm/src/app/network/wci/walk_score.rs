@@ -9,7 +9,7 @@ use rstar::RTree;
 /// Args:
 /// - way: the OsmWayDataSerializable to compute the score for
 pub fn compute_walk_score(way: &OsmWayDataSerializable) -> i32 {
-    if way_has_sidewalk(way) || way_has_footway(way) {
+    if way_is_sidewalk(way) || way_is_footway(way) {
         2
     } else {
         -2
@@ -20,13 +20,13 @@ pub fn compute_walk_score(way: &OsmWayDataSerializable) -> i32 {
 /// Args:
 /// - way: the OsmWayDataSerializable to check
 fn is_walkable(way: &OsmWayDataSerializable) -> bool {
-    let valid_sidewalk = way_has_sidewalk(way);
+    let is_sidewalk = way_is_sidewalk(way);
 
-    let valid_footway = way_has_footway(way);
+    let is_footway = way_is_footway(way);
 
-    let walkable_highway = way_has_walkable_highway(way);
+    let is_walkable_highway = way_is_walkable_highway(way);
 
-    valid_sidewalk || valid_footway || walkable_highway
+    is_sidewalk || is_footway || is_walkable_highway
 }
 
 /// Determines if the way is walk-eligible based on it's OSM attributes.
@@ -39,19 +39,19 @@ pub fn way_is_walk_eligible(rtree: &RTree<WayRTreeEntry>, entry: &WayRTreeEntry)
     is_walkable(&entry.way) // check the way itself
         || rtree // check neighboring ways
             .locate_within_distance([entry.centroid.x(), entry.centroid.y()], MIN_DISTANCE_RTREE_NEIGHBOR)
-            .any(|neighbor| way_has_sidewalk(&neighbor.way))
+            .any(|neighbor| way_is_sidewalk(&neighbor.way))
 }
 
-// Checks if the way has a sidewalk
-pub fn way_has_sidewalk(way: &OsmWayDataSerializable) -> bool {
+// Checks if the way is a sidewalk
+pub fn way_is_sidewalk(way: &OsmWayDataSerializable) -> bool {
     way.sidewalk
         .as_ref()
         .is_some_and(|s| s != "no" && s != "none")
         || way.footway == Some("sidewalk".to_string())
 }
 
-/// Checks if the way has a footway
-pub fn way_has_footway(way: &OsmWayDataSerializable) -> bool {
+/// Checks if the way is a footway
+pub fn way_is_footway(way: &OsmWayDataSerializable) -> bool {
     way.footway
         .as_ref()
         .is_some_and(|s| s != "no" && s != "none")
@@ -59,7 +59,7 @@ pub fn way_has_footway(way: &OsmWayDataSerializable) -> bool {
 
 /// A walkable highway is a normal roadway that is typically low traffic or
 /// low speed.
-pub fn way_has_walkable_highway(way: &OsmWayDataSerializable) -> bool {
+pub fn way_is_walkable_highway(way: &OsmWayDataSerializable) -> bool {
     matches!(
         way.highway,
         Highway::Residential

@@ -30,10 +30,6 @@ pub fn cycle_score_from_neighbors(
 ) -> i32 {
     const NO_CYCLEWAY_FOUND_SCORE: i32 = -2;
 
-    // NOTE (old-pipeline parity): the denominator sums distances over ALL
-    // neighbors, tagged or not, so weights don't sum to 1 and the result is
-    // attenuated toward 0. Farther neighbors also weigh MORE (direct, not
-    // inverse, distance weighting). Both quirks are inherited deliberately.
     let mut total_distance: f32 = 0.0;
     let mut scored: Vec<(i32, f32)> = Vec::new();
 
@@ -54,5 +50,5 @@ pub fn cycle_score_from_neighbors(
         .map(|&(score, d)| score as f32 * (d / total_distance))
         .sum();
 
-    weighted as i32 // truncation, matching the old `result_cycle as i32`
+    weighted as i32
 }
