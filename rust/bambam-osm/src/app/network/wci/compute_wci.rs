@@ -81,3 +81,27 @@ pub fn compute_wci(
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+
+    #[test]
+    fn test_max_wci() {
+        todo!();
+    }
+    #[test]
+    fn test_min_wci() {
+        // a way has min wci if it has no place to walk (e.g., a primary highway).
+        // inject a fictional way with the appropriate params
+        todo!();
+    }
+    #[test]
+    fn test_positive_wci() {
+        todo!();
+    }
+
+    #[test]
+    fn test_negative_wci() {
+        todo!();
+    }
+}
