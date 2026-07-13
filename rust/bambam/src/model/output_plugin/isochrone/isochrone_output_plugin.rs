@@ -114,7 +114,7 @@ impl<'a> TryFrom<&'a BambamOutputRow<'a>> for GetIsochroneRequest {
     fn try_from(value: &'a BambamOutputRow<'a>) -> Result<Self, Self::Error> {
         let info = value.info_ref()?;
         let format = info.get_opportunity_format()?;
-        let filter = info.get_destination_filter()?.map(DestinationFilter);
+        let filter = value.get_destination_filter()?;
         let geometry_model_config = info
             .get_geometry_model()?
             .ok_or_else(|| missing_expected("info.geometry_model"))?;

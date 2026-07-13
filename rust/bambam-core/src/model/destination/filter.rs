@@ -10,6 +10,7 @@ pub struct DestinationFilter(pub Vec<DestinationPredicate>);
 
 /// additional modifiers to apply when collecting destinations for a bin.
 #[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum DestinationPredicate {
     /// only accept destinations where the provided feature, a boolean value,
     /// is true (or, if negate == true, where the feature is false).
@@ -17,7 +18,7 @@ pub enum DestinationPredicate {
         /// state variable feature to match
         feature: String,
         /// if true, invert the value stored at the feature    
-        negate: bool,
+        negate: Option<bool>,
     },
 }
 
@@ -43,7 +44,7 @@ impl std::fmt::Display for DestinationPredicate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             DestinationPredicate::Boolean { feature, negate } => {
-                if !negate {
+                if !negate.unwrap_or_default() {
                     format!("{feature}=true")
                 } else {
                     format!("{feature}=false")
@@ -68,7 +69,7 @@ impl DestinationPredicate {
                         error: e,
                     }
                 })?;
-                Ok(variable != *negate) // if negate=false, variable should be true, and vice versa
+                Ok(variable != negate.unwrap_or_default()) // if negate=false, variable should be true, and vice versa
             }
         }
     }
@@ -105,7 +106,7 @@ mod tests {
         // When feature is true and negate is false, should return true
         let predicate = DestinationPredicate::Boolean {
             feature: "is_available".to_string(),
-            negate: false,
+            negate: Some(false),
         };
 
         let (state_model, state) = mock(&[("is_available", true)]);
@@ -120,7 +121,7 @@ mod tests {
         // When feature is true and negate is true, should return false
         let predicate = DestinationPredicate::Boolean {
             feature: "is_available".to_string(),
-            negate: true,
+            negate: Some(true),
         };
 
         let (state_model, state) = mock(&[("is_available", true)]);
@@ -135,7 +136,7 @@ mod tests {
         // When feature is false and negate is false, should return false
         let predicate = DestinationPredicate::Boolean {
             feature: "is_available".to_string(),
-            negate: false,
+            negate: Some(false),
         };
 
         let (state_model, state) = mock(&[("is_available", false)]);
@@ -150,7 +151,7 @@ mod tests {
         // When feature is false and negate is true, should return true
         let predicate = DestinationPredicate::Boolean {
             feature: "is_available".to_string(),
-            negate: true,
+            negate: Some(true),
         };
 
         let (state_model, state) = mock(&[("is_available", false)]);
@@ -165,7 +166,7 @@ mod tests {
         // Filter should only check the specified feature and ignore other variables
         let predicate = DestinationPredicate::Boolean {
             feature: "is_available".to_string(),
-            negate: false,
+            negate: Some(false),
         };
         let filter = DestinationFilter(vec![predicate]);
 
@@ -181,11 +182,11 @@ mod tests {
         // Multiple predicates in a filter should all pass for the filter to return true
         let pred1 = DestinationPredicate::Boolean {
             feature: "is_available".to_string(),
-            negate: false,
+            negate: Some(false),
         };
         let pred2 = DestinationPredicate::Boolean {
             feature: "is_active".to_string(),
-            negate: false,
+            negate: Some(false),
         };
         let filter = DestinationFilter(vec![pred1, pred2]);
 
@@ -201,11 +202,11 @@ mod tests {
         // If one predicate fails, the entire filter should fail
         let pred1 = DestinationPredicate::Boolean {
             feature: "is_available".to_string(),
-            negate: false,
+            negate: Some(false),
         };
         let pred2 = DestinationPredicate::Boolean {
             feature: "is_active".to_string(),
-            negate: false,
+            negate: Some(false),
         };
         let filter = DestinationFilter(vec![pred1, pred2]);
 

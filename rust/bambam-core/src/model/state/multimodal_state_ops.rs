@@ -97,10 +97,14 @@ pub fn contains_leg(
     state: &[StateVariable],
     leg_idx: LegIdx,
     state_model: &StateModel,
+    max_trip_legs: NonZeroU64,
 ) -> Result<bool, StateModelError> {
+    if leg_idx >= max_trip_legs.get() {
+        return Ok(false);
+    }
     let name = fieldname::leg_mode_fieldname(leg_idx);
     let label = state_model.get_custom_i64(state, &name)?;
-    Ok(label >= 0)
+    Ok(label > -1)
 }
 
 /// get the travel mode for a leg.
@@ -110,7 +114,10 @@ pub fn get_leg_mode_label(
     state_model: &StateModel,
     max_trip_legs: NonZeroU64,
 ) -> Result<Option<i64>, StateModelError> {
-    validate_leg_idx(leg_idx, max_trip_legs)?;
+    validate_leg_idx(leg_idx, max_trip_legs).map_err(|e| {
+        let msg = format!("while getting leg mode label, found requested leg idx is invalid: {e}");
+        StateModelError::RuntimeError(msg)
+    })?;
     let name = fieldname::leg_mode_fieldname(leg_idx);
     let label = state_model.get_custom_i64(state, &name)?;
     if label < 0 {
@@ -129,7 +136,11 @@ pub fn get_existing_leg_mode<'a>(
     max_trip_legs: NonZeroU64,
     mode_to_state: &'a CategoricalStateMapping,
 ) -> Result<&'a str, StateModelError> {
-    let label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
+    let label_opt =
+        get_leg_mode_label(state, leg_idx, state_model, max_trip_legs).map_err(|e| {
+            let msg = format!("while getting existing leg mode, error getting the mode label: {e}");
+            StateModelError::RuntimeError(msg)
+        })?;
     match label_opt {
         None => Err(StateModelError::RuntimeError(format!(
             "Internal Error: get_leg_mode called on leg idx {leg_idx} but mode label is not set"
@@ -212,7 +223,13 @@ pub fn get_mode_label_sequence(
     let mut labels: Vec<i64> = vec![];
 
     for leg_idx in 0..max_trip_legs.get() {
-        let mode_label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)?;
+        let mode_label_opt = get_leg_mode_label(state, leg_idx, state_model, max_trip_legs)
+            .map_err(|e| {
+                let msg = format!(
+                    "while getting model label sequence, failed to get mode label for index: {e}"
+                );
+                StateModelError::RuntimeError(msg)
+            })?;
         match mode_label_opt {
             None => break,
             Some(mode_label) => {
@@ -234,12 +251,14 @@ pub fn get_mode_sequence(
 ) -> Result<Vec<String>, StateModelError> {
     let mut modes: Vec<String> = vec![];
     let mut leg_idx = 0;
-    while contains_leg(state, leg_idx, state_model)? {
+
+    while contains_leg(state, leg_idx, state_model, max_trip_legs)? {
         let mode =
             get_existing_leg_mode(state, leg_idx, state_model, max_trip_legs, mode_to_state)?;
         modes.push(mode.to_string());
         leg_idx += 1;
     }
+
     Ok(modes)
 }
 
@@ -256,7 +275,10 @@ pub fn increment_active_leg_idx(
     let next_leg_idx_u64 = match get_active_leg_idx(state, state_model)? {
         Some(leg_idx) => {
             let next = leg_idx + 1;
-            validate_leg_idx(next, max_trip_legs)?;
+            validate_leg_idx(next, max_trip_legs).map_err(|e| {
+                let msg = format!("while incrementing active leg idx, next index is invalid: {e}");
+                StateModelError::RuntimeError(msg)
+            })?;
             next
         }
         None => 0,
