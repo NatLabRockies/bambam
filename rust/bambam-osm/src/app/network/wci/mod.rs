@@ -1,10 +1,8 @@
 mod bulk_compute_wci;
 mod compute_wci;
-mod cycle_score;
-mod traffic_signal_score;
-mod traffic_speed_score;
-mod walk_score;
+mod ops;
+mod wci_score;
 pub use bulk_compute_wci::bulk_compute_wci;
 pub use compute_wci::compute_wci;
-pub const MAX_WCI_SCORE: i32 = 9;
-pub const MIN_WCI_SCORE: i32 = -6;
+pub use wci_score::WciScore;
+const NO_CYCLEWAY_FOUND_SCORE: i32 = -2; // If there is no cycleway found for a way, cycle component of WCI.

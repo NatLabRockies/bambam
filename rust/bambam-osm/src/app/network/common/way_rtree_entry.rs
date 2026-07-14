@@ -40,7 +40,6 @@ impl WayRTreeEntry {
     }
 }
 
-/// Implement the `RTreeObject` trait for `WayRTreeEntry` so that it can be used in an R-tree.
 impl RTreeObject for WayRTreeEntry {
     type Envelope = AABB<[f32; 2]>; // Envelope should be the same type as the bbox of WayRTreeEntry
     fn envelope(&self) -> Self::Envelope {
@@ -48,9 +47,6 @@ impl RTreeObject for WayRTreeEntry {
     }
 }
 
-/// Implement the `PointDistance` trait for `WayRTreeEntry` so that we can compute the distance
-/// from a point to the way's linestring. This is used in spatial queries to find
-/// the nearest way to a given point (or the nearest ways in a radius).
 impl PointDistance for WayRTreeEntry {
     // NOTE: The PointDistance trait for WayRTreeEntry uses euclidean distance.
     // We may want to consider using haversine distance since we are working with geographic coordinates.

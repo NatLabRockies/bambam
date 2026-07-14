@@ -1,34 +1,40 @@
-use super::{MAX_WCI_SCORE, MIN_WCI_SCORE};
 use crate::{
     app::network::{
-        common::{way_ops::find_neighboring_ways, way_rtree_entry::WayRTreeEntry},
+        common::{ops::find_neighboring_ways, way_rtree_entry::WayRTreeEntry},
         wci::{
-            cycle_score::compute_cycle_score,
-            traffic_signal_score::compute_traffic_signal_score,
-            traffic_speed_score::compute_traffic_speed_score,
-            walk_score::{
-                compute_walk_score, way_is_footway, way_is_sidewalk, way_is_walk_eligible,
-            },
+            ops::*,
+            wci_score::{WciError, WciScore, MAX_WCI_SCORE, MIN_WCI_SCORE},
         },
     },
     model::osm::graph::OsmNodeDataSerializable,
 };
 use rstar::RTree;
 
-/// These are the WCI scores, including total
+/// The Walking Comfort Index (WCI) scores for a way, including total score
 /// and all components that went into the score.
-///
-/// Note:
-///
-/// If all of the component scores are zero but the total score
-/// is not, this means the way was either chosen to have the max
-/// WCI score (super walkable), or the min WCI score (unwalkable)
-pub struct WCIComponentScores {
-    pub total_score: i32,
-    pub walk_score: Option<i32>,
-    pub traffic_speed_score: Option<i32>,
-    pub cycle_score: Option<i32>,
-    pub traffic_signal_score: Option<i32>,
+#[derive(Default)]
+pub struct WciComponentScores {
+    pub total_score: WciScore,
+    pub walkability_score: Option<WciScore>,
+    pub traffic_speed_score: Option<WciScore>,
+    pub cycleway_score: Option<WciScore>,
+    pub traffic_signal_score: Option<WciScore>,
+}
+
+impl WciComponentScores {
+    pub fn min_wci_score() -> Result<Self, WciError> {
+        Ok(Self {
+            total_score: WciScore::new(MIN_WCI_SCORE)?,
+            ..Default::default()
+        })
+    }
+
+    pub fn max_wci_score() -> Result<Self, WciError> {
+        Ok(Self {
+            total_score: WciScore::new(MAX_WCI_SCORE)?,
+            ..Default::default()
+        })
+    }
 }
 
 /// Computes the walking comfort index (WCI) score for a given way (as WayRTreeEntry),
@@ -37,48 +43,39 @@ pub fn compute_wci(
     rtree: &RTree<WayRTreeEntry>,
     entry: &WayRTreeEntry,
     src_node: &OsmNodeDataSerializable,
-) -> WCIComponentScores {
+) -> Result<WciComponentScores, WciError> {
     let way_is_walk_eligible = way_is_walk_eligible(rtree, entry);
 
     let neighboring_ways = find_neighboring_ways(entry, rtree);
 
     if !way_is_walk_eligible {
-        // Min WCI score (the way is not eligible for walking)
-        WCIComponentScores {
-            total_score: MIN_WCI_SCORE,
-            walk_score: None,
-            traffic_speed_score: None,
-            cycle_score: None,
-            traffic_signal_score: None,
-        }
+        // Total WCI score = Min WCI score (unwalkable roadway)
+        WciComponentScores::min_wci_score()
     } else if way_is_footway(&entry.way)
         || (neighboring_ways.is_empty() && way_is_sidewalk(&entry.way))
     {
-        // Max WCI score (walking path away from roads)
-        WCIComponentScores {
-            total_score: MAX_WCI_SCORE,
-            walk_score: None,
-            traffic_speed_score: None,
-            cycle_score: None,
-            traffic_signal_score: None,
-        }
+        // Total WCI score = Max WCI score (footway or sidewalk with no adjacent ways)
+        WciComponentScores::max_wci_score()
     } else {
-        let walk_score = compute_walk_score(&entry.way);
+        let walkability_score = WciScore::walkability_score(&entry.way);
 
-        let cycle_score = compute_cycle_score(entry, &neighboring_ways);
+        let cycleway_score = WciScore::cycleway_score(entry, &neighboring_ways);
 
-        let traffic_speed_score = compute_traffic_speed_score(entry, &neighboring_ways);
+        let traffic_speed_score = WciScore::traffic_speed_score(entry, &neighboring_ways);
 
-        let traffic_signal_score = compute_traffic_signal_score(src_node);
+        let traffic_signal_score = WciScore::traffic_signal_score(src_node);
 
-        // component score
-        WCIComponentScores {
-            total_score: walk_score + traffic_speed_score + cycle_score + traffic_signal_score,
-            walk_score: Some(walk_score),
+        // Total = Sum of WCI component scores
+        Ok(WciComponentScores {
+            total_score: &walkability_score
+                + &traffic_speed_score
+                + &cycleway_score
+                + &traffic_signal_score,
+            walkability_score: Some(walkability_score),
             traffic_speed_score: Some(traffic_speed_score),
-            cycle_score: Some(cycle_score),
+            cycleway_score: Some(cycleway_score),
             traffic_signal_score: Some(traffic_signal_score),
-        }
+        })
     }
 }
 
@@ -88,7 +85,10 @@ mod test {
     use crate::{
         app::network::{
             common::way_rtree_entry::WayRTreeEntry,
-            wci::{compute_wci::WCIComponentScores, MAX_WCI_SCORE, MIN_WCI_SCORE},
+            wci::{
+                compute_wci::WciComponentScores, wci_score::MAX_WCI_SCORE,
+                wci_score::MIN_WCI_SCORE, WciScore,
+            },
         },
         model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable},
     };
@@ -123,8 +123,8 @@ mod test {
         let entry = WayRTreeEntry::new(way).unwrap();
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
-        let score: WCIComponentScores = compute_wci(&rtree, &entry, &src_vertex);
-        assert_eq!(score.total_score, MIN_WCI_SCORE);
+        let score: WciComponentScores = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        assert_eq!(score.total_score, WciScore::new(MIN_WCI_SCORE).unwrap());
     }
 
     /// A footway gives the max WCI score.
@@ -156,8 +156,8 @@ mod test {
         let entry = WayRTreeEntry::new(way).unwrap();
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
-        let score: WCIComponentScores = compute_wci(&rtree, &entry, &src_vertex);
-        assert_eq!(score.total_score, MAX_WCI_SCORE);
+        let score: WciComponentScores = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        assert_eq!(score.total_score, WciScore::new(MAX_WCI_SCORE).unwrap());
     }
 
     // a residential roadway with speed limit 25mph, a shared-lane
@@ -192,12 +192,12 @@ mod test {
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
         // compute wci for the residential highway with nearby sidewalk
-        let score: WCIComponentScores = compute_wci(&rtree, &entry, &src_vertex);
-        assert_eq!(score.traffic_speed_score, Some(2));
-        assert_eq!(score.traffic_signal_score, Some(1));
-        assert_eq!(score.cycle_score, Some(0));
-        assert_eq!(score.walk_score, Some(-2));
-        assert!(score.total_score > 0)
+        let score: WciComponentScores = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        assert_eq!(score.traffic_speed_score, Some(WciScore::new(2).unwrap()));
+        assert_eq!(score.traffic_signal_score, Some(WciScore::new(1).unwrap()));
+        assert_eq!(score.cycleway_score, Some(WciScore::new(0).unwrap()));
+        assert_eq!(score.walkability_score, Some(WciScore::new(-2).unwrap()));
+        assert!(score.total_score > WciScore::new(0).unwrap());
     }
 
     // A residential highway with speed limit 45 mph and a stop sign at the source node
@@ -231,13 +231,13 @@ mod test {
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
         // compute wci
-        let score: WCIComponentScores = compute_wci(&rtree, &entry, &src_vertex);
-        assert_eq!(score.traffic_speed_score, Some(-1));
-        assert_eq!(score.traffic_signal_score, Some(1));
-        assert_eq!(score.cycle_score, Some(-2));
-        assert_eq!(score.walk_score, Some(-2));
-        assert_eq!(score.total_score, -4);
-        assert!(score.total_score < 0)
+        let score: WciComponentScores = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        assert_eq!(score.traffic_speed_score, Some(WciScore::new(-1).unwrap()));
+        assert_eq!(score.traffic_signal_score, Some(WciScore::new(1).unwrap()));
+        assert_eq!(score.cycleway_score, Some(WciScore::new(-2).unwrap()));
+        assert_eq!(score.walkability_score, Some(WciScore::new(-2).unwrap()));
+        assert_eq!(score.total_score, WciScore::new(-4).unwrap());
+        assert!(score.total_score < WciScore::new(0).unwrap());
     }
 
     /// A residential highway with a bad score get's its
@@ -290,7 +290,7 @@ mod test {
 
         rtree.insert(entry.clone());
         rtree.insert(neighbor_entry);
-        let score = compute_wci(&rtree, &entry, &src_vertex);
-        assert!(score.total_score > WAY_SCORE_NO_NEIGHBORS);
+        let score = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        assert!(score.total_score > WciScore::new(WAY_SCORE_NO_NEIGHBORS).unwrap());
     }
 }
