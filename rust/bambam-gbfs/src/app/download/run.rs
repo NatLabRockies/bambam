@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use chrono::TimeDelta;
-use gbfs_types::v3_0::files::SystemInformationFile;
+
+use crate::app::download::{EntryPoint, GbfsVersion, v3_ops};
 
 /// downloads GBFS data for some duration. aggregates the resulting rows and writes them
 /// to files to be consumed by BAMBAM.
@@ -13,28 +14,30 @@ use gbfs_types::v3_0::files::SystemInformationFile;
 ///
 /// # Result
 /// If successful, returns nothing, otherwise an error
-pub async fn run_gbfs_download(url: &str, out_dir: &Path, dur: &TimeDelta) -> Result<(), String> {
+pub async fn run_gbfs_download(
+    url: &str,
+    out_dir: &Path,
+    dur: &TimeDelta,
+    entry_point: EntryPoint,
+    version: GbfsVersion,
+) -> Result<(), String> {
     let dur_secs = dur.as_seconds_f64();
     log::debug!(
         "run_gbfs_download with url={url}, out_dir={out_dir:?}, duration (seconds)={dur_secs}"
     );
     let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .header("User-Agent", "rust-reqwest")
-        .send()
-        .await
-        .map_err(|e| format!("failed to connect to GBFS URL: {e}"))?;
 
-    if response.status().is_success() {
-        let system_information: SystemInformationFile = response.json().await.map_err(|e| {
-            format!("failed to deserialize system information file from HTTP response: {e}")
-        })?;
-        println!("systemInformation version: {}", system_information.version);
-        println!(
-            "systemInformation data: {}",
-            system_information.data.system_id
-        );
+    let result = match (version, entry_point) {
+        (GbfsVersion::V3_0, EntryPoint::Manifest) => {
+            v3_ops::run_v3_0_manifest(&client, url).await?
+        }
+        (GbfsVersion::V3_0, EntryPoint::Gbfs) => {
+            v3_ops::run_v3_0_gbfs(&client, url).await.map(|g| vec![g])?
+        }
+    };
+
+    for row in result.into_iter() {
+        println!("{}", serde_json::to_string_pretty(&row).unwrap_or_default());
     }
 
     Ok(())
