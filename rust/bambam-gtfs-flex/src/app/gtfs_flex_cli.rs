@@ -36,6 +36,7 @@ pub struct GtfsFLexCliArguments {
 impl Cli {
     /// runs the app
     pub fn run(&self) -> Result<(), GtfsFlexError> {
+        env_logger::init();
         match &self.command {
             Commands::ProcessGtfsFlexFeeds(args) => {
                 let in_dir = Path::new(&args.input_directory);

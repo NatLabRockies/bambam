@@ -1,7 +1,6 @@
+use super::{OsmNodeData, OsmNodeId};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-
-use super::{OsmNodeData, OsmNodeId};
 
 /// used for IO in flat (CSV) format
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
