@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use chrono::TimeDelta;
+use gbfs_types::v3_0::files::SystemInformationFile;
 
 /// downloads GBFS data for some duration. aggregates the resulting rows and writes them
 /// to files to be consumed by BAMBAM.
@@ -22,10 +23,13 @@ pub async fn run_gbfs_download(url: &str, out_dir: &Path, dur: &TimeDelta) -> Re
         .get(url)
         .header("User-Agent", "rust-reqwest")
         .send()
-        .await?;
+        .await
+        .map_err(|e| format!("failed to connect to GBFS URL: {e}"))?;
 
     if response.status().is_success() {
-        let system_information: SystemInformationFile = response.json().await?;
+        let system_information: SystemInformationFile = response.json().await.map_err(|e| {
+            format!("failed to deserialize system information file from HTTP response: {e}")
+        })?;
         println!("systemInformation version: {}", system_information.version);
         println!(
             "systemInformation data: {}",
@@ -33,5 +37,5 @@ pub async fn run_gbfs_download(url: &str, out_dir: &Path, dur: &TimeDelta) -> Re
         );
     }
 
-    todo!("download + post-processing logic")
+    Ok(())
 }
