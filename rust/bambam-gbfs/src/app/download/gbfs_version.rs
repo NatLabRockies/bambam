@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
 /// GBFS version of the targeted archive. only supported versions are included.

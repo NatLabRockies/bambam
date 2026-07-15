@@ -1,7 +1,6 @@
 use reqwest::{Client, IntoUrl};
 use serde::de::DeserializeOwned;
 
-use crate::app::download::{EntryPoint, GbfsVersion};
 
 /// helper function for running a client HTTP GET call to retrieve a JSON object.
 pub async fn retrieve_file<'a, 'b, T: DeserializeOwned, U: IntoUrl>(
