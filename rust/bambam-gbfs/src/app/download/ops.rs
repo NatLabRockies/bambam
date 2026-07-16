@@ -2,8 +2,8 @@ use reqwest::{Client, IntoUrl};
 use serde::de::DeserializeOwned;
 
 /// helper function for running a client HTTP GET call to retrieve a JSON object.
-pub async fn retrieve_file<'a, 'b, T: DeserializeOwned, U: IntoUrl>(
-    client: &'b Client,
+pub async fn retrieve_file<T: DeserializeOwned, U: IntoUrl>(
+    client: &Client,
     url: U,
 ) -> Result<T, String> {
     let response = client
