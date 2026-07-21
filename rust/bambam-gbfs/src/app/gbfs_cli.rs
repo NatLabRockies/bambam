@@ -38,6 +38,22 @@ pub enum GbfsOperation {
         #[arg(long, default_value_t = GbfsVersion::V3_0, value_parser = parse_version)]
         version: GbfsVersion,
     },
+    /// downloads GBFS archives from a CSV. ignores archives missing geofence data. writes
+    /// each dataset JSON 3.0 object to a file in the out directory.
+    DownloadWithGeofences {
+        /// a file like <https://github.com/MobilityData/gbfs/blob/master/systems.csv>
+        #[arg(long)]
+        csv_file: String,
+        /// column name for CSV column containing URLs
+        #[arg(long)]
+        csv_column: String,
+        /// whether we are targeting a manifest.json file or gbfs.json file.
+        #[arg(long)]
+        entry_point: EntryPoint,
+        /// output directory path.
+        #[arg(short, long, default_value_t = String::from("."))]
+        output_directory: String,
+    },
 }
 
 impl GbfsOperation {
@@ -50,12 +66,27 @@ impl GbfsOperation {
                 entry_point,
                 version,
             } => {
-                crate::app::download::run_gbfs_download(
+                crate::app::download::run_gbfs_download_old(
                     gbfs_url,
                     Path::new(output_directory),
                     collect_duration,
                     *entry_point,
                     *version,
+                )
+                .await
+            }
+            GbfsOperation::DownloadWithGeofences {
+                csv_file,
+                csv_column,
+                entry_point,
+                output_directory,
+            } => {
+                let urls = crate::app::download::ops::gather_feeds(csv_file, csv_column)?;
+                log::info!("found {} urls", urls.len());
+                crate::app::download::run_gbfs_batch_download(
+                    &urls,
+                    *entry_point,
+                    Path::new(output_directory),
                 )
                 .await
             }

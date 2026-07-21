@@ -8,12 +8,16 @@ description = "GBFS Extensions for The Behavior and Advanced Mobility Big Access
 [dependencies]
 chrono = { workspace = true }
 clap = { workspace = true }
+csv = { workspace = true }
 env_logger = { workspace = true }
+futures = { workspace = true }
 gbfs_types = { workspace = true }
 geo = { workspace = true }
+geozero = { workspace = true }
 humantime = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
+rayon = { workspace = true }
 reqwest = { workspace = true }
 routee-compass-core = { workspace = true }
 serde = { workspace = true }

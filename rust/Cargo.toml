@@ -36,7 +36,7 @@ downloader = { version = "0.2.8" }
 env_logger = "0.11.8"
 flate2 = "1.0"
 futures = { version = "0.3.31", features = ["executor"] }
-gbfs_types = { version = "0.1.4", default-features = false, features = ["reqwest_blocking"] }
+gbfs_types = { version = "0.1.6", default-features = false, features = ["reqwest_blocking"] }
 geo = { version = "0.33.1", features = ["use-serde"] }
 geo-buffer = "0.2.0"
 geo-traits = "0.3.0"
