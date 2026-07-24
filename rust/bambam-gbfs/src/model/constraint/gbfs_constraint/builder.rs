@@ -18,7 +18,8 @@ impl ConstraintModelBuilder for GbfsConstraintBuilder {
             ConstraintModelError::BuildError(msg)
         })?;
         let engine = GbfsConstraintEngine::try_from(config).map_err(|e| {
-            let msg = format!("failure building engine from config for GbfsConstraint builder: {e}");
+            let msg =
+                format!("failure building engine from config for GbfsConstraint builder: {e}");
             ConstraintModelError::BuildError(msg)
         })?;
         let service = GbfsConstraintService::new(engine);
