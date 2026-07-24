@@ -53,6 +53,25 @@ pub enum GbfsOperation {
         /// output directory path.
         #[arg(short, long, default_value_t = String::from("."))]
         output_directory: String,
+        #[arg(long, default_value = None)]
+        parallelism: Option<usize>,
+        #[arg(long, default_value = None)]
+        delay: Option<u64>,
+    },
+    /// downloads a GBFS archive from its .gbfs endpoint.
+    DownloadAndImport {
+        /// a GBFS API URL
+        #[arg(long)]
+        gbfs_url: String,
+        /// output directory path.
+        #[arg(long)]
+        output_directory: String,
+        /// GBFS version number to download.
+        #[arg(long)]
+        version: GbfsVersion,
+        /// whether to overwrite the files if they already exist.
+        #[arg(long)]
+        overwrite: bool,
     },
 }
 
@@ -66,7 +85,7 @@ impl GbfsOperation {
                 entry_point,
                 version,
             } => {
-                crate::app::download::run_gbfs_download_old(
+                crate::app::download::run::gbfs_download_old(
                     gbfs_url,
                     Path::new(output_directory),
                     collect_duration,
@@ -80,13 +99,31 @@ impl GbfsOperation {
                 csv_column,
                 entry_point,
                 output_directory,
+                parallelism,
+                delay,
             } => {
                 let urls = crate::app::download::ops::gather_feeds(csv_file, csv_column)?;
                 log::info!("found {} urls", urls.len());
-                crate::app::download::run_gbfs_batch_download(
+                crate::app::download::run::gbfs_batch_metadata_download(
                     &urls,
                     *entry_point,
                     Path::new(output_directory),
+                    parallelism.clone(),
+                    delay.clone(),
+                )
+                .await
+            }
+            GbfsOperation::DownloadAndImport {
+                gbfs_url,
+                output_directory,
+                version,
+                overwrite,
+            } => {
+                crate::app::download::run::gbfs_download_import(
+                    gbfs_url,
+                    Path::new(output_directory),
+                    *version,
+                    *overwrite,
                 )
                 .await
             }
