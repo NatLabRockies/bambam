@@ -108,8 +108,8 @@ impl GbfsOperation {
                     &urls,
                     *entry_point,
                     Path::new(output_directory),
-                    parallelism.clone(),
-                    delay.clone(),
+                    *parallelism,
+                    *delay,
                 )
                 .await
             }

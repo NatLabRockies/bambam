@@ -159,7 +159,7 @@ impl GbfsRecord {
                     &found_constraints,
                     None,
                 )
-                .unwrap_or_else(|| ZoneConstraints::allow_all());
+                .unwrap_or_else(ZoneConstraints::allow_all);
                 Ok(GbfsZoneRecord::new(
                     system_id,
                     idx,
@@ -195,7 +195,7 @@ impl GbfsRecord {
                     &found_constraints,
                     None,
                 )
-                .unwrap_or_else(|| ZoneConstraints::allow_all());
+                .unwrap_or_else(ZoneConstraints::allow_all);
                 Ok(GbfsZoneRecord::new(
                     system_id,
                     idx,
@@ -231,7 +231,7 @@ impl GbfsRecord {
                     &found_constraints,
                     None,
                 )
-                .unwrap_or_else(|| ZoneConstraints::allow_all());
+                .unwrap_or_else(ZoneConstraints::allow_all);
                 Ok(GbfsZoneRecord::new(
                     system_id,
                     idx,

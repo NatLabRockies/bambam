@@ -148,7 +148,7 @@ pub async fn gbfs_batch_metadata_download(
         "starting calls to download archives via {entry_point} entry point (parallelism={par}, delay={del})"
     );
     let mut set = tokio::task::JoinSet::new();
-    for url in urls.into_iter() {
+    for url in urls.iter() {
         let client = client.clone();
         let semaphore = semaphore.clone();
         let url = url.to_string();
@@ -176,7 +176,7 @@ pub async fn gbfs_batch_metadata_download(
         match res {
             Ok(Err(e)) => errors.push(e),
             Err(e) => errors.push(format!("error on tokio join of task: {e}")),
-            Ok(Ok(r)) => results.extend(r.into_iter()),
+            Ok(Ok(r)) => results.extend(r),
         }
     }
 
@@ -223,7 +223,7 @@ async fn run_gbfs_download(
                     .await
                     .map(|g| vec![g])?,
             };
-            result.into_iter().map(|r| GbfsRecord::V2_2(r)).collect()
+            result.into_iter().map(GbfsRecord::V2_2).collect()
         }
         super::download_metadata::UnversionedGbfsVersion::V2_3 => {
             let result = match entry_point {
@@ -232,7 +232,7 @@ async fn run_gbfs_download(
                     .await
                     .map(|g| vec![g])?,
             };
-            result.into_iter().map(|r| GbfsRecord::V2_3(r)).collect()
+            result.into_iter().map(GbfsRecord::V2_3).collect()
         }
         super::download_metadata::UnversionedGbfsVersion::V3_0 => {
             let result = match entry_point {
@@ -241,7 +241,7 @@ async fn run_gbfs_download(
                     .await
                     .map(|g| vec![g])?,
             };
-            result.into_iter().map(|r| GbfsRecord::V3_0(r)).collect()
+            result.into_iter().map(GbfsRecord::V3_0).collect()
         }
     };
 
