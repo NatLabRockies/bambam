@@ -41,7 +41,7 @@ pub fn bulk_compute_wci(
 
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
         BarBuilder::default()
-            .desc(format!("Computing WCI scores for the road network"))
+            .desc("Computing WCI scores for the road network".to_string())
             .total(way_rtree_entries.len())
             .build()?,
     ));

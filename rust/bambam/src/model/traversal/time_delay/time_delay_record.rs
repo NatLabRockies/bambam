@@ -59,7 +59,7 @@ impl<'de> de::Deserialize<'de> for TimeDelayRecord {
                                     .map_err(|e| {
                                         de::Error::custom(format!(
                                             "unable to parse WKT geometry '{}': {}",
-                                            &value, e
+                                            value, e
                                         ))
                                     })?;
                                 let row_geometry: Geometry<f32> = match geo_f64 {
@@ -78,7 +78,7 @@ impl<'de> de::Deserialize<'de> for TimeDelayRecord {
                                     _ => {
                                         return Err(de::Error::custom(format!(
                                             "expected Polygon or MultiPolygon geometry, found unexpected type in '{}'",
-                                            &value
+                                            value
                                         )));
                                     }
                                 };
@@ -89,7 +89,7 @@ impl<'de> de::Deserialize<'de> for TimeDelayRecord {
                                     serde_json::from_str::<Time>(value).map_err(|e| {
                                         de::Error::custom(format!(
                                             "unable to parse time value '{}': {}",
-                                            &value, e
+                                            value, e
                                         ))
                                     })?;
                                 time_option = Some(row_time);
