@@ -1,4 +1,5 @@
 use super::{OsmNodeData, OsmNodeId};
+use bambam_core::network::penalty_traits::VertexForModalPenalties;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,20 @@ impl OsmNodeDataSerializable {
     /// a delimter for aggregated fields which does not collide with CSV delimiters
     /// which can be used to replace OsmNodeData::VALUE_DELIMITER
     pub const VALUE_DELIMITER: &'static str = ";";
+}
+
+impl VertexForModalPenalties for OsmNodeDataSerializable {
+    fn has_traffic_signals(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|highway| highway.contains("traffic_signals"))
+    }
+
+    fn has_stop_sign(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|highway| highway.contains("stop"))
+    }
 }
 
 impl From<&OsmNodeData> for OsmNodeDataSerializable {

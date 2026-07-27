@@ -1,9 +1,6 @@
-use crate::app::network::wci::compute_wci::compute_wci;
-use crate::app::network::wci::wci_score::WciError;
-use crate::app::network::{
-    common::ops::load_way_rtree_entries, wci::compute_wci::WciComponentScores,
-};
+use crate::app::network::ops::load_edge_rtree_entries;
 use crate::model::osm::graph::OsmNodeDataSerializable;
+use bambam_core::network::wci::{compute_wci, WciComponentScores, WciError};
 use kdam::{Bar, BarBuilder, BarExt};
 use rayon::prelude::*;
 use routee_compass_core::util::fs::read_utils;
@@ -32,30 +29,30 @@ pub fn bulk_compute_wci(
     // load all vertices into memory
     let vertices: Box<[OsmNodeDataSerializable]> =
         read_utils::from_csv(&vertices_file, true, None, None)?;
-    // load all ways into memory as type WayRTreeEntry for insertion into the R-tree
-    let way_rtree_entries = load_way_rtree_entries(edges_file, &vertices)?;
+    // load all ways into memory as generic R-tree entries
+    let edge_rtree_entries = load_edge_rtree_entries(edges_file, &vertices)?;
     println!("Edges and vertices read successfully.");
     // bulk-load a copy of the entries into the r-tree; we keep `entries` around
     // so each centroid can be paired with its own way during the WCI calculation
-    let rtree = RTree::bulk_load(way_rtree_entries.clone());
+    let rtree = RTree::bulk_load(edge_rtree_entries.clone());
 
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
         BarBuilder::default()
-            .desc(format!("Computing WCI scores for the road network"))
-            .total(way_rtree_entries.len())
+            .desc("Computing WCI scores for the road network".to_string())
+            .total(edge_rtree_entries.len())
             .build()?,
     ));
 
     // calculate the WCI component scores for each way in parallel using the compute_wci function
-    let wci_vec_with_components: Vec<WciComponentScores> = way_rtree_entries
+    let wci_vec_with_components: Vec<WciComponentScores> = edge_rtree_entries
         .par_iter()
-        .map(|way_entry| -> Result<WciComponentScores, WciError> {
+        .map(|entry| -> Result<WciComponentScores, WciError> {
             // compute wci for this entry
             let wci = compute_wci(
                 &rtree,
-                way_entry,
+                entry,
                 vertices
-                    .get(way_entry.way.src_vertex_id.0)
+                    .get(entry.edge.src_vertex_id.0)
                     .unwrap_or(&OsmNodeDataSerializable::default()),
             );
             // update pbar

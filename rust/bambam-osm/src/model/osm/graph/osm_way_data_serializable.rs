@@ -1,6 +1,10 @@
 use super::osm_way_ops::{self, deserialize_linestring, serialize_linestring};
 use super::{OsmGraph, OsmNodeData, OsmNodeId, OsmWayData, OsmWayId};
 use crate::model::{feature::highway::Highway, osm::OsmError};
+use bambam_core::network::{
+    cycleway_tag::CyclewayTag,
+    penalty_traits::{EdgeForModalPenalties, SpatialEdge},
+};
 use geo::{Convert, Coord, Haversine, Length, LineString};
 use geozero::ToWkt;
 use itertools::Itertools;
@@ -192,6 +196,68 @@ impl OsmWayDataSerializable {
     }
 }
 
+impl EdgeForModalPenalties for OsmWayDataSerializable {
+    fn get_traffic_speed_limit(&self) -> Option<i32> {
+        const KMH_TO_MPH: f64 = 0.621371;
+        match self.get_speed("maxspeed", true) {
+            Ok(Some(velocity)) => {
+                let speed_kmh = velocity.get::<uom::si::velocity::kilometer_per_hour>();
+                Some((speed_kmh * KMH_TO_MPH).round() as i32)
+            }
+            _ => None,
+        }
+    }
+
+    fn get_cycleway_tag(&self) -> Option<CyclewayTag> {
+        self.cycleway.as_ref().map(|tag| CyclewayTag::new(tag))
+    }
+
+    fn is_walkable(&self) -> bool {
+        self.is_sidewalk() || self.is_footway() || self.is_walkable_highway()
+    }
+
+    fn is_sidewalk(&self) -> bool {
+        self.sidewalk
+            .as_ref()
+            .is_some_and(|s| s != "no" && s != "none")
+            || self.footway.as_deref() == Some("sidewalk")
+    }
+
+    fn is_footway(&self) -> bool {
+        self.footway
+            .as_ref()
+            .is_some_and(|s| s != "no" && s != "none")
+    }
+
+    fn is_walkable_highway(&self) -> bool {
+        matches!(
+            self.highway,
+            Highway::Residential
+                | Highway::Unclassified
+                | Highway::LivingStreet
+                | Highway::Service
+                | Highway::Pedestrian
+                | Highway::Trailhead
+                | Highway::Track
+                | Highway::Footway
+                | Highway::Bridleway
+                | Highway::Steps
+                | Highway::Corridor
+                | Highway::Path
+                | Highway::Elevator
+        )
+    }
+}
+
+impl SpatialEdge for OsmWayDataSerializable {
+    fn id(&self) -> String {
+        self.osmid.to_string()
+    }
+
+    fn linestring(&self) -> Option<&LineString<f32>> {
+        Some(&self.linestring)
+    }
+}
 /// shorten the value, assumed a delimited string of categoricals, so that
 /// it contains only the unique set of categories.
 fn unique(value: Option<&String>) -> Option<String> {
