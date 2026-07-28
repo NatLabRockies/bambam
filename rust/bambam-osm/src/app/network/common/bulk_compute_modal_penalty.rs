@@ -16,6 +16,10 @@ use std::{
 
 /// Bulk compute modal penalty scores for an OSM network by taking in a vertices-complete.csv
 /// and edges-complete.csv.
+///
+/// penalty_name can either be:
+/// - "WCI" for Walking Comfort Index
+/// - "LTS" for Level of Traffic Stress (cycling comfort)
 pub fn bulk_compute_modal_penalty(
     penalty_name: &str,
     edges_file: &str,
