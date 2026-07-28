@@ -1,29 +1,29 @@
 use crate::app::network::common::cycleway_tag::CyclewayTag;
 
-pub const MIN_LTS_SCORE: u8 = 1; // the best LTS score.
-pub const MAX_LTS_SCORE: u8 = 4; // the worst LTS score.
+pub const MIN_LTS: u8 = 1; // the best LTS score.
+pub const MAX_LTS: u8 = 4; // the worst LTS score.
 
 #[derive(Default, Eq, PartialEq, PartialOrd, Debug)]
-pub struct LtsScore(u8);
+pub struct Lts(u8);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LtsError {
-    #[error("LtsScore value '{0}' must be in the integer range: [1..4]")]
+    #[error("Lts value '{0}' must be in the integer range: [1..4]")]
     ValueError(u8),
 }
 
-impl std::fmt::Display for LtsScore {
+impl std::fmt::Display for Lts {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl LtsScore {
+impl Lts {
     pub fn new(value: u8) -> Result<Self, LtsError> {
-        if value < MIN_LTS_SCORE || value > MAX_LTS_SCORE {
+        if value < MIN_LTS || value > MAX_LTS {
             Err(LtsError::ValueError(value))
         } else {
-            Ok(LtsScore(value))
+            Ok(Lts(value))
         }
     }
 
@@ -31,8 +31,8 @@ impl LtsScore {
         traffic_speed: u8, // assumed in mph.
         cycleway_tag: CyclewayTag,
         oneway: bool,
-    ) -> Result<LtsScore, LtsError> {
-        let score = match (cycleway_tag, oneway) {
+    ) -> Result<Lts, LtsError> {
+        let value = match (cycleway_tag, oneway) {
             (CyclewayTag::DedicatedWithBuffer, _) => 1,
 
             // Dedicated cycleway without buffer
@@ -73,6 +73,6 @@ impl LtsScore {
             },
         };
 
-        LtsScore::new(score)
+        Lts::new(value)
     }
 }

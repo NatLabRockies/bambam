@@ -3,7 +3,7 @@ use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
-use bambam_osm::app::network::common::bulk_compute_modal_penalty::bulk_compute_modal_penalty;
+use bambam_osm::app::network::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -29,20 +29,20 @@ use std::io::Write;
 #[derive(Subcommand)]
 pub enum App {
     #[command(
-        name = "modal_penalty",
-        about = "calculate the modal penalty of links, write to file"
+        name = "modal_metric",
+        about = "calculate the modal metric of each way in the OSM network, write to file"
     )]
-    ModalPenaltySet {
-        /// modal penalty type to compute, either "WCI" or "LTS"
+    ModalMetricSet {
+        /// modal metric type to compute, either "WCI" or "LTS"
         #[arg(long)]
-        penalty_name: String,
+        metric_name: String,
         /// input csv file with edges OSM data
         #[arg(long)]
         edges_osm: String,
         /// input csv file with vertices OSM data
         #[arg(long)]
         vertices_osm: String,
-        /// file to write modal penalty values to, one per line
+        /// file to write modal metric values to, one per line
         #[arg(long)]
         output_file: String,
     },
@@ -211,14 +211,14 @@ impl App {
     pub fn run(&self) -> Result<(), String> {
         env_logger::init();
         match self {
-            Self::ModalPenaltySet {
-                penalty_name,
+            Self::ModalMetricSet {
+                metric_name,
                 output_file,
                 edges_osm,
                 vertices_osm,
             } => {
                 if let Err(error) =
-                    bulk_compute_modal_penalty(penalty_name, edges_osm, vertices_osm, output_file)
+                    bulk_compute_modal_metric(metric_name, edges_osm, vertices_osm, output_file)
                 {
                     eprintln!("error! {error:?}");
                 }
