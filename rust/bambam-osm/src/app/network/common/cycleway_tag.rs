@@ -5,6 +5,7 @@
 /// the OSM way's cycleway attribute.
 #[derive(Debug)]
 pub enum CyclewayTag {
+    DedicatedWithBuffer,
     DedicatedNoBuffer,
     NoDedicatedWithFacilities,
     NoDedicatedNoFacilities,
@@ -12,7 +13,9 @@ pub enum CyclewayTag {
 
 impl CyclewayTag {
     pub fn new(tag: &str) -> Self {
-        if Self::is_dedicated_no_buffer(tag) {
+        if Self::is_dedicated_with_buffer(tag) {
+            CyclewayTag::DedicatedWithBuffer
+        } else if Self::is_dedicated_no_buffer(tag) {
             CyclewayTag::DedicatedNoBuffer
         } else if Self::is_no_dedicated_with_facilities(tag) {
             CyclewayTag::NoDedicatedWithFacilities
@@ -20,12 +23,17 @@ impl CyclewayTag {
             CyclewayTag::NoDedicatedNoFacilities
         }
     }
-    //TODO: ADD DedicatedWithBuffer variant for LTS computations.
+    /// DedicatedWithBuffer variant is when a cycleway
+    /// has its own dedicated space and is separated
+    /// from the road by a buffer.
+    fn is_dedicated_with_buffer(tag: &str) -> bool {
+        matches!(tag, "track")
+    }
     /// DedicatedNoBuffer variant is when a cycleway
     /// is it's own dedicated space, but is still
     /// a part of the road.
     fn is_dedicated_no_buffer(tag: &str) -> bool {
-        matches!(tag, "lane" | "designated" | "track")
+        matches!(tag, "lane" | "designated")
     }
 
     /// NoDedicatedWithFacilities variant is when a

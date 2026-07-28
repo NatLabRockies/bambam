@@ -1,6 +1,7 @@
 use super::NO_CYCLEWAY_FOUND_SCORE;
 use crate::app::network::common::cycleway_tag::CyclewayTag::{
-    self, DedicatedNoBuffer, NoDedicatedNoFacilities, NoDedicatedWithFacilities,
+    self, DedicatedNoBuffer, DedicatedWithBuffer, NoDedicatedNoFacilities,
+    NoDedicatedWithFacilities,
 };
 use crate::app::network::common::way_rtree_entry::WayRTreeEntry;
 use crate::app::network::common::MIN_DISTANCE_RTREE_NEIGHBOR;
@@ -91,6 +92,7 @@ pub fn has_traffic_signals(node: &OsmNodeDataSerializable) -> bool {
 /// Converts a cycleway tag classification to a numerical score.
 pub fn cycleway_score_from_tag(tag: &CyclewayTag) -> i32 {
     match tag {
+        DedicatedWithBuffer => 2,
         DedicatedNoBuffer => 2,
         NoDedicatedWithFacilities => 0,
         NoDedicatedNoFacilities => -2,
