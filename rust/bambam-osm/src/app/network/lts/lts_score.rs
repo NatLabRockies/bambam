@@ -26,7 +26,53 @@ impl LtsScore {
             Ok(LtsScore(value))
         }
     }
-    pub fn table_lookup(traffic_speed: u8, cycleway_tag: CyclewayTag, oneway: bool) -> LtsScore {
-        todo!();
+
+    pub fn from_table_lookup(
+        traffic_speed: u8, // assumed in mph.
+        cycleway_tag: CyclewayTag,
+        oneway: bool,
+    ) -> Result<LtsScore, LtsError> {
+        let score = match (cycleway_tag, oneway) {
+            (CyclewayTag::DedicatedWithBuffer, _) => 1,
+
+            // Dedicated cycleway without buffer
+            (CyclewayTag::DedicatedNoBuffer, false) => match traffic_speed {
+                0..=30 => 1,
+                31..=35 => 2,
+                36..=40 => 3,
+                _ => 4,
+            },
+            (CyclewayTag::DedicatedNoBuffer, true) => match traffic_speed {
+                0..=30 => 1,
+                31..=40 => 2,
+                _ => 3,
+            },
+
+            // No dedicated cycleway, but bike facilities present
+            (CyclewayTag::NoDedicatedWithFacilities, false) => match traffic_speed {
+                0..=25 => 2,
+                26..=40 => 3,
+                _ => 4,
+            },
+            (CyclewayTag::NoDedicatedWithFacilities, true) => match traffic_speed {
+                0..=35 => 2,
+                36..=45 => 3,
+                _ => 4,
+            },
+
+            // Mixed traffic (no dedicated lane, no extra facilities)
+            (CyclewayTag::NoDedicatedNoFacilities, false) => match traffic_speed {
+                0..=25 => 2,
+                26..=35 => 3,
+                _ => 4,
+            },
+            (CyclewayTag::NoDedicatedNoFacilities, true) => match traffic_speed {
+                0..=30 => 2,
+                31..=40 => 3,
+                _ => 4,
+            },
+        };
+
+        LtsScore::new(score)
     }
 }

@@ -57,7 +57,11 @@ impl ModalPenalty {
                 let wci = compute_wci(rtree, way_entry, src_node)?;
                 Ok(ModalPenaltyResult::Wci(wci))
             }
-            ModalPenalty::LevelOfTrafficStress => todo!(),
+            ModalPenalty::LevelOfTrafficStress => {
+                let lts =
+                    crate::app::network::lts::compute_lts::compute_lts(rtree, way_entry, src_node)?;
+                Ok(ModalPenaltyResult::Lts(lts))
+            }
         }
     }
 
