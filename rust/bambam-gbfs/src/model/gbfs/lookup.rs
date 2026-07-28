@@ -43,7 +43,7 @@ impl TryFrom<&GbfsConstraintConfig> for GbfsLookupModel {
 
         let rows = geometries
             .into_iter()
-            .zip(zonal_records.into_iter())
+            .zip(zonal_records)
             .collect_vec();
         let rtree = PolygonalRTree::new(rows)
             .map_err(|e| format!("failure building spatial index: {e}"))?;
@@ -77,7 +77,7 @@ impl GbfsLookupModel {
     ) -> Result<Box<dyn Iterator<Item = &'a GbfsZoneRecord> + 'a>, String> {
         let matches = self
             .rtree
-            .intersection(&spatial_query)
+            .intersection(spatial_query)
             .map_err(|e| format!("failure running GBFS zone lookup: {e}"))?
             .filter_map(move |z| {
                 if within_time_range(time, &z.data) {

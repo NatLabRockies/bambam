@@ -1,4 +1,4 @@
-use crate::model::gbfs::{GbfsLookupModel, GbfsZoneRecord};
+use crate::model::gbfs::GbfsLookupModel;
 
 use super::GbfsConstraintConfig;
 
