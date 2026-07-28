@@ -160,13 +160,7 @@ impl GbfsRecord {
                     None,
                 )
                 .unwrap_or_else(ZoneConstraints::allow_all);
-                Ok(GbfsZoneRecord::new(
-                    system_id,
-                    idx,
-                    start,
-                    end,
-                    zone_constraints,
-                ))
+                GbfsZoneRecord::new(system_id, Some(idx), start, end, zone_constraints)
             }
             GbfsRecord::V2_3(gbfs) => {
                 let system_id = gbfs.info.data.system_id.clone();
@@ -196,13 +190,7 @@ impl GbfsRecord {
                     None,
                 )
                 .unwrap_or_else(ZoneConstraints::allow_all);
-                Ok(GbfsZoneRecord::new(
-                    system_id,
-                    idx,
-                    start,
-                    end,
-                    zone_constraints,
-                ))
+                GbfsZoneRecord::new(system_id, Some(idx), start, end, zone_constraints)
             }
             GbfsRecord::V2_2(gbfs) => {
                 let system_id = gbfs.info.data.system_id.clone();
@@ -232,13 +220,7 @@ impl GbfsRecord {
                     None,
                 )
                 .unwrap_or_else(ZoneConstraints::allow_all);
-                Ok(GbfsZoneRecord::new(
-                    system_id,
-                    idx,
-                    start,
-                    end,
-                    zone_constraints,
-                ))
+                GbfsZoneRecord::new(system_id, Some(idx), start, end, zone_constraints)
             }
         }
     }
