@@ -2,7 +2,9 @@ use num_traits::CheckedAdd;
 
 use super::ops::*;
 use crate::{
-    app::network::common::{cycleway_tag::CyclewayTag, way_rtree_entry::WayRTreeEntry},
+    app::network::common::{
+        cycleway_tag::CyclewayTag, ops::traffic_speed_from_maxspeed, way_rtree_entry::WayRTreeEntry,
+    },
     model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable},
 };
 pub const MIN_WCI_SCORE: i32 = -6;

@@ -15,7 +15,7 @@ pub enum ModalPenaltyError {
     #[error(transparent)]
     Lts(#[from] LtsError),
 
-    #[error("Invalid modal penalty: {0}")]
+    #[error("Invalid modal penalty name: {0}")]
     InvalidModalPenalty(String),
 
     #[error("{0}")]

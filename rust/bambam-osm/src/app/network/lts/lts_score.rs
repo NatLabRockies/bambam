@@ -1,3 +1,5 @@
+use crate::app::network::common::cycleway_tag::CyclewayTag;
+
 pub const MIN_LTS_SCORE: u8 = 1; // the best LTS score.
 pub const MAX_LTS_SCORE: u8 = 4; // the worst LTS score.
 
@@ -23,5 +25,8 @@ impl LtsScore {
         } else {
             Ok(LtsScore(value))
         }
+    }
+    pub fn table_lookup(traffic_speed: u8, cycleway_tag: CyclewayTag, oneway: bool) -> LtsScore {
+        todo!();
     }
 }
