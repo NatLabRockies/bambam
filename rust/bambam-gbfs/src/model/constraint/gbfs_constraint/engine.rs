@@ -17,6 +17,8 @@ pub struct GbfsConstraintEngine {
 impl GbfsConstraintEngine {
     /// tests:
     ///   - are we NOT in a zone? FALSE
+    ///   - have we boarded?
+    ///     - if FALSE, also check if `ride_start_allowed`
     ///   - does that zone support `ride_through_allowed`? TRUE
     ///   - otherwise FALSE
     fn check_valid(
@@ -26,6 +28,8 @@ impl GbfsConstraintEngine {
         state_model: &StateModel,
         start_time: DateTime<Utc>,
     ) -> Result<bool, String> {
+        todo!("check if boarded");
+
         let zone = self
             .lookup
             .get_zone_rules(vertex, state, state_model, start_time)?;
