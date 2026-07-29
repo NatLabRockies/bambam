@@ -41,10 +41,7 @@ impl TryFrom<&GbfsConstraintConfig> for GbfsLookupModel {
             return Err(msg);
         }
 
-        let rows = geometries
-            .into_iter()
-            .zip(zonal_records)
-            .collect_vec();
+        let rows = geometries.into_iter().zip(zonal_records).collect_vec();
         let rtree = PolygonalRTree::new(rows)
             .map_err(|e| format!("failure building spatial index: {e}"))?;
         Ok(Self { rtree, global })
