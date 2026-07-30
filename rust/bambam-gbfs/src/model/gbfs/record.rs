@@ -13,7 +13,7 @@ pub struct GbfsZoneRecord {
     pub system_id: String,
     /// index of the geojson feature associated with this zone. if not provided,
     /// this record is the global zone record.
-    pub feature_index: Option<usize>,
+    pub feature_index: usize,
     /// optional start time for using this zone
     pub start: Option<DateTime<Utc>>,
     /// optional end time for using this zone
@@ -35,7 +35,7 @@ impl GbfsZoneRecord {
     /// if a given boolean constraint is found to be None, apply a permissive rule.
     pub fn new(
         system_id: String,
-        feature_index: Option<usize>,
+        feature_index: usize,
         start: Option<String>,
         end: Option<String>,
         zone_constraints: ZoneConstraints,

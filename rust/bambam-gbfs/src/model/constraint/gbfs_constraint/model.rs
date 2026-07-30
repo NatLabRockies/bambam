@@ -25,14 +25,19 @@ impl GbfsConstraintModel {
 impl ConstraintModel for GbfsConstraintModel {
     fn valid_frontier(
         &self,
-        _ctx: &EdgeFrontierContext,
-        _state: &[StateVariable],
-        _state_model: &StateModel,
+        ctx: &EdgeFrontierContext,
+        state: &[StateVariable],
+        state_model: &StateModel,
     ) -> Result<bool, ConstraintModelError> {
-        todo!()
+        self.engine
+            .check_valid(ctx.dst, state, state_model, self.params.start_time)
+            .map_err(|e| {
+                let msg = format!("failure running GBFS constraint model: {e}");
+                ConstraintModelError::ConstraintModelError(msg)
+            })
     }
 
     fn valid_edge(&self, _edge: &Edge) -> Result<bool, ConstraintModelError> {
-        todo!()
+        Ok(true)
     }
 }

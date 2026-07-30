@@ -10,9 +10,6 @@
 /// >
 /// > System IDs SHOULD be recognizable as belonging to a particular system as opposed to random
 /// > strings - for example, bcycle_austin or biketown_pdx.
-pub fn fully_qualified_zone_id(system_id: &str, zone_feature_index: Option<usize>) -> String {
-    match zone_feature_index {
-        Some(index) => format!("{system_id}#{index}"),
-        None => system_id.to_string(),
-    }
+pub fn fully_qualified_zone_id(system_id: &str, zone_feature_index: usize) -> String {
+    format!("{system_id}#{zone_feature_index}")
 }

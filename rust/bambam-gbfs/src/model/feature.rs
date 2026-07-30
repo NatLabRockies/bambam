@@ -1,7 +1,7 @@
 pub mod fieldname {
     /// the name of the agency providing the GBFS vehicle.
     /// if this value is set, the trip has boarded the service.
-    pub const GBFS_AGENCY_ID: &str = "gbfs_agency_id";
+    pub const GBFS_SERVICE_ID: &str = "gbfs_service_id";
 
     /// true if the trip has a [GBFS_AGENCY_ID] and if the current
     /// edge has a GBFS zone where `ride_end_allowed` is true.
@@ -14,7 +14,7 @@ pub mod variable {
     use routee_compass_core::model::state::{CustomVariableConfig, StateVariableConfig};
 
     /// stores a zone id in a state variable
-    pub fn gbfs_agency_id() -> StateVariableConfig {
+    pub fn gbfs_service_id() -> StateVariableConfig {
         StateVariableConfig::Custom {
             custom_type: "Option<GbfsAgencyId>".to_string(),
             value: empty(),
@@ -45,7 +45,7 @@ pub mod state {
     const NO_AGENCY_ID: i64 = -1;
 
     /// assigns the given agency_id to the state vector.
-    fn set_agency_id(
+    pub fn set_service_id(
         state: &mut [StateVariable],
         state_model: &StateModel,
         agency_id: &str,
@@ -54,28 +54,28 @@ pub mod state {
         let value = mapping.get_label(agency_id).ok_or_else(|| {
             StateModelError::RuntimeError(format!("agency_id {agency_id} missing from mapping"))
         })?;
-        state_model.set_custom_i64(state, fieldname::GBFS_AGENCY_ID, value)
+        state_model.set_custom_i64(state, fieldname::GBFS_SERVICE_ID, value)
     }
 
     /// gets the stored agency_id from the state variable, if it exists.
-    fn get_agency_id<'a, 'b>(
+    pub fn get_service_id<'a, 'b>(
         state: &'a [StateVariable],
         state_model: &'a StateModel,
         mapping: &'b CategoricalStateMapping,
     ) -> Result<Option<&'b String>, StateModelError> {
-        let agency_label = state_model.get_custom_i64(state, fieldname::GBFS_AGENCY_ID)?;
+        let agency_label = state_model.get_custom_i64(state, fieldname::GBFS_SERVICE_ID)?;
         let agency_id = mapping.get_categorical(agency_label)?;
         Ok(agency_id)
     }
 
     /// confirms that there is a stored agency_id and that it matches the provided one.
-    fn verify_agency_id(
+    pub fn verify_service_id(
         agency_id: &str,
         state: &[StateVariable],
         state_model: &StateModel,
         mapping: &CategoricalStateMapping,
     ) -> Result<bool, StateModelError> {
-        let stored_agency = get_agency_id(state, state_model, mapping)?;
+        let stored_agency = get_service_id(state, state_model, mapping)?;
         match stored_agency {
             Some(a) if a == agency_id => Ok(true),
             _ => Ok(false),
@@ -83,11 +83,11 @@ pub mod state {
     }
 
     /// confirms that the search has boarded a GBFS agency (that GBFS_AGENCY_ID is set).
-    fn is_boarded(
+    pub fn is_boarded(
         state: &[StateVariable],
         state_model: &StateModel,
     ) -> Result<bool, StateModelError> {
-        let agency_id = state_model.get_custom_i64(state, fieldname::GBFS_AGENCY_ID)?;
+        let agency_id = state_model.get_custom_i64(state, fieldname::GBFS_SERVICE_ID)?;
         Ok(agency_id != -1)
     }
 }

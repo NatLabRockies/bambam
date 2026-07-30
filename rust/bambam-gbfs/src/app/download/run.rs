@@ -20,6 +20,7 @@ use crate::app::download::{
 
 const GEOMETRIES_FILENAME: &str = "edges-gbfs-geofences-enumerated.txt.gz";
 const RECORDS_FILENAME: &str = "edges-gbfs-records.csv.gz";
+const IDS_FILENAME: &str = "edges-zone-ids.txt.gz";
 
 pub async fn gbfs_download_import(
     url: &str,
@@ -36,11 +37,14 @@ pub async fn gbfs_download_import(
     // process into BAMBAM-GBFS edge list format
     let mut geometries = vec![];
     let mut zone_records = vec![];
+    let mut ids = vec![];
     for i in 0..gbfs.n_features() {
         let geometry = gbfs.get_feature_geometry(i)?;
         let record = gbfs.get_feature_zone_record(i)?;
+        let id = record.fq_id.clone();
         geometries.push(geometry);
         zone_records.push(record);
+        ids.push(id);
     }
 
     // write outputs
@@ -60,6 +64,7 @@ pub async fn gbfs_download_import(
         QuoteStyle::Necessary,
         overwrite,
     )?;
+    let mut id_writer = create_writer(out_dir, IDS_FILENAME, false, QuoteStyle::Never, overwrite)?;
 
     for (idx, geom) in geometries.into_iter().enumerate() {
         let wkt_string = geom
@@ -74,7 +79,13 @@ pub async fn gbfs_download_import(
     for (idx, record) in zone_records.into_iter().enumerate() {
         record_writer
             .serialize(&record)
-            .map_err(|e| format!("failure writing geometry {idx} to file: {e}"))?
+            .map_err(|e| format!("failure writing record {idx} to file: {e}"))?
+    }
+
+    for (idx, id) in ids.into_iter().enumerate() {
+        id_writer
+            .serialize(&id)
+            .map_err(|e| format!("failure writing {idx}th id {id} to file: {e}"))?
     }
 
     Ok(())
