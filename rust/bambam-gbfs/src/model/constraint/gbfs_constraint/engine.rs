@@ -44,7 +44,7 @@ impl GbfsConstraintEngine {
                 ConstraintModelError::ConstraintModelError(msg)
             })?;
 
-        let not_in_a_zone = zones.len() == 0;
+        let not_in_a_zone = zones.is_empty();
         let through_allowed = zones.iter().any(|z| z.ride_through_allowed);
         let no_depart_allowed =
             service_opt.is_none() && !zones.iter().any(|z| z.ride_start_allowed);

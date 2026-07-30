@@ -20,8 +20,8 @@ pub struct GbfsLookupModel {
 
 impl GbfsLookupModel {
     pub fn new(zones_input_file: &str, geometries_input_file: &str) -> Result<Self, String> {
-        let zonal_records = read_records(&zones_input_file)?;
-        let geometries = read_geometries(&geometries_input_file)?;
+        let zonal_records = read_records(zones_input_file)?;
+        let geometries = read_geometries(geometries_input_file)?;
 
         // check sizes match
         if zonal_records.len() != geometries.len() {
@@ -45,8 +45,8 @@ impl GbfsLookupModel {
     /// zones. filters out zonal rules that do not match our trip datetime. if we are boarded on a GBFS
     /// provider we further filter to only zones with a matching ServiceId. combines all
     /// zone record rules in order to produce a single value result.
-    pub fn get_zone_rules<'a, 'b>(
-        &'a self,
+    pub fn get_zone_rules<'b>(
+        &self,
         vertex: &'b Vertex,
         state: &'b [StateVariable],
         state_model: &'b StateModel,
@@ -81,10 +81,10 @@ impl GbfsLookupModel {
 /// in this way, we optimistically choose `true` when only one of [start,end] are present.
 ///
 /// if we are currently boarded, we only accept zone records with a matching system id.
-fn zone_matches_search<'a, 'b>(
+fn zone_matches_search<'a>(
     record: &'a GbfsZoneRecord,
     time: DateTime<Utc>,
-    system_id: Option<&'b String>,
+    system_id: Option<&String>,
 ) -> Option<&'a GbfsZoneRecord> {
     let service_ok = match system_id {
         Some(id) => id == &record.system_id,

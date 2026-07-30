@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::model::{feature, gbfs::GbfsLookupModel};
+use crate::model::gbfs::GbfsLookupModel;
 
 use super::GbfsTraversalConfig;
 
@@ -21,10 +21,10 @@ pub struct GbfsTraversalEngine {
 impl GbfsTraversalEngine {
     pub fn traverse(
         &self,
-        vertex: &Vertex,
-        state: &[StateVariable],
-        state_model: &StateModel,
-        start_time: DateTime<Utc>,
+        _vertex: &Vertex,
+        _state: &[StateVariable],
+        _state_model: &StateModel,
+        _start_time: DateTime<Utc>,
     ) -> Result<(), TraversalModelError> {
         todo!("1) what is the sequence of ops here? doc them; 2) write logic")
         // let service_opt = feature::state::get_service_id(state, state_model, &self.mapping)
