@@ -26,20 +26,24 @@ pub fn bulk_compute_modal_metric(
 ) -> Result<(), Box<dyn Error>> {
     let metric: ModalMetric = metric_name.parse()?;
 
-    println!("Loading files for {:?} modal metric computation.", metric);
-    println!("Reading:\n\t- vertex set @ {vertices_file}\n\t- edge set @ {edges_file}");
+    log::info!(
+        "\nLoading files for {:?} modal metric computation.\n",
+        metric
+    );
+    log::info!("Reading:\n\t- vertex set @ {vertices_file}\n\t- edge set @ {edges_file}\n");
 
     let vertices: Box<[OsmNodeDataSerializable]> =
         read_utils::from_csv(&vertices_file, true, None, None)?;
     let way_rtree_entries = load_way_rtree_entries(edges_file, &vertices)?;
-    println!("Edges and vertices read successfully.");
+    log::info!("Edges and vertices read successfully.\n");
 
     let rtree = RTree::bulk_load(way_rtree_entries.clone());
-
+    kdam::term::init(false);
+    kdam::term::hide_cursor().ok();
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
         BarBuilder::default()
             .desc(format!(
-                "Computing {:?} modal metric scores for the road network",
+                "Computing {:?} for ways in the road network",
                 metric
             ))
             .total(way_rtree_entries.len())
@@ -64,6 +68,8 @@ pub fn bulk_compute_modal_metric(
         })
         .collect::<Result<Vec<ModalMetricValue>, ModalMetricError>>()?;
 
+    kdam::term::show_cursor().ok();
+
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);
 
@@ -73,9 +79,25 @@ pub fn bulk_compute_modal_metric(
     }
     writer.flush()?;
 
-    println!(
-        "{:?} scores computed successfully.\nScores file saved @ {output_file}.",
+    log::info!(
+        "\n\n{:?} values computed successfully.\n\nOutputfile saved @ {output_file}.",
         metric
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    // Add debugging tests
+    #[test]
+    fn test_bulk_compute_modal_metric() {
+        // todo: add these to the test suite instead of hard coding
+        let edges_file = "/Users/amartin4/repos/bambam/denver_co/edges-complete.csv";
+        let vertices_file = "/Users/amartin4/repos/bambam/denver_co/vertices-complete.csv";
+        let output_file = "/Users/amartin4/repos/bambam/denver_co/output.csv";
+
+        let result =
+            super::bulk_compute_modal_metric("lts", edges_file, vertices_file, output_file);
+        assert!(result.is_ok());
+    }
 }

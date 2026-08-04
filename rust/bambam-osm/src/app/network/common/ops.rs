@@ -61,11 +61,10 @@ pub fn load_way_rtree_entries(
 
 /// Converts from whichever OSM maxspeed unit to MPH
 pub fn traffic_speed_from_maxspeed(entry: &WayRTreeEntry) -> Option<f32> {
-    const KMH_TO_MPH: f64 = 0.621371;
-    match entry.way.get_speed("maxspeed", true) {
+    match entry.way.get_speed("maxspeed_raw", true) {
         Ok(Some(velocity)) => {
-            let speed_kmh = velocity.get::<uom::si::velocity::kilometer_per_hour>();
-            Some((speed_kmh * KMH_TO_MPH) as f32)
+            let speed_mph = velocity.get::<uom::si::velocity::mile_per_hour>();
+            Some(speed_mph as f32)
         }
         _ => None,
     }

@@ -26,8 +26,8 @@ pub enum ModalMetricError {
 /// Supported modal metric calculation options.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModalMetric {
-    Wci,
-    Lts,
+    WalkingComfortIndex,
+    LevelOfTrafficStress,
 }
 
 /// Actual computed values for a modal metric.
@@ -41,8 +41,8 @@ impl FromStr for ModalMetric {
 
     fn from_str(s: &str) -> Result<ModalMetric, ModalMetricError> {
         match s.to_ascii_uppercase().as_str() {
-            "WCI" => Ok(ModalMetric::Wci),
-            "LTS" => Ok(ModalMetric::Lts),
+            "WCI" => Ok(ModalMetric::WalkingComfortIndex),
+            "LTS" => Ok(ModalMetric::LevelOfTrafficStress),
             _ => Err(ModalMetricError::InvalidModalMetric(format!(
                 "Unsupported metric name: {}",
                 s,
@@ -60,11 +60,11 @@ impl ModalMetric {
         src_node: &OsmNodeDataSerializable,
     ) -> Result<ModalMetricValue, ModalMetricError> {
         match self {
-            ModalMetric::Wci => {
+            ModalMetric::WalkingComfortIndex => {
                 let wci = compute_wci(rtree, way_entry, src_node)?;
                 Ok(ModalMetricValue::Wci(wci))
             }
-            ModalMetric::Lts => {
+            ModalMetric::LevelOfTrafficStress => {
                 let lts = compute_lts(rtree, way_entry)?;
                 Ok(ModalMetricValue::Lts(lts))
             }
@@ -73,10 +73,10 @@ impl ModalMetric {
 
     pub fn write_csv_header(&self, writer: &mut impl Write) -> Result<(), Box<dyn Error>> {
         match self {
-            ModalMetric::Wci => {
+            ModalMetric::WalkingComfortIndex => {
                 writeln!(writer, "wci_total,wci_walk,wci_speed,wci_cycle,wci_signal")?;
             }
-            ModalMetric::Lts => {
+            ModalMetric::LevelOfTrafficStress => {
                 writeln!(writer, "lts")?;
             }
         }

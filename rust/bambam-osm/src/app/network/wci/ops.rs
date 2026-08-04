@@ -33,9 +33,6 @@ fn is_walkable(way: &OsmWayDataSerializable) -> bool {
 /// - `entry`: The way of interest (as WayRTreeEntry)
 pub fn way_is_walk_eligible(rtree: &RTree<WayRTreeEntry>, entry: &WayRTreeEntry) -> bool {
     is_walkable(&entry.way) // check the way itself
-        || rtree // check neighboring ways
-            .locate_within_distance([entry.centroid.x(), entry.centroid.y()], MIN_DISTANCE_RTREE_NEIGHBOR)
-            .any(|neighbor| way_is_sidewalk(&neighbor.way))
 }
 
 // Checks if the way is a sidewalk
