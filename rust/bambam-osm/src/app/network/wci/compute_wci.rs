@@ -102,7 +102,7 @@ mod test {
             "src_vertex_id": 0,
             "dst_vertex_id": 1,
             "highway": "motorway",
-            "maxspeed": "65 mph",
+            "maxspeed_raw": "65 mph",
             "linestring": "LINESTRING (-105.170016 39.773648, -105.165381 39.774176)",
             "length_meters": 400.0
         }"#,
@@ -135,7 +135,7 @@ mod test {
             "dst_vertex_id": 1,
             "highway": "footway",
             "footway": "alley",
-            "maxspeed": "",
+            "maxspeed_raw": "",
             "linestring": "LINESTRING (-105.170016 39.773648, -105.165381 39.774176)",
             "length_meters": 400.0
         }"#,
@@ -169,7 +169,7 @@ mod test {
             "dst_vertex_id": 1,
             "highway": "residential",
             "cycleway": "shared_lane",
-            "maxspeed": "25 mph",
+            "maxspeed_raw": "25 mph",
             "linestring": "LINESTRING (-105.170016 39.773648, -105.165381 39.774176)",
             "length_meters": 400.0
         }"#,
@@ -208,7 +208,7 @@ mod test {
             "src_vertex_id": 0,
             "dst_vertex_id": 1,
             "highway": "residential",
-            "maxspeed": "45 mph",
+            "maxspeed_raw": "45 mph",
             "linestring": "LINESTRING (-105.170016 39.773648, -105.165381 39.774176)",
             "length_meters": 400.0
         }"#,
@@ -249,7 +249,7 @@ mod test {
             "src_vertex_id": 0,
             "dst_vertex_id": 1,
             "highway": "residential",
-            "maxspeed": "45 mph",
+            "maxspeed_raw": "45 mph",
             "linestring": "LINESTRING (-105.170016 39.773648, -105.165381 39.774176)",
             "length_meters": 400.0
         }"#,
@@ -264,7 +264,7 @@ mod test {
             "src_vertex_id": 2,
             "dst_vertex_id": 3,
             "highway": "residential",
-            "maxspeed": "25 mph",
+            "maxspeed_raw": "25 mph",
             "cycleway": "lane",
             "linestring": "LINESTRING (-105.168085 39.773772, -105.166755 39.773937)",
             "length_meters": 100
