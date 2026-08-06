@@ -85,19 +85,3 @@ pub fn bulk_compute_modal_metric(
     );
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    // Add debugging tests
-    #[test]
-    fn test_bulk_compute_modal_metric() {
-        // todo: add these to the test suite instead of hard coding
-        let edges_file = "/Users/amartin4/repos/bambam/denver_co/edges-complete.csv";
-        let vertices_file = "/Users/amartin4/repos/bambam/denver_co/vertices-complete.csv";
-        let output_file = "/Users/amartin4/repos/bambam/denver_co/output.csv";
-
-        let result =
-            super::bulk_compute_modal_metric("lts", edges_file, vertices_file, output_file);
-        assert!(result.is_ok());
-    }
-}

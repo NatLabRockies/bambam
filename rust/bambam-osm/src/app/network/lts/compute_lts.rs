@@ -7,15 +7,18 @@ use crate::app::network::{
         way_rtree_entry::WayRTreeEntry,
     },
     lts::{
-        lts::{Lts, LtsError, MIN_LTS},
-        ops::is_non_motorized_way,
+        lts::{Lts, LtsError, MAX_LTS, MIN_LTS},
+        ops::{is_non_motorized_way, is_unbikeable_way},
     },
 };
 
 /// Computes the level of traffic stress for a given way entry.
 pub fn compute_lts(rtree: &RTree<WayRTreeEntry>, entry: &WayRTreeEntry) -> Result<Lts, LtsError> {
-    // A way that is itself a dedicated non-motorized facility is inherently low-stress;
-    // maxspeed/cycleway tags describe roads, not off-street paths.
+    // Some ways are inherently unsuitable for bikes.
+    if is_unbikeable_way(&entry.way.highway) {
+        return Lts::new(MAX_LTS);
+    }
+    // A highway that is non-motorized is inherently low-stress
     if is_non_motorized_way(&entry.way.highway) {
         return Lts::new(MIN_LTS);
     }
@@ -23,7 +26,6 @@ pub fn compute_lts(rtree: &RTree<WayRTreeEntry>, entry: &WayRTreeEntry) -> Resul
     let speed = traffic_speed_from_maxspeed(entry).unwrap_or_else(|| {
         let neighboring_ways = find_neighboring_ways(entry, rtree);
         estimated_speed_from_neighbors(entry, &neighboring_ways).unwrap_or(25.0)
-        // default matters.
     });
 
     let cycleway_tag = entry

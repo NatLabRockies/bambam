@@ -20,7 +20,7 @@ impl std::fmt::Display for Lts {
 
 impl Lts {
     pub fn new(value: u8) -> Result<Self, LtsError> {
-        if value < MIN_LTS || value > MAX_LTS {
+        if !(MIN_LTS..=MAX_LTS).contains(&value) {
             Err(LtsError::ValueError(value))
         } else {
             Ok(Lts(value))
@@ -30,9 +30,9 @@ impl Lts {
     pub fn from_table_lookup(
         traffic_speed: u8, // assumed in mph.
         cycleway_tag: CyclewayTag,
-        oneway: bool,
+        oneway_street: bool,
     ) -> Result<Lts, LtsError> {
-        let value = match (cycleway_tag, oneway) {
+        let value = match (cycleway_tag, oneway_street) {
             (CyclewayTag::DedicatedWithBuffer, _) => 1,
 
             // Dedicated cycleway without buffer

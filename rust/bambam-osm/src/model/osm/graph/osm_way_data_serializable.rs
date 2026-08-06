@@ -21,7 +21,6 @@ pub struct OsmWayDataSerializable {
     pub area: Option<String>,
     pub bridge: Option<String>,
     pub est_width: Option<String>,
-    #[serde(deserialize_with = "deserialize_highway")]
     pub highway: Highway,
     pub sidewalk: Option<String>,
     pub cycleway: Option<String>,
@@ -354,12 +353,4 @@ fn top_highway(
             Ok(highway)
         }
     }
-}
-
-fn deserialize_highway<'de, D>(deserializer: D) -> Result<Highway, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    Ok(Highway::from_str(&s).unwrap_or(Highway::Other(s)))
 }
