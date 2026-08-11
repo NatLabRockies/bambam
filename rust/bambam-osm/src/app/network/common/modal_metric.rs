@@ -43,10 +43,7 @@ impl FromStr for ModalMetric {
         match s.to_ascii_uppercase().as_str() {
             "WCI" => Ok(ModalMetric::WalkingComfortIndex),
             "LTS" => Ok(ModalMetric::LevelOfTrafficStress),
-            _ => Err(ModalMetricError::InvalidModalMetric(format!(
-                "Unsupported metric name: {}",
-                s,
-            ))),
+            _ => Err(ModalMetricError::InvalidModalMetric(s.to_string())),
         }
     }
 }

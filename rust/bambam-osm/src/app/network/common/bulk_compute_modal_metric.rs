@@ -40,6 +40,15 @@ pub fn bulk_compute_modal_metric(
     let rtree = RTree::bulk_load(way_rtree_entries.clone());
     kdam::term::init(false);
     kdam::term::hide_cursor().ok();
+
+    struct CursorGuard;
+    impl Drop for CursorGuard {
+        fn drop(&mut self) {
+            kdam::term::show_cursor().ok();
+        }
+    }
+    let _cursor_guard = CursorGuard;
+
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
         BarBuilder::default()
             .desc(format!(
@@ -67,8 +76,6 @@ pub fn bulk_compute_modal_metric(
             Ok(result)
         })
         .collect::<Result<Vec<ModalMetricValue>, ModalMetricError>>()?;
-
-    kdam::term::show_cursor().ok();
 
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);

@@ -216,14 +216,8 @@ impl App {
                 output_file,
                 edges_osm,
                 vertices_osm,
-            } => {
-                if let Err(error) =
-                    bulk_compute_modal_metric(metric_name, edges_osm, vertices_osm, output_file)
-                {
-                    eprintln!("error! {error:?}");
-                }
-                Ok(())
-            }
+            } => bulk_compute_modal_metric(metric_name, edges_osm, vertices_osm, output_file)
+                .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}")),
             Self::PreProcessGrid {
                 acs_type,
                 acs_year,
