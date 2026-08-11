@@ -66,7 +66,7 @@ def build_tooltip_columns(df: pd.DataFrame, primary_column: str) -> list[str]:
     # Standard edge metadata attributes if present
     base_attrs = [
         col
-        for col in ["name", "highway", "cycleway", "oneway" "maxspeed", "maxspeed_raw"] 
+        for col in ["name", "highway", "cycleway", "oneway", "maxspeed", "maxspeed_raw"] 
         if col in df.columns
     ]
 

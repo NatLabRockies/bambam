@@ -5,7 +5,7 @@ Merges modal metric scores (e.g., WCI, LTS) with an edges-complete.csv file.
 # Usage:
 #   Merge modal metric scores (WCI, LTS, etc.) with an OSM edges-complete CSV:
 #
-#       python merge_wci.py \
+#       python merge_metric.py \
 #           --edges edges-complete.csv \
 #           --metric metric-output-file.csv \
 #           --output edges-complete-with-metric.csv
@@ -29,7 +29,10 @@ def read_metric_rows(path: Path) -> tuple[list[str], list[list[str]]]:
     """Read a CSV containing modal metric outputs (e.g., WCI, LTS)."""
     with path.open("r", newline="", encoding="utf-8") as f:
         reader = csv.reader(f)
-        header = next(reader)
+        try:
+            header = next(reader)
+        except StopIteration:
+            raise ValueError(f"{path} is empty")
         rows = [row for row in reader]
 
     return header, rows
