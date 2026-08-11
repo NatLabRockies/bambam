@@ -2,9 +2,7 @@ use super::ops::{
     cycleway_score, is_walk_eligible, traffic_signal_score, traffic_speed_score, walkability_score,
 };
 use super::wci_score::{WciError, WciScore, MAX_WCI_SCORE, MIN_WCI_SCORE};
-use crate::network::penalty_traits::{
-    EdgeForModalPenalties, SpatialEdge, VertexForModalPenalties,
-};
+use crate::network::network_traits::{EdgeForModalMetric, SpatialEdge, VertexForModalMetric};
 use crate::network::rtree_entry::{find_neighboring_edges, EdgeRTreeEntry};
 use rstar::RTree;
 
@@ -40,24 +38,23 @@ impl WciComponentScores {
 /// the network.
 ///
 /// This function is generic over any map provider whose edge type implements
-/// [`EdgeForModalPenalties`] + [`SpatialEdge`] and whose vertex type implements
-/// [`VertexForModalPenalties`].
+/// [`EdgeForModalMetric`] + [`SpatialEdge`] and whose vertex type implements
+/// [`VertexForModalMetric`].
 pub fn compute_wci<E, V>(
     rtree: &RTree<EdgeRTreeEntry<E>>,
     entry: &EdgeRTreeEntry<E>,
     src_vertex: &V,
 ) -> Result<WciComponentScores, WciError>
 where
-    E: EdgeForModalPenalties + SpatialEdge,
-    V: VertexForModalPenalties,
+    E: EdgeForModalMetric + SpatialEdge,
+    V: VertexForModalMetric,
 {
     let neighboring_edges = find_neighboring_edges(entry, rtree);
 
     if !is_walk_eligible(entry, &neighboring_edges) {
         // Total WCI score = Min WCI score (unwalkable roadway)
         WciComponentScores::min_wci_score()
-    } else if entry.edge.is_footway()
-        || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
+    } else if entry.edge.is_footway() || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
     {
         // Total WCI score = Max WCI score (footway or sidewalk with no adjacent edges)
         WciComponentScores::max_wci_score()

@@ -1,4 +1,4 @@
-use super::penalty_traits::SpatialEdge;
+use super::network_traits::SpatialEdge;
 use geo::{BoundingRect, Centroid, Distance, Euclidean};
 use rstar::{PointDistance, RTreeObject, AABB};
 

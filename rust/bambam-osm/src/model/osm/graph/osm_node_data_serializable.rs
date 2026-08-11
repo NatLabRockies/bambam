@@ -1,5 +1,5 @@
 use super::{OsmNodeData, OsmNodeId};
-use bambam_core::network::penalty_traits::VertexForModalPenalties;
+use bambam_core::network::network_traits::VertexForModalMetric;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ impl OsmNodeDataSerializable {
     pub const VALUE_DELIMITER: &'static str = ";";
 }
 
-impl VertexForModalPenalties for OsmNodeDataSerializable {
+impl VertexForModalMetric for OsmNodeDataSerializable {
     fn has_traffic_signals(&self) -> bool {
         self.highway
             .as_ref()

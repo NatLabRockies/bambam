@@ -1,6 +1,6 @@
 use super::wci_score::WciScore;
 use crate::network::cycleway_tag::CyclewayTag;
-use crate::network::penalty_traits::{EdgeForModalPenalties, SpatialEdge, VertexForModalPenalties};
+use crate::network::network_traits::{EdgeForModalMetric, SpatialEdge, VertexForModalMetric};
 use crate::network::rtree_entry::EdgeRTreeEntry;
 use geo::{Distance, Euclidean};
 
@@ -12,7 +12,7 @@ pub const NO_CYCLEWAY_FOUND_SCORE: i32 = -2;
 /// own attributes, or one of its spatial neighbors is a sidewalk.
 pub fn is_walk_eligible<E>(entry: &EdgeRTreeEntry<E>, neighbors: &[&EdgeRTreeEntry<E>]) -> bool
 where
-    E: EdgeForModalPenalties + SpatialEdge,
+    E: EdgeForModalMetric + SpatialEdge,
 {
     entry.edge.is_walkable() || neighbors.iter().any(|n| n.edge.is_sidewalk())
 }
@@ -33,7 +33,7 @@ pub fn cycleway_score_from_neighbors<E>(
     neighbors: &[&EdgeRTreeEntry<E>],
 ) -> i32
 where
-    E: EdgeForModalPenalties + SpatialEdge,
+    E: EdgeForModalMetric + SpatialEdge,
 {
     let mut total_distance: f32 = 0.0;
     let mut scored: Vec<(i32, f32)> = Vec::new();
@@ -80,7 +80,7 @@ pub fn traffic_speed_score_from_neighbors<E>(
     neighbors: &[&EdgeRTreeEntry<E>],
 ) -> i32
 where
-    E: EdgeForModalPenalties + SpatialEdge,
+    E: EdgeForModalMetric + SpatialEdge,
 {
     let speeds_and_distances: Vec<(f32, f32)> = neighbors
         .iter()
@@ -111,7 +111,7 @@ where
 }
 
 /// Computes the walkability `WciScore` for an edge.
-pub fn walkability_score<E: EdgeForModalPenalties>(edge: &E) -> WciScore {
+pub fn walkability_score<E: EdgeForModalMetric>(edge: &E) -> WciScore {
     if edge.is_sidewalk() || edge.is_footway() {
         WciScore::from_component(2)
     } else {
@@ -120,7 +120,7 @@ pub fn walkability_score<E: EdgeForModalPenalties>(edge: &E) -> WciScore {
 }
 
 /// Computes the traffic signal `WciScore` for an edge's source vertex.
-pub fn traffic_signal_score<V: VertexForModalPenalties>(src_vertex: &V) -> WciScore {
+pub fn traffic_signal_score<V: VertexForModalMetric>(src_vertex: &V) -> WciScore {
     if src_vertex.has_traffic_signals() {
         WciScore::from_component(2)
     } else if src_vertex.has_stop_sign() {
@@ -134,7 +134,7 @@ pub fn traffic_signal_score<V: VertexForModalPenalties>(src_vertex: &V) -> WciSc
 /// tag if present, otherwise inferring from neighbors.
 pub fn cycleway_score<E>(entry: &EdgeRTreeEntry<E>, neighbors: &[&EdgeRTreeEntry<E>]) -> WciScore
 where
-    E: EdgeForModalPenalties + SpatialEdge,
+    E: EdgeForModalMetric + SpatialEdge,
 {
     match entry.edge.get_cycleway_tag() {
         Some(tag) => WciScore::from_component(cycleway_score_from_tag(&tag)),
@@ -149,7 +149,7 @@ pub fn traffic_speed_score<E>(
     neighbors: &[&EdgeRTreeEntry<E>],
 ) -> WciScore
 where
-    E: EdgeForModalPenalties + SpatialEdge,
+    E: EdgeForModalMetric + SpatialEdge,
 {
     WciScore::from_component(
         entry

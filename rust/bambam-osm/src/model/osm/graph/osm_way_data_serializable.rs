@@ -3,7 +3,7 @@ use super::{OsmGraph, OsmNodeData, OsmNodeId, OsmWayData, OsmWayId};
 use crate::model::{feature::highway::Highway, osm::OsmError};
 use bambam_core::network::{
     cycleway_tag::CyclewayTag,
-    penalty_traits::{EdgeForModalPenalties, SpatialEdge},
+    network_traits::{EdgeForModalMetric, SpatialEdge},
 };
 use geo::{Convert, Coord, Haversine, Length, LineString};
 use geozero::ToWkt;
@@ -196,7 +196,7 @@ impl OsmWayDataSerializable {
     }
 }
 
-impl EdgeForModalPenalties for OsmWayDataSerializable {
+impl EdgeForModalMetric for OsmWayDataSerializable {
     fn get_traffic_speed_limit(&self) -> Option<i32> {
         const KMH_TO_MPH: f64 = 0.621371;
         match self.get_speed("maxspeed", true) {

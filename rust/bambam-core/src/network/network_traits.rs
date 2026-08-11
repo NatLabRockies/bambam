@@ -2,11 +2,11 @@ use super::cycleway_tag::CyclewayTag;
 use geo::LineString;
 
 /// A vertex (graph node) that carries the attributes required to compute
-/// modal penalty scores such as the Walking Comfort Index (WCI).
+/// modal metrics such as the Walking Comfort Index (WCI).
 ///
 /// Implement this trait for a map provider's vertex/node type
 /// (e.g. OpenStreetMap node, Overture Maps connector).
-pub trait VertexForModalPenalties {
+pub trait VertexForModalMetric {
     /// returns true if the vertex has a traffic signal.
     fn has_traffic_signals(&self) -> bool;
     /// returns true if the vertex has a stop sign.
@@ -14,7 +14,7 @@ pub trait VertexForModalPenalties {
 }
 
 /// An edge (graph link) that carries the attributes required to compute
-/// modal penalty scores such as the Walking Comfort Index (WCI).
+/// modal metrics such as the Walking Comfort Index (WCI).
 ///
 /// Implement this trait for a map provider's edge/way type
 /// (e.g. OpenStreetMap way, Overture Maps segment).
@@ -23,7 +23,7 @@ pub trait VertexForModalPenalties {
 /// edge's own attributes. Neighbor-aware logic (such as inferring walk
 /// eligibility or scores from nearby edges) is handled by the WCI compute
 /// layer using [`SpatialEdge`] and a spatial index.
-pub trait EdgeForModalPenalties {
+pub trait EdgeForModalMetric {
     /// the posted traffic speed limit for this edge, in miles per hour, if known.
     fn get_traffic_speed_limit(&self) -> Option<i32>;
     /// the cycleway classification for this edge, if the edge carries one.
@@ -44,7 +44,7 @@ pub trait EdgeForModalPenalties {
 /// An edge that exposes the geometry and identity required to participate in a
 /// spatial index (R-tree) for neighbor-aware modal penalty computations.
 ///
-/// This is kept separate from [`EdgeForModalPenalties`] so that non-spatial
+/// This is kept separate from [`EdgeForModalMetric`] so that non-spatial
 /// callers are not required to provide geometry.
 pub trait SpatialEdge {
     /// a stable identifier for this edge, used to exclude an edge from its own
