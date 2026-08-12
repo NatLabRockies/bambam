@@ -34,6 +34,8 @@ impl TraversalModel for GbfsTraversalModel {
     }
 
     fn output_features(&self) -> Vec<(String, StateVariableConfig)> {
+        // 1. valid destination
+        // 2. max_speed + edge_speed
         todo!()
     }
 

@@ -1,7 +1,7 @@
 pub mod fieldname {
     /// the name of the agency providing the GBFS vehicle.
     /// if this value is set, the trip has boarded the service.
-    pub const GBFS_SERVICE_ID: &str = "gbfs_service_id";
+    pub const GBFS_SERVICE_ID: &str = "gbfs_system_id";
 
     /// true if the trip has a [GBFS_AGENCY_ID] and if the current
     /// edge has a GBFS zone where `ride_end_allowed` is true.
@@ -14,7 +14,7 @@ pub mod variable {
     use routee_compass_core::model::state::{CustomVariableConfig, StateVariableConfig};
 
     /// stores a zone id in a state variable
-    pub fn gbfs_service_id() -> StateVariableConfig {
+    pub fn gbfs_system_id() -> StateVariableConfig {
         StateVariableConfig::Custom {
             custom_type: "Option<GbfsAgencyId>".to_string(),
             value: empty(),
@@ -45,7 +45,7 @@ pub mod state {
     const NO_AGENCY_ID: i64 = -1;
 
     /// assigns the given agency_id to the state vector.
-    pub fn set_service_id(
+    pub fn set_system_id(
         state: &mut [StateVariable],
         state_model: &StateModel,
         agency_id: &str,
@@ -58,7 +58,7 @@ pub mod state {
     }
 
     /// gets the stored agency_id from the state variable, if it exists.
-    pub fn get_service_id<'a, 'b>(
+    pub fn get_system_id<'a, 'b>(
         state: &'a [StateVariable],
         state_model: &'a StateModel,
         mapping: &'b CategoricalStateMapping,
@@ -69,13 +69,13 @@ pub mod state {
     }
 
     /// confirms that there is a stored agency_id and that it matches the provided one.
-    pub fn verify_service_id(
+    pub fn verify_system_id(
         agency_id: &str,
         state: &[StateVariable],
         state_model: &StateModel,
         mapping: &CategoricalStateMapping,
     ) -> Result<bool, StateModelError> {
-        let stored_agency = get_service_id(state, state_model, mapping)?;
+        let stored_agency = get_system_id(state, state_model, mapping)?;
         match stored_agency {
             Some(a) if a == agency_id => Ok(true),
             _ => Ok(false),
@@ -88,6 +88,22 @@ pub mod state {
         state_model: &StateModel,
     ) -> Result<bool, StateModelError> {
         let agency_id = state_model.get_custom_i64(state, fieldname::GBFS_SERVICE_ID)?;
-        Ok(agency_id != -1)
+        Ok(agency_id != NO_AGENCY_ID)
+    }
+
+    /// affirms that the trip location associated with this state vector is a valid trip destination.
+    pub fn set_valid_destination(
+        state: &mut [StateVariable],
+        state_model: &StateModel,
+    ) -> Result<(), StateModelError> {
+        state_model.set_custom_bool(state, fieldname::GBFS_DESTINATION, &true)
+    }
+
+    /// is the trip location associated with this state vector is a valid trip destination?
+    pub fn get_valid_destination(
+        state: &[StateVariable],
+        state_model: &StateModel,
+    ) -> Result<bool, StateModelError> {
+        state_model.get_custom_bool(state, fieldname::GBFS_DESTINATION)
     }
 }

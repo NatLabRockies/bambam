@@ -60,6 +60,8 @@ impl ZoneState {
     /// note: GbfsZoneRecords have already been "flattened" into concrete
     /// boolean values by injecting the implicit default value "true" where
     /// a field is omitted from the source rule.
+    ///
+    /// returns at most one zone per system_id.
     pub fn collect_zones(intersection: Vec<&GbfsZoneRecord>) -> Vec<ZoneState> {
         let mut result: HashMap<&String, Self> = HashMap::new();
 
@@ -76,5 +78,14 @@ impl ZoneState {
         }
 
         result.into_values().collect()
+    }
+
+    /// used by sorting combinators so that the first value has the highest speed permissiveness
+    /// and the lexicagraphically-first system id.
+    pub fn ascending_sort_key(&self) -> (i32, String) {
+        (
+            -self.maximum_speed_kph.unwrap_or(i32::MAX),
+            self.system_id.clone(),
+        )
     }
 }

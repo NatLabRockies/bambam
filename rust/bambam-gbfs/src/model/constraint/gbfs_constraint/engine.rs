@@ -31,14 +31,14 @@ impl GbfsConstraintEngine {
         state_model: &StateModel,
         start_time: DateTime<Utc>,
     ) -> Result<bool, ConstraintModelError> {
-        let service_opt = feature::state::get_service_id(state, state_model, &self.mapping)
+        let service_opt = feature::state::get_system_id(state, state_model, &self.mapping)
             .map_err(|e| {
                 let msg = format!("failure inspecting service id of search state: {e}");
                 ConstraintModelError::ConstraintModelError(msg)
             })?;
         let zones = self
             .lookup
-            .get_zone_rules(vertex, state, state_model, start_time, service_opt)
+            .matching_zones(vertex, state, state_model, start_time, service_opt)
             .map_err(|e| {
                 let msg = format!("failure running GBFS rule lookup: {e}");
                 ConstraintModelError::ConstraintModelError(msg)

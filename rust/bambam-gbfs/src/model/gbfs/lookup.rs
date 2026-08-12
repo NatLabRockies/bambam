@@ -45,7 +45,7 @@ impl GbfsLookupModel {
     /// zones. filters out zonal rules that do not match our trip datetime. if we are boarded on a GBFS
     /// provider we further filter to only zones with a matching ServiceId. combines all
     /// zone record rules in order to produce a single value result.
-    pub fn get_zone_rules<'b>(
+    pub fn matching_zones<'b>(
         &self,
         vertex: &'b Vertex,
         state: &'b [StateVariable],

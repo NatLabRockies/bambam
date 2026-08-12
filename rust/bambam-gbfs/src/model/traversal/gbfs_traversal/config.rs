@@ -1,3 +1,4 @@
+use routee_compass_core::model::unit::SpeedUnit;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -13,4 +14,12 @@ pub struct GbfsTraversalConfig {
     pub geometries_input_file: String,
     /// fully-qualified identifiers for each record with matching index to zone + geometry files.
     pub zone_ids_input_file: String,
+    /// speed to use for GBFS trips. can be limited by zone-specific max speeds.
+    pub default_speed: DefaultSpeed,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DefaultSpeed {
+    pub speed: f64,
+    pub speed_unit: SpeedUnit,
 }
