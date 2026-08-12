@@ -54,7 +54,7 @@ impl ModalMetric {
         &self,
         rtree: &RTree<WayRTreeEntry>,
         way_entry: &WayRTreeEntry,
-        src_node: &OsmNodeDataSerializable,
+        src_node: Option<&OsmNodeDataSerializable>,
     ) -> Result<ModalMetricValue, ModalMetricError> {
         match self {
             ModalMetric::WalkingComfortIndex => {

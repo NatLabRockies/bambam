@@ -68,6 +68,8 @@ impl std::fmt::Display for Wci {
 }
 
 impl Wci {
+    pub const ZERO: Wci = Wci(0);
+
     pub fn new(value: i32) -> Result<Wci, WciError> {
         if (MIN_WCI..=MAX_WCI).contains(&value) {
             Ok(Wci(value))

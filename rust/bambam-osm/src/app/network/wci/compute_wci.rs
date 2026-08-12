@@ -42,7 +42,7 @@ impl WciComponents {
 pub fn compute_wci(
     rtree: &RTree<WayRTreeEntry>,
     entry: &WayRTreeEntry,
-    src_node: &OsmNodeDataSerializable,
+    src_node: Option<&OsmNodeDataSerializable>,
 ) -> Result<WciComponents, WciError> {
     let way_is_walk_eligible = way_is_walk_eligible(rtree, entry);
 
@@ -63,7 +63,9 @@ pub fn compute_wci(
 
         let traffic_speed_comfort = Wci::traffic_speed_comfort(entry, &neighboring_ways);
 
-        let traffic_signal_comfort = Wci::traffic_signal_comfort(src_node);
+        let traffic_signal_comfort = src_node
+            .map(Wci::traffic_signal_comfort)
+            .unwrap_or_else(|| Wci::ZERO);
 
         // Total = Sum of WCI component scores
         Ok(WciComponents {
@@ -121,7 +123,7 @@ mod test {
         let entry = WayRTreeEntry::new(way).unwrap();
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
-        let wci: WciComponents = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        let wci: WciComponents = compute_wci(&rtree, &entry, Some(&src_vertex)).unwrap();
         assert_eq!(wci.total, Wci::new(MIN_WCI).unwrap());
     }
 
@@ -154,7 +156,7 @@ mod test {
         let entry = WayRTreeEntry::new(way).unwrap();
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
-        let wci: WciComponents = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        let wci: WciComponents = compute_wci(&rtree, &entry, Some(&src_vertex)).unwrap();
         assert_eq!(wci.total, Wci::new(MAX_WCI).unwrap());
     }
 
@@ -190,7 +192,7 @@ mod test {
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
         // compute wci for the residential highway with nearby sidewalk
-        let wci: WciComponents = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        let wci: WciComponents = compute_wci(&rtree, &entry, Some(&src_vertex)).unwrap();
         assert_eq!(wci.traffic_speed_comfort, Some(Wci::new(2).unwrap()));
         assert_eq!(wci.traffic_signal_comfort, Some(Wci::new(1).unwrap()));
         assert_eq!(wci.cycleway_comfort, Some(Wci::new(0).unwrap()));
@@ -229,7 +231,7 @@ mod test {
         let rtree: RTree<WayRTreeEntry> = RTree::new(); // just need this to pass into wci, not using it.
 
         // compute wci
-        let wci: WciComponents = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        let wci: WciComponents = compute_wci(&rtree, &entry, Some(&src_vertex)).unwrap();
         assert_eq!(wci.traffic_speed_comfort, Some(Wci::new(-1).unwrap()));
         assert_eq!(wci.traffic_signal_comfort, Some(Wci::new(1).unwrap()));
         assert_eq!(wci.cycleway_comfort, Some(Wci::new(-2).unwrap()));
@@ -288,7 +290,7 @@ mod test {
 
         rtree.insert(entry.clone());
         rtree.insert(neighbor_entry);
-        let wci = compute_wci(&rtree, &entry, &src_vertex).unwrap();
+        let wci = compute_wci(&rtree, &entry, Some(&src_vertex)).unwrap();
         assert!(wci.total > Wci::new(WAY_SCORE_NO_NEIGHBORS).unwrap());
     }
 }

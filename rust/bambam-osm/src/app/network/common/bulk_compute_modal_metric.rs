@@ -38,16 +38,6 @@ pub fn bulk_compute_modal_metric(
     log::info!("Edges and vertices read successfully.\n");
 
     let rtree = RTree::bulk_load(way_rtree_entries.clone());
-    kdam::term::init(false);
-    kdam::term::hide_cursor().ok();
-
-    struct CursorGuard;
-    impl Drop for CursorGuard {
-        fn drop(&mut self) {
-            kdam::term::show_cursor().ok();
-        }
-    }
-    let _cursor_guard = CursorGuard;
 
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
         BarBuilder::default()
@@ -59,13 +49,10 @@ pub fn bulk_compute_modal_metric(
             .build()?,
     ));
 
-    let default_node = OsmNodeDataSerializable::default();
     let values: Vec<ModalMetricValue> = way_rtree_entries
         .par_iter()
         .map(|way_entry| {
-            let src_node = vertices
-                .get(way_entry.way.src_vertex_id.0)
-                .unwrap_or(&default_node);
+            let src_node = vertices.get(way_entry.way.src_vertex_id.0);
 
             let result = metric.compute_metric(&rtree, way_entry, src_node)?;
 
@@ -76,6 +63,8 @@ pub fn bulk_compute_modal_metric(
             Ok(result)
         })
         .collect::<Result<Vec<ModalMetricValue>, ModalMetricError>>()?;
+
+    eprintln!();
 
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);
