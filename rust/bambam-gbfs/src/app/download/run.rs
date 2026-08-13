@@ -149,6 +149,9 @@ pub async fn gbfs_batch_metadata_download(
     delay_ms: Option<u64>,
 ) -> Result<(), String> {
     let par = parallelism.unwrap_or(1);
+    if par == 0 {
+        return Err("parallelism must be greater than zero".to_string());
+    }
     let del = delay_ms.unwrap_or_default();
 
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
