@@ -247,7 +247,7 @@ async fn run_gbfs_download(
         super::download_metadata::UnversionedGbfsVersion::V2_3 => {
             let result = match entry_point {
                 EntryPoint::Manifest => gbfs_v2_3::run_v2_3_manifest(&client, url).await?,
-                EntryPoint::Gbfs => gbfs_v2_3::run_v2_3_gbfs(&client, &url)
+                EntryPoint::Gbfs => gbfs_v2_3::run_v2_3_gbfs(&client, url)
                     .await
                     .map(|g| vec![g])?,
             };
@@ -256,7 +256,7 @@ async fn run_gbfs_download(
         super::download_metadata::UnversionedGbfsVersion::V3_0 => {
             let result = match entry_point {
                 EntryPoint::Manifest => gbfs_v3_0::run_v3_0_manifest(&client, url).await?,
-                EntryPoint::Gbfs => gbfs_v3_0::run_v3_0_gbfs(&client, &url)
+                EntryPoint::Gbfs => gbfs_v3_0::run_v3_0_gbfs(&client, url)
                     .await
                     .map(|g| vec![g])?,
             };
