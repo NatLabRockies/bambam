@@ -74,7 +74,7 @@ impl ModalMetric {
             }
         }
     }
-
+    /// Writes the CSV header for the specified modal metric.
     pub fn write_csv_header(&self, writer: &mut impl Write) -> Result<(), Box<dyn Error>> {
         match self {
             ModalMetric::WalkingComfortIndex => {

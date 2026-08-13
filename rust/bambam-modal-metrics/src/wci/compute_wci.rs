@@ -5,7 +5,7 @@ use crate::network_traits::{
     edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge,
     vertex_for_modal_metric::VertexForModalMetric,
 };
-use crate::wci::ops::way_is_walk_eligible;
+use crate::wci::ops::is_walk_eligible;
 use crate::wci::wci::{MAX_WCI, MIN_WCI, Wci, WciError};
 
 /// The Walking Comfort Index (WCI) components for a way, including total WCI
@@ -20,14 +20,15 @@ pub struct WciComponents {
 }
 
 impl WciComponents {
-    pub fn min_wci_score() -> Result<Self, WciError> {
+    /// Returns the minimum WCI (no components)
+    pub fn min_wci() -> Result<Self, WciError> {
         Ok(Self {
             total: Wci::new(MIN_WCI)?,
             ..Default::default()
         })
     }
-
-    pub fn max_wci_score() -> Result<Self, WciError> {
+    /// Returns the maximum WCI (no components)
+    pub fn max_wci() -> Result<Self, WciError> {
         Ok(Self {
             total: Wci::new(MAX_WCI)?,
             ..Default::default()
@@ -46,22 +47,27 @@ where
     E: SpatialEdge + EdgeForModalMetric,
     V: VertexForModalMetric,
 {
-    let way_is_walk_eligible = way_is_walk_eligible(rtree, entry);
+    // general walk-eligibility based on edge attributes and neighbors.
+    let is_walk_eligible = is_walk_eligible(rtree, entry);
 
-    let neighboring_ways = find_neighboring_edges(entry, rtree);
+    // grab the neighboring edges
+    let neighboring_edges = find_neighboring_edges(entry, rtree);
 
-    if !way_is_walk_eligible {
+    if !is_walk_eligible {
         // Total WCI score = Min WCI score (unwalkable roadway)
-        WciComponents::min_wci_score()
-    } else if entry.edge.is_footway() || (neighboring_ways.is_empty() && entry.edge.is_sidewalk()) {
+        WciComponents::min_wci()
+    } else if entry.edge.is_footway() || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
+    {
         // Total WCI score = Max WCI score (footway or sidewalk with no adjacent ways)
-        WciComponents::max_wci_score()
+        WciComponents::max_wci()
     } else {
+        // Compute all component scores.
+
         let walkability = Wci::walkability(&entry.edge);
 
-        let cycleway_comfort = Wci::cycleway_comfort(entry, &neighboring_ways);
+        let cycleway_comfort = Wci::cycleway_comfort(entry, &neighboring_edges);
 
-        let traffic_speed_comfort = Wci::traffic_speed_comfort(entry, &neighboring_ways);
+        let traffic_speed_comfort = Wci::traffic_speed_comfort(entry, &neighboring_edges);
 
         let traffic_signal_comfort = src_node
             .map(|v| Wci::traffic_signal_comfort(v))

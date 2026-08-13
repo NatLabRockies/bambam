@@ -32,6 +32,7 @@ where
     E: SpatialEdge + EdgeForModalMetric + DeserializeOwned + Clone + Send + Sync,
     V: VertexForModalMetric + DeserializeOwned + Send + Sync,
 {
+    // determine the modal metric to compute based on the provided metric name.
     let metric: ModalMetric = metric_name.parse()?;
 
     log::info!(
@@ -40,10 +41,12 @@ where
     );
     log::info!("Reading:\n\t- vertex set @ {vertices_file}\n\t- edge set @ {edges_file}\n");
 
+    // load vertices and edges.
     let vertices: Box<[V]> = read_utils::from_csv(&vertices_file, true, None, None)?;
     let edge_rtree_entries = load_edge_rtree_entries::<E, V>(edges_file, &vertices)?;
     log::info!("Edges and vertices read successfully.\n");
 
+    // build an RTree with the edge entries.
     let rtree = RTree::bulk_load(edge_rtree_entries.clone());
 
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
@@ -56,6 +59,7 @@ where
             .build()?,
     ));
 
+    // compute the modal metric for each edge in parallel via par_iter
     let values: Vec<ModalMetricValue> = edge_rtree_entries
         .par_iter()
         .map(|edge_entry| {
@@ -73,6 +77,7 @@ where
 
     eprintln!();
 
+    // write to file
     let file = File::create(output_file)?;
     let mut writer = BufWriter::new(file);
 

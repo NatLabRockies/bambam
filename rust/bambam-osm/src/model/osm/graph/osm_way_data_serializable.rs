@@ -199,6 +199,9 @@ impl OsmWayDataSerializable {
 /// OSM Way modal metric implementation
 impl EdgeForModalMetric for OsmWayDataSerializable {
     fn get_traffic_speed_limit(&self) -> Option<i32> {
+        // TODO: since the US speed limits are in MPH, we grab the maxspeed_raw because it is typically
+        // of the form "XX mph". We should ideally try to grab either "maxspeed" or "maxspeed_raw"
+        // so that this will work for Non-US speed limits.
         match self.get_speed("maxspeed_raw", true) {
             Ok(Some(velocity)) => {
                 let mph = velocity.get::<uom::si::velocity::mile_per_hour>();

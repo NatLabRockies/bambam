@@ -35,6 +35,7 @@ where
 
     let oneway = entry.edge.is_oneway();
 
+    // compute the LTS value for this edge via the table lookup
     Lts::from_table_lookup(speed.round() as u8, cycleway_tag, oneway)
 }
 

@@ -26,7 +26,7 @@ impl Lts {
             Ok(Lts(value))
         }
     }
-
+    /// Computes the LTS value for a given edge based on traffic speed, cycleway tag, and oneway status.
     pub fn from_table_lookup(
         traffic_speed: u8, // assumed in mph.
         cycleway_tag: CyclewayTag,
