@@ -16,7 +16,7 @@ pub mod variable {
     /// stores a zone id in a state variable
     pub fn gbfs_system_id() -> StateVariableConfig {
         StateVariableConfig::Custom {
-            custom_type: "Option<GbfsAgencyId>".to_string(),
+            custom_type: "Option<GbfsSystemId>".to_string(),
             value: empty(),
             accumulator: true,
         }
