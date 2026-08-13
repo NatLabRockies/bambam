@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use crate::model::feature;
+
 use super::{GbfsTraversalEngine, GbfsTraversalParams};
 
 use routee_compass_core::{
@@ -10,6 +12,7 @@ use routee_compass_core::{
         traversal::{EdgeFrontierContext, TraversalModel, TraversalModelError},
     },
 };
+use uom::si::f64::Velocity;
 
 pub struct GbfsTraversalModel {
     pub engine: Arc<GbfsTraversalEngine>,
@@ -30,31 +33,50 @@ impl TraversalModel for GbfsTraversalModel {
     }
 
     fn input_features(&self) -> Vec<InputFeature> {
-        todo!()
+        vec![]
     }
 
     fn output_features(&self) -> Vec<(String, StateVariableConfig)> {
         // 1. valid destination
         // 2. max_speed + edge_speed
-        todo!()
+        vec![
+            (
+                feature::fieldname::GBFS_DESTINATION.to_string(),
+                feature::variable::gbfs_destination(),
+            ),
+            (
+                feature::fieldname::GBFS_SYSTEM_ID.to_string(),
+                feature::variable::gbfs_system_id(),
+            ),
+            (
+                "edge_speed".to_string(),
+                StateVariableConfig::Speed {
+                    initial: Velocity::new::<uom::si::velocity::kilometer_per_hour>(0.0),
+                    accumulator: false,
+                    output_unit: None,
+                },
+            ),
+        ]
     }
 
     fn traverse_edge(
         &self,
-        _ctx: &EdgeFrontierContext,
-        _state: &mut Vec<StateVariable>,
-        _state_model: &StateModel,
+        ctx: &EdgeFrontierContext,
+        state: &mut Vec<StateVariable>,
+        state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
-        todo!()
+        self.engine
+            .traverse(ctx.dst, state, state_model, self.params.start_time)
     }
 
     fn estimate_traversal(
         &self,
         _od: (&Vertex, &Vertex),
-        _state: &mut Vec<StateVariable>,
+        state: &mut Vec<StateVariable>,
         _tree: &SearchTree,
-        _state_model: &StateModel,
+        state_model: &StateModel,
     ) -> Result<(), TraversalModelError> {
-        todo!()
+        state_model.set_speed(state, "edge_speed", &self.engine.default_speed)?;
+        Ok(())
     }
 }

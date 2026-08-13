@@ -61,11 +61,14 @@ impl TryFrom<GbfsConstraintConfig> for GbfsConstraintEngine {
     type Error = ConstraintModelError;
 
     fn try_from(config: GbfsConstraintConfig) -> Result<Self, Self::Error> {
-        let lookup = GbfsLookupModel::new(&config.zones_input_file, &config.geometries_input_file)
-            .map_err(|e| {
-                let msg = format!("failure building GBFS lookup model: {e}");
-                ConstraintModelError::BuildError(msg)
-            })?;
+        let lookup = GbfsLookupModel::new(
+            &config.zone_record_input_file,
+            &config.zone_geometry_input_file,
+        )
+        .map_err(|e| {
+            let msg = format!("failure building GBFS lookup model: {e}");
+            ConstraintModelError::BuildError(msg)
+        })?;
         let mapping = CategoricalStateMapping::from_enumerated_category_file(Path::new(
             &config.zone_ids_input_file,
         ))

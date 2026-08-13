@@ -1,7 +1,7 @@
 pub mod fieldname {
     /// the name of the agency providing the GBFS vehicle.
     /// if this value is set, the trip has boarded the service.
-    pub const GBFS_SERVICE_ID: &str = "gbfs_system_id";
+    pub const GBFS_SYSTEM_ID: &str = "gbfs_system_id";
 
     /// true if the trip has a [GBFS_AGENCY_ID] and if the current
     /// edge has a GBFS zone where `ride_end_allowed` is true.
@@ -54,7 +54,7 @@ pub mod state {
         let value = mapping.get_label(agency_id).ok_or_else(|| {
             StateModelError::RuntimeError(format!("agency_id {agency_id} missing from mapping"))
         })?;
-        state_model.set_custom_i64(state, fieldname::GBFS_SERVICE_ID, value)
+        state_model.set_custom_i64(state, fieldname::GBFS_SYSTEM_ID, value)
     }
 
     /// gets the stored agency_id from the state variable, if it exists.
@@ -63,7 +63,7 @@ pub mod state {
         state_model: &'a StateModel,
         mapping: &'b CategoricalStateMapping,
     ) -> Result<Option<&'b String>, StateModelError> {
-        let agency_label = state_model.get_custom_i64(state, fieldname::GBFS_SERVICE_ID)?;
+        let agency_label = state_model.get_custom_i64(state, fieldname::GBFS_SYSTEM_ID)?;
         let agency_id = mapping.get_categorical(agency_label)?;
         Ok(agency_id)
     }
@@ -87,7 +87,7 @@ pub mod state {
         state: &[StateVariable],
         state_model: &StateModel,
     ) -> Result<bool, StateModelError> {
-        let agency_id = state_model.get_custom_i64(state, fieldname::GBFS_SERVICE_ID)?;
+        let agency_id = state_model.get_custom_i64(state, fieldname::GBFS_SYSTEM_ID)?;
         Ok(agency_id != NO_AGENCY_ID)
     }
 

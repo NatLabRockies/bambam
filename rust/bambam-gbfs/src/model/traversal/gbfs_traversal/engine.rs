@@ -20,10 +20,11 @@ use routee_compass_core::model::{
 pub struct GbfsTraversalEngine {
     lookup: GbfsLookupModel,
     mapping: CategoricalStateMapping,
-    default_speed: uom::si::f64::Velocity,
+    pub default_speed: uom::si::f64::Velocity,
 }
 
 impl GbfsTraversalEngine {
+    /// runs the traversal logic for the GBFS traversal model at an iteration of graph search.
     pub fn traverse(
         &self,
         vertex: &Vertex,
@@ -65,11 +66,14 @@ impl TryFrom<GbfsTraversalConfig> for GbfsTraversalEngine {
     type Error = ConstraintModelError;
 
     fn try_from(config: GbfsTraversalConfig) -> Result<Self, Self::Error> {
-        let lookup = GbfsLookupModel::new(&config.zones_input_file, &config.geometries_input_file)
-            .map_err(|e| {
-                let msg = format!("failure building GBFS lookup model: {e}");
-                ConstraintModelError::BuildError(msg)
-            })?;
+        let lookup = GbfsLookupModel::new(
+            &config.zone_record_input_file,
+            &config.zone_geometry_input_file,
+        )
+        .map_err(|e| {
+            let msg = format!("failure building GBFS lookup model: {e}");
+            ConstraintModelError::BuildError(msg)
+        })?;
 
         let mapping = CategoricalStateMapping::from_enumerated_category_file(Path::new(
             &config.zone_ids_input_file,
