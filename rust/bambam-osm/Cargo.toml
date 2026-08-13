@@ -15,6 +15,7 @@ categories = ["command-line-utilities", "science", "science::geo"]
 bamcensus = { workspace = true }
 bamcensus-acs = { workspace = true }
 bamcensus-core = { workspace = true }
+bambam-modal-metrics = { workspace = true }
 
 clap = { workspace = true }
 config = { workspace = true }

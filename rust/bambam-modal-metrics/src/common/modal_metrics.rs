@@ -1,10 +1,13 @@
-use crate::app::network::common::way_rtree_entry::WayRTreeEntry;
-use crate::app::network::lts::compute_lts::compute_lts;
-use crate::app::network::lts::lts::Lts;
-use crate::app::network::lts::lts::LtsError;
-use crate::app::network::wci::compute_wci::{compute_wci, WciComponents};
-use crate::app::network::wci::wci::WciError;
-use crate::model::osm::graph::OsmNodeDataSerializable;
+use crate::common::edge_rtree_entry::EdgeRTreeEntry;
+use crate::lts::compute_lts::compute_lts;
+use crate::lts::lts::Lts;
+use crate::lts::lts::LtsError;
+use crate::network_traits::{
+    edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge,
+    vertex_for_modal_metric::VertexForModalMetric,
+};
+use crate::wci::compute_wci::{WciComponents, compute_wci};
+use crate::wci::wci::WciError;
 use rstar::RTree;
 use std::{error::Error, io::Write, str::FromStr};
 
@@ -49,20 +52,24 @@ impl FromStr for ModalMetric {
 }
 
 impl ModalMetric {
-    /// Computes the specified modal metric for the given way entry and source node.
-    pub fn compute_metric(
+    /// Computes the specified modal metric for the given edge entry and source vertex.
+    pub fn compute_metric<E, V>(
         &self,
-        rtree: &RTree<WayRTreeEntry>,
-        way_entry: &WayRTreeEntry,
-        src_node: Option<&OsmNodeDataSerializable>,
-    ) -> Result<ModalMetricValue, ModalMetricError> {
+        rtree: &RTree<EdgeRTreeEntry<E>>,
+        edge_entry: &EdgeRTreeEntry<E>,
+        src_vertex: Option<&V>,
+    ) -> Result<ModalMetricValue, ModalMetricError>
+    where
+        E: SpatialEdge + EdgeForModalMetric,
+        V: VertexForModalMetric,
+    {
         match self {
             ModalMetric::WalkingComfortIndex => {
-                let wci = compute_wci(rtree, way_entry, src_node)?;
+                let wci = compute_wci(rtree, edge_entry, src_vertex)?;
                 Ok(ModalMetricValue::Wci(wci))
             }
             ModalMetric::LevelOfTrafficStress => {
-                let lts = compute_lts(rtree, way_entry)?;
+                let lts = compute_lts(rtree, edge_entry)?;
                 Ok(ModalMetricValue::Lts(lts))
             }
         }

@@ -1,4 +1,4 @@
-use crate::app::network::common::cycleway_tag::CyclewayTag;
+use crate::common::cycleway_tag::CyclewayTag;
 
 pub const MIN_LTS: u8 = 1; // the best LTS score.
 pub const MAX_LTS: u8 = 4; // the worst LTS score.

@@ -3,7 +3,8 @@ use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
-use bambam_osm::app::network::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
+use bambam_modal_metrics::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
+use bambam_osm::model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable};
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -216,8 +217,22 @@ impl App {
                 output_file,
                 edges_osm,
                 vertices_osm,
-            } => bulk_compute_modal_metric(metric_name, edges_osm, vertices_osm, output_file)
-                .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}")),
+            } =>
+            // TODO: eventually support other types of graph data beyond OSM for modal metric computation.
+            // Generic traits are available (see bambam-modal-metrics crate).
+            //
+            // Currently, only OSM graph data is supported for modal metric computation.
+            // Once OMF graph data support is implemented, we can add an option to the CLI
+            // to specify the type of graph data to use.
+            {
+                bulk_compute_modal_metric::<OsmWayDataSerializable, OsmNodeDataSerializable>(
+                    metric_name,
+                    edges_osm,
+                    vertices_osm,
+                    output_file,
+                )
+                .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}"))
+            }
             Self::PreProcessGrid {
                 acs_type,
                 acs_year,
