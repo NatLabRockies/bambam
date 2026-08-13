@@ -11,7 +11,10 @@ use routee_compass_core::{
         network::Vertex,
         state::{StateModel, StateVariable},
     },
-    util::{fs::read_utils, geo::PolygonalRTree},
+    util::{
+        fs::{read_decoders, read_utils},
+        geo::PolygonalRTree,
+    },
 };
 
 pub struct GbfsLookupModel {
@@ -113,9 +116,9 @@ fn read_records(zone_record_input_file: &str) -> Result<Vec<GbfsZoneRecord>, Str
 /// reads zonal geometries and ZoneIds from a CSV geometry collection.
 fn read_geometries(geometry_input_file: &str) -> Result<Vec<Geometry<f32>>, String> {
     let bb = BarBuilder::default().desc("reading zone geometries");
-    let record_strings: Box<[String]> =
-        read_utils::from_csv(&geometry_input_file, true, Some(bb), None)
-            .map_err(|e| format!("failure reading zone geometries: {e}"))?;
+    let record_strings =
+        read_utils::read_raw_file(geometry_input_file, read_decoders::string, Some(bb), None)
+            .map_err(|e| format!("failure reading file '{geometry_input_file}': {e}"))?;
     let rtree_data = record_strings
         .iter()
         .enumerate()
