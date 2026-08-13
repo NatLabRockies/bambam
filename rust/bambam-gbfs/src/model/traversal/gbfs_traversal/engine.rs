@@ -8,15 +8,14 @@ use crate::model::{
 use super::GbfsTraversalConfig;
 
 use bambam_core::model::state::CategoricalStateMapping;
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use routee_compass_core::model::{
     constraint::ConstraintModelError,
     network::Vertex,
     state::{StateModel, StateVariable},
-    traversal::{TraversalModelError, default::fieldname},
+    traversal::TraversalModelError,
 };
-use uom::si::f64::Time;
 
 pub struct GbfsTraversalEngine {
     lookup: GbfsLookupModel,
