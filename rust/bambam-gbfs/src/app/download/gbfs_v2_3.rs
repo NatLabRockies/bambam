@@ -21,14 +21,14 @@ pub async fn run_v2_3_manifest(
     let mut results = vec![];
     for system in manifest.data.datasets.iter() {
         let system_id = system.system_id.clone();
-        let v_search = system.versions.iter().find(|v| v.version == "3.0");
+        let v_search = system.versions.iter().find(|v| v.version == "2.3");
         match v_search {
-            Some(v3) => {
-                let gbfs_url = v3.url.value.clone();
+            Some(v2_3) => {
+                let gbfs_url = v2_3.url.value.clone();
                 let result = run_v2_3_gbfs(client, &gbfs_url).await?;
                 results.push(result);
             }
-            None => return Err(format!("in system {system_id} no v3.0 was found.")),
+            None => return Err(format!("in system {system_id} no v2.3 was found.")),
         }
     }
 
