@@ -73,12 +73,16 @@ pub async fn batch_download(
     for url in urls.iter() {
         let client = client.clone();
         let semaphore = semaphore.clone();
-        let url = url.to_string();
+        let url: String = url.to_string();
         let inner_bar = bar.clone();
         let start_delay = next_start_at.saturating_duration_since(Instant::now());
         next_start_at += spacing;
 
         set.spawn(async move {
+            if let Ok(mut bar) = inner_bar.lock() {
+                let _ = bar.update(1);
+            }
+
             if !start_delay.is_zero() {
                 tokio::time::sleep(start_delay).await;
             }
@@ -88,7 +92,7 @@ pub async fn batch_download(
                 .await
                 .map_err(|e| format!("failed to acquire concurrency permit: {e}"))?;
 
-            run_gbfs_download(client, url, entry_point, inner_bar).await
+            run_gbfs_download(client, url, entry_point).await
         });
     }
 
@@ -222,7 +226,6 @@ async fn run_gbfs_download(
     client: Arc<reqwest::Client>,
     url: String,
     entry_point: EntryPoint,
-    bar: Arc<Mutex<Bar>>,
 ) -> Result<Vec<GbfsRecord>, String> {
     let unversioned: super::download_metadata::UnversionedGbfsMetadata =
         super::ops::retrieve_file(&client, &url).await?;
@@ -258,10 +261,6 @@ async fn run_gbfs_download(
             result.into_iter().map(GbfsRecord::V3_0).collect()
         }
     };
-
-    if let Ok(mut bar) = bar.lock() {
-        let _ = bar.update(1);
-    }
 
     Ok(result)
 }
