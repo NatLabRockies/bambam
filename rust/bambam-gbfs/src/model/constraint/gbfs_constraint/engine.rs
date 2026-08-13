@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use crate::model::{feature, gbfs::GbfsLookupModel};
+use crate::model::{
+    feature,
+    gbfs::{GbfsLookupModel, ops},
+};
 
 use super::GbfsConstraintConfig;
 
@@ -36,9 +39,13 @@ impl GbfsConstraintEngine {
                 let msg = format!("failure inspecting service id of search state: {e}");
                 ConstraintModelError::ConstraintModelError(msg)
             })?;
+        let current_time = ops::current_datetime(start_time, state, state_model).map_err(|e| {
+            let msg: String = format!("failure running GBFS constraint model: {e}");
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
         let zones = self
             .lookup
-            .matching_zones(vertex, state, state_model, start_time, service_opt)
+            .matching_zones(vertex, state, state_model, current_time, service_opt)
             .map_err(|e| {
                 let msg = format!("failure running GBFS rule lookup: {e}");
                 ConstraintModelError::ConstraintModelError(msg)

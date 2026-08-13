@@ -2,20 +2,21 @@ use std::path::Path;
 
 use crate::model::{
     feature,
-    gbfs::{GbfsLookupModel, ZoneState},
+    gbfs::{GbfsLookupModel, ZoneState, ops},
 };
 
 use super::GbfsTraversalConfig;
 
 use bambam_core::model::state::CategoricalStateMapping;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use itertools::Itertools;
 use routee_compass_core::model::{
     constraint::ConstraintModelError,
     network::Vertex,
     state::{StateModel, StateVariable},
-    traversal::TraversalModelError,
+    traversal::{TraversalModelError, default::fieldname},
 };
+use uom::si::f64::Time;
 
 pub struct GbfsTraversalEngine {
     lookup: GbfsLookupModel,
@@ -39,10 +40,15 @@ impl GbfsTraversalEngine {
                 TraversalModelError::TraversalModelFailure(msg)
             })?;
 
+        let current_time = ops::current_datetime(start_time, state, state_model).map_err(|e| {
+            let msg = format!("during GBFS traversal, {e}");
+            TraversalModelError::TraversalModelFailure(msg)
+        })?;
+
         // find intersecting zones. if we are already boarded, only accept zones with our existing system_id.
         let zones = self
             .lookup
-            .matching_zones(vertex, state, state_model, start_time, service_opt)
+            .matching_zones(vertex, state, state_model, current_time, service_opt)
             .map_err(|e| {
                 let vertex_id = vertex.vertex_id;
                 let service_msg = match service_opt {
