@@ -5,7 +5,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use chrono::TimeDelta;
 use csv::QuoteStyle;
 use flate2::{Compression, write::GzEncoder};
 use geozero::ToWkt;
