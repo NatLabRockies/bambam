@@ -1,12 +1,12 @@
 use rstar::RTree;
 
-use crate::common::edge_rtree_entry::{EdgeRTreeEntry, find_neighboring_edges};
+use crate::common::edge_rtree_entry::{find_neighboring_edges, EdgeRTreeEntry};
 use crate::network_traits::{
     edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge,
     vertex_for_modal_metric::VertexForModalMetric,
 };
 use crate::wci::ops::is_walk_eligible;
-use crate::wci::wci::{MAX_WCI, MIN_WCI, Wci, WciError};
+use crate::wci::wci::{Wci, WciError, MAX_WCI, MIN_WCI};
 
 /// The Walking Comfort Index (WCI) components for a way, including total WCI
 /// and all components that went into the total WCI.

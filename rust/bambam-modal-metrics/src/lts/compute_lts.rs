@@ -1,7 +1,7 @@
 use rstar::RTree;
 
 use crate::common::cycleway_tag::CyclewayTag;
-use crate::common::edge_rtree_entry::{EdgeRTreeEntry, find_neighboring_edges};
+use crate::common::edge_rtree_entry::{find_neighboring_edges, EdgeRTreeEntry};
 use crate::common::ops::{estimated_speed_from_neighbors, traffic_speed_from_maxspeed};
 use crate::lts::lts::{Lts, LtsError, MAX_LTS, MIN_LTS};
 use crate::network_traits::{edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge};
