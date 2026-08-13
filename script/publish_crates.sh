@@ -5,7 +5,7 @@ set -eu
 MANIFEST_PATH="rust/Cargo.toml"
 DRY_RUN=0
 CRATES_CSV=""
-DEFAULT_CRATES="bambam-core bambam-osm bambam-gtfs bambam-gbfs bambam-omf bambam-gtfs-flex bambam"
+DEFAULT_CRATES="bambam-core bambam-modal-metrics bambam-osm bambam-gtfs bambam-gbfs bambam-omf bambam-gtfs-flex bambam"
 
 usage() {
   cat <<'EOF'
