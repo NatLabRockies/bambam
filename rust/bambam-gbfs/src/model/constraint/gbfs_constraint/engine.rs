@@ -77,12 +77,12 @@ impl TryFrom<GbfsConstraintConfig> for GbfsConstraintEngine {
             ConstraintModelError::BuildError(msg)
         })?;
         let mapping = CategoricalStateMapping::from_enumerated_category_file(Path::new(
-            &config.zone_ids_input_file,
+            &config.system_ids_input_file,
         ))
         .map_err(|e| {
             ConstraintModelError::BuildError(format!(
                 "failure while building categorical mapping from {}: {e}",
-                config.zone_ids_input_file
+                config.system_ids_input_file
             ))
         })?;
         Ok(Self { lookup, mapping })

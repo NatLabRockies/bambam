@@ -11,6 +11,6 @@ pub struct GbfsConstraintConfig {
     /// output of bambam-gbfs CLI import process, contains zonal geometries
     /// with matching indices to the zones input file.
     pub zone_geometry_input_file: String,
-    /// fully-qualified identifiers for each record with matching index to zone + geometry files.
-    pub zone_ids_input_file: String,
+    /// system identifiers for all records. these are sorted lexicagraphically.
+    pub system_ids_input_file: String,
 }
