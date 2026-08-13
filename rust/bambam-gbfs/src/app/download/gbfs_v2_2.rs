@@ -119,12 +119,12 @@ pub mod types {
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
-    #[serde(tag = "type")]
+    #[serde(tag = "type", content = "coordinates")]
     pub enum GeofenceGeometry {
         #[serde(rename = "MultiPolygon")]
         MultiPolygon(Vec<Vec<Vec<Vec<f64>>>>),
         #[serde(rename = "Polygon")]
-        Polygon(Vec<Vec<Vec<Vec<f64>>>>),
+        Polygon(Vec<Vec<Vec<f64>>>),
     }
 
     #[derive(Serialize, Deserialize, Debug, Clone)]
