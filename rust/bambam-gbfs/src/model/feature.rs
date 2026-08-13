@@ -48,11 +48,11 @@ pub mod state {
     pub fn set_system_id(
         state: &mut [StateVariable],
         state_model: &StateModel,
-        agency_id: &str,
+        system_id: &str,
         mapping: &CategoricalStateMapping,
     ) -> Result<(), StateModelError> {
-        let value = mapping.get_label(agency_id).ok_or_else(|| {
-            StateModelError::RuntimeError(format!("agency_id {agency_id} missing from mapping"))
+        let value = mapping.get_label(system_id).ok_or_else(|| {
+            StateModelError::RuntimeError(format!("system_id {system_id} missing from mapping"))
         })?;
         state_model.set_custom_i64(state, fieldname::GBFS_SYSTEM_ID, value)
     }
