@@ -1,5 +1,5 @@
 use geo::{BoundingRect, Centroid, Distance, Euclidean};
-use rstar::{AABB, PointDistance, RTreeObject};
+use rstar::{PointDistance, RTreeObject, AABB};
 
 use crate::network_traits::spatial_edge::SpatialEdge;
 

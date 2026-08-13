@@ -6,7 +6,7 @@ use crate::network_traits::{
     edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge,
     vertex_for_modal_metric::VertexForModalMetric,
 };
-use crate::wci::compute_wci::{WciComponents, compute_wci};
+use crate::wci::compute_wci::{compute_wci, WciComponents};
 use crate::wci::wci::WciError;
 use rstar::RTree;
 use std::{error::Error, io::Write, str::FromStr};
