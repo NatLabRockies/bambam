@@ -154,7 +154,7 @@ fn process_unboarded(
 
     let best_zone = zones
         .into_iter()
-        .filter(|z| z.ride_start_allowed)
+        .filter(|z| z.ride_start_allowed && z.ride_through_allowed)
         .sorted_by_cached_key(|z| z.ascending_sort_key())
         .next();
 
