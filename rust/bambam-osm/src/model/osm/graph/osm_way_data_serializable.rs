@@ -205,7 +205,7 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
         match self.get_speed("maxspeed_raw", true) {
             Ok(Some(velocity)) => {
                 let mph = velocity.get::<uom::si::velocity::mile_per_hour>();
-                Some(mph as i32)
+Some(mph.round() as i32)
             }
             _ => None,
         }
