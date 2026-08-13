@@ -92,7 +92,9 @@ pub async fn batch_download(
                 .await
                 .map_err(|e| format!("failed to acquire concurrency permit: {e}"))?;
 
-            run_gbfs_download(client, url, entry_point).await
+            run_gbfs_download(client, &url, entry_point)
+                .await
+                .map_err(|e| format!("URL: '{url}' - {e}"))
         });
     }
 
@@ -224,11 +226,11 @@ pub async fn write_edge_list(
 
 async fn run_gbfs_download(
     client: Arc<reqwest::Client>,
-    url: String,
+    url: &String,
     entry_point: EntryPoint,
 ) -> Result<Vec<GbfsRecord>, String> {
     let unversioned: super::download_metadata::UnversionedGbfsMetadata =
-        super::ops::retrieve_file(&client, &url).await?;
+        super::ops::retrieve_file(&client, url).await?;
 
     let result: Vec<GbfsRecord> = match unversioned.version {
         super::download_metadata::UnversionedGbfsVersion::V2_2 => {
@@ -236,7 +238,7 @@ async fn run_gbfs_download(
                 EntryPoint::Manifest => {
                     return Err("manifest entry point not supported for version 2.2".to_string());
                 }
-                EntryPoint::Gbfs => gbfs_v2_2::run_v2_2_gbfs(&client, &url)
+                EntryPoint::Gbfs => gbfs_v2_2::run_v2_2_gbfs(&client, url)
                     .await
                     .map(|g| vec![g])?,
             };
@@ -244,7 +246,7 @@ async fn run_gbfs_download(
         }
         super::download_metadata::UnversionedGbfsVersion::V2_3 => {
             let result = match entry_point {
-                EntryPoint::Manifest => gbfs_v2_3::run_v2_3_manifest(&client, &url).await?,
+                EntryPoint::Manifest => gbfs_v2_3::run_v2_3_manifest(&client, url).await?,
                 EntryPoint::Gbfs => gbfs_v2_3::run_v2_3_gbfs(&client, &url)
                     .await
                     .map(|g| vec![g])?,
@@ -253,7 +255,7 @@ async fn run_gbfs_download(
         }
         super::download_metadata::UnversionedGbfsVersion::V3_0 => {
             let result = match entry_point {
-                EntryPoint::Manifest => gbfs_v3_0::run_v3_0_manifest(&client, &url).await?,
+                EntryPoint::Manifest => gbfs_v3_0::run_v3_0_manifest(&client, url).await?,
                 EntryPoint::Gbfs => gbfs_v3_0::run_v3_0_gbfs(&client, &url)
                     .await
                     .map(|g| vec![g])?,
