@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::model::{
     feature,
-    gbfs::{GbfsLookupModel, ZoneState, ops},
+    gbfs::{GbfsLookupModel, ZoneState},
 };
 
 use super::GbfsTraversalConfig;
@@ -39,15 +39,10 @@ impl GbfsTraversalEngine {
                 TraversalModelError::TraversalModelFailure(msg)
             })?;
 
-        let current_time = ops::current_datetime(start_time, state, state_model).map_err(|e| {
-            let msg = format!("during GBFS traversal, {e}");
-            TraversalModelError::TraversalModelFailure(msg)
-        })?;
-
         // find intersecting zones. if we are already boarded, only accept zones with our existing system_id.
         let zones = self
             .lookup
-            .matching_zones(vertex, state, state_model, current_time, service_opt)
+            .matching_zones(vertex, state, state_model, start_time, service_opt)
             .map_err(|e| {
                 let vertex_id = vertex.vertex_id;
                 let service_msg = match service_opt {
