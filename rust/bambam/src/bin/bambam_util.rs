@@ -3,6 +3,7 @@ use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
+use bambam_osm::app::network::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -17,7 +18,6 @@ use bambam::model::input_plugin::grid::grid_input_plugin;
 use bambam::model::input_plugin::grid::grid_input_plugin_builder;
 use bambam::model::input_plugin::grid::grid_type::GridType;
 use bambam::model::input_plugin::population::population_source_config::PopulationSourceConfig;
-use bambam_osm::app::network::wci;
 use bamcensus_acs::model::AcsType;
 use bamcensus_core::model::identifier::GeoidType;
 use h3o::Resolution;
@@ -29,19 +29,22 @@ use std::io::Write;
 #[derive(Subcommand)]
 pub enum App {
     #[command(
-        name = "walk_comfort_index",
-        about = "calculate the WCI of links, set to file"
+        name = "modal_metric",
+        about = "calculate the modal metric of each way in the OSM network, write to file"
     )]
-    WalkComfortIndexSet {
-        /// file to write WCI values to, one per line
+    ModalMetricSet {
+        /// modal metric type to compute, either "WCI" or "LTS"
         #[arg(long)]
-        wci_file: String,
+        metric_name: String,
         /// input csv file with edges OSM data
         #[arg(long)]
         edges_osm: String,
         /// input csv file with vertices OSM data
         #[arg(long)]
         vertices_osm: String,
+        /// file to write modal metric values to, one per line
+        #[arg(long)]
+        output_file: String,
     },
     #[command(
         name = "preprocess_grid",
@@ -208,16 +211,13 @@ impl App {
     pub fn run(&self) -> Result<(), String> {
         env_logger::init();
         match self {
-            Self::WalkComfortIndexSet {
-                wci_file,
+            Self::ModalMetricSet {
+                metric_name,
+                output_file,
                 edges_osm,
                 vertices_osm,
-            } => {
-                if let Err(error) = wci::bulk_compute_wci(edges_osm, vertices_osm, wci_file) {
-                    eprintln!("error! {error:?}");
-                }
-                Ok(())
-            }
+            } => bulk_compute_modal_metric(metric_name, edges_osm, vertices_osm, output_file)
+                .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}")),
             Self::PreProcessGrid {
                 acs_type,
                 acs_year,

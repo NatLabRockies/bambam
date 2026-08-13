@@ -163,6 +163,7 @@ impl OsmWayDataSerializable {
             "landuse" => Ok(self.landuse.clone()),
             "lanes" => Ok(self.lanes.clone()),
             "maxspeed" => Ok(self.maxspeed.clone()),
+            "maxspeed_raw" => Ok(self.maxspeed_raw.clone()),
             "name" => Ok(self.name.clone()),
             "oneway" => Ok(self.oneway.clone()),
             "ref" => Ok(self._ref.clone()),
@@ -353,18 +354,3 @@ fn top_highway(
         }
     }
 }
-
-// fn extract_between_nodes<'a>(
-//     src: &'a OsmNodeId,
-//     dst: &'a OsmNodeId,
-//     nodes: &'a [OsmNodeId],
-// ) -> Option<&'a [OsmNodeId]> {
-//     let start = nodes.iter().position(|x| x == src)?; // Using ? for early return
-//     let end = nodes[start..].iter().position(|x| x == dst)?; // Search after 'a'
-
-//     if start <= start + end {
-//         Some(&nodes[start..=start + end])
-//     } else {
-//         None
-//     }
-// }
