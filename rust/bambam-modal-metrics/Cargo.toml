@@ -4,14 +4,14 @@ edition = "2024"
 version.workspace = true
 
 [dependencies]
-routee-compass-core = { workspace = true }
 
 csv = { workspace = true }
 geo = { workspace = true }
 kdam = { workspace = true }
+log = { workspace = true }
 rayon = { workspace = true }
+routee-compass-core = { workspace = true }
 rstar = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 uom = { workspace = true }
-log = { workspace = true }
