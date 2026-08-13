@@ -81,7 +81,9 @@ impl ZoneState {
     }
 
     /// used by sorting combinators so that the first value has the highest speed permissiveness
-    /// and the lexicagraphically-first system id.
+    /// and, as a tie-breaker, the lexicagraphically-first system id.
+    ///
+    /// maximum_speed_kph values of None are treated as MAX values.
     pub fn ascending_sort_key(&self) -> (i32, String) {
         (
             -self.maximum_speed_kph.unwrap_or(i32::MAX),
