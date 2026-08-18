@@ -22,10 +22,11 @@ pub mod variable {
         }
     }
 
+    /// each gbfs destination is assumed to be "true" and conditionally negated by the GBFS traversal model.
     pub fn gbfs_destination() -> StateVariableConfig {
         StateVariableConfig::Custom {
             custom_type: "Bool".to_string(),
-            value: CustomVariableConfig::Boolean { initial: false },
+            value: CustomVariableConfig::Boolean { initial: true },
             accumulator: false,
         }
     }
@@ -92,11 +93,11 @@ pub mod state {
     }
 
     /// affirms that the trip location associated with this state vector is a valid trip destination.
-    pub fn set_valid_destination(
+    pub fn set_invalid_destination(
         state: &mut [StateVariable],
         state_model: &StateModel,
     ) -> Result<(), StateModelError> {
-        state_model.set_custom_bool(state, fieldname::GBFS_DESTINATION, &true)
+        state_model.set_custom_bool(state, fieldname::GBFS_DESTINATION, &false)
     }
 
     /// is the trip location associated with this state vector is a valid trip destination?

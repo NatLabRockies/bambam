@@ -119,9 +119,10 @@ fn process_boarded(
         }
     };
 
-    // 1. is this a valid destination?
-    if zone.ride_end_allowed {
-        feature::state::set_valid_destination(state, state_model)?;
+    // 1. is this a valid destination? by default, we assume yes, but here
+    // we overwrite as false if `ride_end_allowed` is false.
+    if !zone.ride_end_allowed {
+        feature::state::set_invalid_destination(state, state_model)?;
     }
     // 2. set the speed, limiting if max speed is present
     let speed_value: Velocity = match zone.maximum_speed_kph {
