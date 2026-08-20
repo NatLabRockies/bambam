@@ -12,6 +12,7 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
+bambam-modal-metrics = { workspace = true }
 bamcensus = { workspace = true }
 bamcensus-acs = { workspace = true }
 bamcensus-core = { workspace = true }

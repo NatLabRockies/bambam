@@ -1,4 +1,5 @@
 use super::{OsmNodeData, OsmNodeId};
+use bambam_modal_metrics::network_traits::vertex_for_modal_metric::VertexForModalMetric;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
@@ -38,6 +39,19 @@ impl From<&OsmNodeData> for OsmNodeDataSerializable {
     }
 }
 
+impl VertexForModalMetric for OsmNodeDataSerializable {
+    fn has_traffic_signals(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|highway| highway.contains("traffic_signals"))
+    }
+
+    fn has_stop_sign(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|highway| highway.contains("stop"))
+    }
+}
 fn replace_delimiter(value: &Option<String>, delimiter: &'static str) -> Option<String> {
     value
         .as_ref()

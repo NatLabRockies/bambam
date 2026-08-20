@@ -3,7 +3,8 @@ use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
-use bambam_osm::app::network::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
+use bambam_modal_metrics::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
+use bambam_osm::model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable};
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -36,13 +37,13 @@ pub enum App {
         /// modal metric type to compute, either "WCI" or "LTS"
         #[arg(long)]
         metric_name: String,
-        /// input csv file with edges OSM data
+        /// input csv file with edges data
         #[arg(long)]
-        edges_osm: String,
-        /// input csv file with vertices OSM data
+        edges_file: String,
+        /// input csv file with vertices data
         #[arg(long)]
-        vertices_osm: String,
-        /// file to write modal metric values to, one per line
+        vertices_file: String,
+        /// file to write modal metric values to
         #[arg(long)]
         output_file: String,
     },
@@ -214,10 +215,24 @@ impl App {
             Self::ModalMetricSet {
                 metric_name,
                 output_file,
-                edges_osm,
-                vertices_osm,
-            } => bulk_compute_modal_metric(metric_name, edges_osm, vertices_osm, output_file)
-                .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}")),
+                edges_file,
+                vertices_file,
+            } =>
+            // TODO: eventually support other types of graph data beyond OSM for modal metric computation.
+            // Generic traits are available (see bambam-modal-metrics crate).
+            //
+            // Currently, only OSM graph data is supported for modal metric computation.
+            // Once OMF graph data support is implemented, we can add an option to the CLI
+            // to specify the type of graph data to use.
+            {
+                bulk_compute_modal_metric::<OsmWayDataSerializable, OsmNodeDataSerializable>(
+                    metric_name,
+                    edges_file,
+                    vertices_file,
+                    output_file,
+                )
+                .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}"))
+            }
             Self::PreProcessGrid {
                 acs_type,
                 acs_year,

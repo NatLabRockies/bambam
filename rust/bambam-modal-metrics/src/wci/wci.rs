@@ -1,12 +1,12 @@
-use num_traits::CheckedAdd;
-
 use super::ops::*;
 use crate::{
-    app::network::common::{
-        cycleway_tag::CyclewayTag, ops::traffic_speed_from_maxspeed, way_rtree_entry::WayRTreeEntry,
+    common::{edge_rtree_entry::EdgeRTreeEntry, ops::traffic_speed_from_maxspeed},
+    network_traits::{
+        edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge,
+        vertex_for_modal_metric::VertexForModalMetric,
     },
-    model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable},
 };
+use uom::num_traits::CheckedAdd;
 pub const MIN_WCI: i32 = -6;
 pub const MAX_WCI: i32 = 9;
 
@@ -78,37 +78,43 @@ impl Wci {
         }
     }
 
-    /// Computes the walkability `Wci` for a way.
-    pub fn walkability(way: &OsmWayDataSerializable) -> Wci {
-        if way_is_sidewalk(way) || way_is_footway(way) {
+    /// Computes the walkability `Wci` for an edge.
+    pub fn walkability(edge: &dyn EdgeForModalMetric) -> Wci {
+        if edge.is_sidewalk() || edge.is_footway() {
             Wci(2)
         } else {
             Wci(-2)
         }
     }
 
-    /// Computes the traffic signal `Wci` for a way.
-    pub fn traffic_signal_comfort(src_node: &OsmNodeDataSerializable) -> Wci {
-        if has_traffic_signals(src_node) {
+    /// Computes the traffic signal `Wci` for an edge (given the source vertex).
+    pub fn traffic_signal_comfort(src_vertex: &dyn VertexForModalMetric) -> Wci {
+        if src_vertex.has_traffic_signals() {
             Wci(2)
-        } else if has_stop_sign(src_node) {
+        } else if src_vertex.has_stop_sign() {
             Wci(1)
         } else {
             Wci(0)
         }
     }
 
-    /// Computes the cycleway `Wci` for a way.
-    pub fn cycleway_comfort(entry: &WayRTreeEntry, neighboring_ways: &Vec<&WayRTreeEntry>) -> Wci {
-        // if the way has a cycleway tag (string), use that, otherwise, use neighbors
-        match &entry.way.cycleway {
-            Some(tag) => Wci(cycleway_comfort_from_tag(&CyclewayTag::new(tag))),
+    /// Computes the cycleway `Wci` for an edge.
+    pub fn cycleway_comfort<E: SpatialEdge + EdgeForModalMetric>(
+        entry: &EdgeRTreeEntry<E>,
+        neighboring_ways: &Vec<&EdgeRTreeEntry<E>>,
+    ) -> Wci {
+        // if the edge has a cycleway tag (string), use that, otherwise, use neighbors
+        match &entry.edge.get_cycleway_tag() {
+            Some(tag) => Wci(cycleway_comfort_from_tag(tag)),
             None => Wci(cycleway_comfort_from_neighbors(entry, neighboring_ways)),
         }
     }
 
-    /// Computes the traffic speed `Wci` for a way
-    pub fn traffic_speed_comfort(entry: &WayRTreeEntry, neighbors: &Vec<&WayRTreeEntry>) -> Wci {
+    /// Computes the traffic speed `Wci` for an edge.
+    pub fn traffic_speed_comfort<E: SpatialEdge + EdgeForModalMetric>(
+        entry: &EdgeRTreeEntry<E>,
+        neighbors: &Vec<&EdgeRTreeEntry<E>>,
+    ) -> Wci {
         Wci(traffic_speed_from_maxspeed(entry)
             .map(|speed_mph| traffic_speed_comfort_from_speed(speed_mph.round() as i32))
             .unwrap_or_else(|| traffic_speed_comfort_from_neighbors(entry, neighbors)))
