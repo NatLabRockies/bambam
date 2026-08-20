@@ -1,21 +1,295 @@
-use std::path::Path;
+use std::{
+    collections::HashSet,
+    fs::File,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
-use chrono::TimeDelta;
+use csv::QuoteStyle;
+use flate2::{Compression, write::GzEncoder};
+use geozero::ToWkt;
+use itertools::Itertools;
+use kdam::{Bar, BarBuilder, BarExt};
+use tokio::{
+    sync::Semaphore,
+    time::{Duration, Instant},
+};
 
-/// downloads GBFS data for some duration. aggregates the resulting rows and writes them
-/// to files to be consumed by BAMBAM.
-///
-/// # Arguments
-/// * url - URL to the GBFS dataset
-/// * out_dir - output directory to write the processed GBFS data
-/// * dur - how long to poll the GBFS API
-///
-/// # Result
-/// If successful, returns nothing, otherwise an error
-pub fn run_gbfs_download(url: &str, out_dir: &Path, dur: &TimeDelta) -> Result<(), String> {
-    let dur_secs = dur.as_seconds_f64();
-    log::debug!(
-        "run_gbfs_download with url={url}, out_dir={out_dir:?}, duration (seconds)={dur_secs}"
+use crate::app::download::{
+    EntryPoint, GbfsVersion, gbfs_record::GbfsRecord, gbfs_v2_2, gbfs_v2_3, gbfs_v3_0,
+};
+
+const GEOMETRIES_FILENAME: &str = "edges-gbfs-geofences-enumerated.txt.gz";
+const RECORDS_FILENAME: &str = "edges-gbfs-records.csv.gz";
+const SYSTEM_IDS_FILENAME: &str = "edges-system-ids.txt.gz";
+
+pub async fn download_one(
+    url: &str,
+    out_dir: &Path,
+    version: GbfsVersion,
+    overwrite: bool,
+) -> Result<(), String> {
+    log::info!("run_gbfs_download with url={url}, out_dir={out_dir:?}, version={version}");
+
+    // download GBFS dataset
+    let client = reqwest::Client::new();
+    let gbfs = GbfsRecord::download_from_gbfs_endpoint(&client, url, version).await?;
+    write_edge_list(&[gbfs], out_dir, overwrite).await
+}
+
+/// designed to download from a GBFS system list file such as
+/// <https://github.com/MobilityData/gbfs/blob/master/systems.csv>.
+pub async fn batch_download(
+    urls: &[String],
+    entry_point: EntryPoint,
+    out_dir: &Path,
+    parallelism: Option<usize>,
+    delay_ms: Option<u64>,
+    no_compass: bool,
+    no_summary: bool,
+    overwrite: bool,
+) -> Result<(), String> {
+    let par = parallelism.unwrap_or(1);
+    if par == 0 {
+        return Err("parallelism must be greater than zero".to_string());
+    }
+    let del = delay_ms.unwrap_or_default();
+    let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
+        BarBuilder::default()
+            .total(urls.len())
+            .desc("gbfs urls")
+            .build()
+            .map_err(|e| format!("error building progress bar: {e}"))?,
+    ));
+    let client = Arc::new(reqwest::Client::new());
+    let semaphore = Arc::new(Semaphore::new(par));
+    let mut next_start_at = Instant::now();
+    let spacing = Duration::from_millis(del);
+
+    log::info!(
+        "starting calls to download archives via {entry_point} entry point (parallelism={par}, delay={del})"
     );
-    todo!("download + post-processing logic")
+    let mut set = tokio::task::JoinSet::new();
+    for url in urls.iter() {
+        let client = client.clone();
+        let semaphore = semaphore.clone();
+        let url: String = url.to_string();
+        let inner_bar = bar.clone();
+        let start_delay = next_start_at.saturating_duration_since(Instant::now());
+        next_start_at += spacing;
+
+        set.spawn(async move {
+            if let Ok(mut bar) = inner_bar.lock() {
+                let _ = bar.update(1);
+            }
+
+            if !start_delay.is_zero() {
+                tokio::time::sleep(start_delay).await;
+            }
+
+            let _permit = semaphore
+                .acquire_owned()
+                .await
+                .map_err(|e| format!("failed to acquire concurrency permit: {e}"))?;
+
+            run_gbfs_download(client, &url, entry_point)
+                .await
+                .map_err(|e| format!("URL: '{url}' - {e}"))
+        });
+    }
+
+    let mut results = vec![];
+    let mut errors: Vec<String> = vec![];
+    while let Some(res) = set.join_next().await {
+        match res {
+            Ok(Err(e)) => errors.push(e),
+            Err(e) => errors.push(format!("error on tokio join of task: {e}")),
+            Ok(Ok(r)) => results.extend(r),
+        }
+    }
+
+    if !no_summary {
+        write_summaries(&results, out_dir)?;
+    }
+
+    if !no_compass {
+        write_edge_list(&results, out_dir, overwrite).await?;
+    }
+
+    if !errors.is_empty() {
+        for err in errors.iter() {
+            log::error!("{err}")
+        }
+        log::error!("{} calls failed", errors.len());
+    }
+
+    Ok(())
+}
+
+/// writes GbfsArchives as JSON files in a summary/ directory.
+pub fn write_summaries(results: &[GbfsRecord], out_dir: &Path) -> Result<(), String> {
+    let sum_dir = out_dir.join("summary");
+    std::fs::create_dir_all(&sum_dir).map_err(|e| {
+        format!(
+            "failure writing summary directory path '{}': {e}",
+            sum_dir.to_string_lossy()
+        )
+    })?;
+    for result in results.iter() {
+        let no_features = result.no_geofence();
+        if !no_features {
+            let filename = result.system_id();
+            let filepath = sum_dir.join(&filename);
+
+            std::fs::write(
+                filepath,
+                serde_json::to_string_pretty(&result).unwrap_or_default(),
+            )
+            .map_err(|e| format!("failure while writing to '{filename}': {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// writes an edge list to an output directory that covers the provided GBFS archives.
+/// fails if overwrite = false and output files are found.
+pub async fn write_edge_list(
+    archives: &[GbfsRecord],
+    out_dir: &Path,
+    overwrite: bool,
+) -> Result<(), String> {
+    // process into BAMBAM-GBFS edge list format
+    let mut geometries = vec![];
+    let mut zone_records = vec![];
+    let mut ids = HashSet::new();
+
+    for gbfs in archives.iter() {
+        for i in 0..gbfs.n_features() {
+            let geometry = gbfs.get_feature_geometry(i)?;
+            let record = gbfs.get_feature_zone_record(i)?;
+            let system_id = record.system_id.clone();
+            geometries.push(geometry);
+            zone_records.push(record);
+            ids.insert(system_id);
+        }
+    }
+
+    // write outputs
+    std::fs::create_dir_all(out_dir)
+        .map_err(|e| format!("failure creating output directory location: {e}"))?;
+    let mut geom_writer = create_writer(
+        out_dir,
+        GEOMETRIES_FILENAME,
+        false,
+        QuoteStyle::Never,
+        overwrite,
+    )?;
+    let mut record_writer = create_writer(
+        out_dir,
+        RECORDS_FILENAME,
+        true,
+        QuoteStyle::Necessary,
+        overwrite,
+    )?;
+    let mut id_writer = create_writer(
+        out_dir,
+        SYSTEM_IDS_FILENAME,
+        false,
+        QuoteStyle::Never,
+        overwrite,
+    )?;
+
+    for (idx, geom) in geometries.into_iter().enumerate() {
+        let wkt_string = geom
+            .to_wkt()
+            .map_err(|e| format!("failure converting geometry {idx} into WKT: {e}"))?;
+
+        geom_writer
+            .serialize(&wkt_string)
+            .map_err(|e| format!("failure writing geometry {idx} to file: {e}"))?
+    }
+
+    for (idx, record) in zone_records.into_iter().enumerate() {
+        record_writer
+            .serialize(&record)
+            .map_err(|e| format!("failure writing record {idx} to file: {e}"))?
+    }
+
+    for (idx, id) in ids.into_iter().sorted().enumerate() {
+        id_writer
+            .serialize(&id)
+            .map_err(|e| format!("failure writing {idx}th id {id} to file: {e}"))?
+    }
+
+    Ok(())
+}
+
+async fn run_gbfs_download(
+    client: Arc<reqwest::Client>,
+    url: &String,
+    entry_point: EntryPoint,
+) -> Result<Vec<GbfsRecord>, String> {
+    let unversioned: super::download_metadata::UnversionedGbfsMetadata =
+        super::ops::retrieve_file(&client, url).await?;
+
+    let result: Vec<GbfsRecord> = match unversioned.version {
+        super::download_metadata::UnversionedGbfsVersion::V2_2 => {
+            let result = match entry_point {
+                EntryPoint::Manifest => {
+                    return Err("manifest entry point not supported for version 2.2".to_string());
+                }
+                EntryPoint::Gbfs => gbfs_v2_2::run_v2_2_gbfs(&client, url)
+                    .await
+                    .map(|g| vec![g])?,
+            };
+            result.into_iter().map(GbfsRecord::V2_2).collect()
+        }
+        super::download_metadata::UnversionedGbfsVersion::V2_3 => {
+            let result = match entry_point {
+                EntryPoint::Manifest => gbfs_v2_3::run_v2_3_manifest(&client, url).await?,
+                EntryPoint::Gbfs => gbfs_v2_3::run_v2_3_gbfs(&client, url)
+                    .await
+                    .map(|g| vec![g])?,
+            };
+            result.into_iter().map(GbfsRecord::V2_3).collect()
+        }
+        super::download_metadata::UnversionedGbfsVersion::V3_0 => {
+            let result = match entry_point {
+                EntryPoint::Manifest => gbfs_v3_0::run_v3_0_manifest(&client, url).await?,
+                EntryPoint::Gbfs => gbfs_v3_0::run_v3_0_gbfs(&client, url)
+                    .await
+                    .map(|g| vec![g])?,
+            };
+            result.into_iter().map(GbfsRecord::V3_0).collect()
+        }
+    };
+
+    Ok(result)
+}
+
+/// helper function to build a filewriter for writing either .csv.gz or
+/// .txt.gz files for compass datasets while respecting the user's overwrite
+/// preferences and properly formatting WKT outputs.
+fn create_writer(
+    directory: &Path,
+    filename: &str,
+    has_headers: bool,
+    quote_style: QuoteStyle,
+    overwrite: bool,
+) -> Result<csv::Writer<GzEncoder<File>>, String> {
+    let filepath = directory.join(filename);
+    if filepath.exists() && !overwrite {
+        return Err(format!(
+            "user chose overwrite=false but file {} exists",
+            filepath.to_string_lossy()
+        ));
+    }
+    let file = File::create(&filepath)
+        .map_err(|e| format!("failure creating file {}: {e}", filepath.to_string_lossy()))?;
+    let buffer = GzEncoder::new(file, Compression::default());
+    let writer = csv::WriterBuilder::new()
+        .has_headers(has_headers)
+        .quote_style(quote_style)
+        .from_writer(buffer);
+    Ok(writer)
 }
