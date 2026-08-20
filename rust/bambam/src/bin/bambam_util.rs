@@ -4,6 +4,7 @@ use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
 use bambam_modal_metrics::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
+use bambam_modal_metrics::common::modal_metrics::ModalMetric;
 use bambam_osm::model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable};
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
@@ -36,7 +37,7 @@ pub enum App {
     ModalMetricSet {
         /// modal metric type to compute, either "WCI" or "LTS"
         #[arg(long)]
-        metric_name: String,
+        metric_name: ModalMetric,
         /// input csv file with edges data
         #[arg(long)]
         edges_file: String,
@@ -226,7 +227,7 @@ impl App {
             // to specify the type of graph data to use.
             {
                 bulk_compute_modal_metric::<OsmWayDataSerializable, OsmNodeDataSerializable>(
-                    metric_name,
+                    *metric_name,
                     edges_file,
                     vertices_file,
                     output_file,
