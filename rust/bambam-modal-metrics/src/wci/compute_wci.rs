@@ -8,7 +8,7 @@ use crate::network_traits::{
 use crate::wci::ops::is_walk_eligible;
 use crate::wci::wci::{Wci, WciError, MAX_WCI, MIN_WCI};
 
-/// The Walking Comfort Index (WCI) components for a way, including total WCI
+/// The Walking Comfort Index (WCI) components for an edge, including total WCI
 /// and all components that went into the total WCI.
 #[derive(Default)]
 pub struct WciComponents {
@@ -54,11 +54,11 @@ where
     let neighboring_edges = find_neighboring_edges(entry, rtree);
 
     if !is_walk_eligible {
-        // Total WCI score = Min WCI score (unwalkable roadway)
+        // Total WCI score = Min WCI score (unwalkable edge)
         WciComponents::min_wci()
     } else if entry.edge.is_footway() || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
     {
-        // Total WCI score = Max WCI score (footway or sidewalk with no adjacent ways)
+        // Total WCI score = Max WCI score (footway or sidewalk with no adjacent edges)
         WciComponents::max_wci()
     } else {
         // Compute all component scores.

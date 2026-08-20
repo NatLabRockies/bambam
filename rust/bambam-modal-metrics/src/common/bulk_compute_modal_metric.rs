@@ -52,7 +52,7 @@ where
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
         BarBuilder::default()
             .desc(format!(
-                "Computing {:?} for ways in the road network",
+                "Computing {:?} for edges in the road network",
                 metric
             ))
             .total(edge_rtree_entries.len())
@@ -88,7 +88,7 @@ where
     writer.flush()?;
 
     log::info!(
-        "\n\n{:?} values computed successfully.\n\nOutputfile saved @ {output_file}.",
+        "\n\n{:?} values computed successfully.\n\nOutput file saved @ {output_file}.",
         metric
     );
     Ok(())

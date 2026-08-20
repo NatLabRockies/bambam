@@ -8,15 +8,15 @@ use crate::network_traits::spatial_edge::SpatialEdge;
 /// Roughly 15 meters at mid latitudes.
 pub const MIN_DISTANCE_RTREE_NEIGHBOR: f32 = 0.0001378;
 
-/// `WayRTreeEntry` wraps `OsmWayDataSerializable` and caches the bounding box
-/// and centroid of the way's `linestring`. It is used solely for efficient spatial queries
+/// `EdgeRTreeEntry` wraps the network edge and caches the bounding box
+/// and centroid of the edge's `linestring`. It is used solely for efficient spatial queries
 /// in an R-tree data structure.
 ///
 /// It is used in spatial queries for network analysis, such as computing
 /// the Walking Comfort Index (WCI) or Level of Traffic Stress (LTS) for a way using
 /// information from the way's geometry, attributes, and nearby ways.
 ///
-/// If we were to implement the `RTreeObject` trait directly on `OsmWayDataSerializable`,
+/// If we were to implement the `RTreeObject` trait directly on the network edge,
 /// we would have to compute the bounding box every time the `envelope()` method
 /// is called, which is inefficient.
 ///
@@ -48,7 +48,7 @@ impl<E: SpatialEdge> EdgeRTreeEntry<E> {
 }
 
 impl<E: SpatialEdge> RTreeObject for EdgeRTreeEntry<E> {
-    type Envelope = AABB<[f32; 2]>; // Envelope should be the same type as the bbox of WayRTreeEntry
+    type Envelope = AABB<[f32; 2]>; // Envelope should be the same type as the bbox of EdgeRTreeEntry
     fn envelope(&self) -> Self::Envelope {
         self.bbox // return the cached bounding box
     }

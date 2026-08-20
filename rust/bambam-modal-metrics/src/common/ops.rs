@@ -64,12 +64,12 @@ where
 /// Computes a weighted estimated speed (in MPH) from nearby ways
 pub fn estimated_speed_from_neighbors<E>(
     entry: &EdgeRTreeEntry<E>,
-    neighboring_ways: &[&EdgeRTreeEntry<E>],
+    neighboring_edges: &[&EdgeRTreeEntry<E>],
 ) -> Option<f32>
 where
     E: EdgeForModalMetric + SpatialEdge,
 {
-    let speeds_and_distances: Vec<(f32, f32)> = neighboring_ways
+    let speeds_and_distances: Vec<(f32, f32)> = neighboring_edges
         .iter()
         .filter_map(|neighbor| {
             neighbor.edge.get_traffic_speed_limit().map(|mph| {

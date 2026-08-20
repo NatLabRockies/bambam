@@ -78,7 +78,7 @@ impl Wci {
         }
     }
 
-    /// Computes the walkability `Wci` for a way.
+    /// Computes the walkability `Wci` for an edge.
     pub fn walkability(edge: &dyn EdgeForModalMetric) -> Wci {
         if edge.is_sidewalk() || edge.is_footway() {
             Wci(2)
@@ -87,7 +87,7 @@ impl Wci {
         }
     }
 
-    /// Computes the traffic signal `Wci` for a way.
+    /// Computes the traffic signal `Wci` for an edge (given the source vertex).
     pub fn traffic_signal_comfort(src_vertex: &dyn VertexForModalMetric) -> Wci {
         if src_vertex.has_traffic_signals() {
             Wci(2)
@@ -98,19 +98,19 @@ impl Wci {
         }
     }
 
-    /// Computes the cycleway `Wci` for a way.
+    /// Computes the cycleway `Wci` for an edge.
     pub fn cycleway_comfort<E: SpatialEdge + EdgeForModalMetric>(
         entry: &EdgeRTreeEntry<E>,
         neighboring_ways: &Vec<&EdgeRTreeEntry<E>>,
     ) -> Wci {
-        // if the way has a cycleway tag (string), use that, otherwise, use neighbors
+        // if the edge has a cycleway tag (string), use that, otherwise, use neighbors
         match &entry.edge.get_cycleway_tag() {
             Some(tag) => Wci(cycleway_comfort_from_tag(tag)),
             None => Wci(cycleway_comfort_from_neighbors(entry, neighboring_ways)),
         }
     }
 
-    /// Computes the traffic speed `Wci` for a way
+    /// Computes the traffic speed `Wci` for an edge.
     pub fn traffic_speed_comfort<E: SpatialEdge + EdgeForModalMetric>(
         entry: &EdgeRTreeEntry<E>,
         neighbors: &Vec<&EdgeRTreeEntry<E>>,

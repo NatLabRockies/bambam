@@ -17,15 +17,15 @@ pub fn cycleway_comfort_from_tag(tag: &CyclewayTag) -> i32 {
     }
 }
 
-/// Computes the cycleway comfort index from neighboring ways
+/// Computes the cycleway comfort index from neighboring edges
 pub fn cycleway_comfort_from_neighbors<E: SpatialEdge + EdgeForModalMetric>(
     entry: &EdgeRTreeEntry<E>,
-    neighboring_ways: &[&EdgeRTreeEntry<E>],
+    neighboring_edges: &[&EdgeRTreeEntry<E>],
 ) -> i32 {
     let mut total_distance: f32 = 0.0;
     let mut scored: Vec<(i32, f32)> = Vec::new();
 
-    for neighbor in neighboring_ways {
+    for neighbor in neighboring_edges {
         let distance = Euclidean.distance(entry.centroid, neighbor.centroid);
         total_distance += distance;
         if let Some(tag) = neighbor.edge.get_cycleway_tag() {
@@ -60,13 +60,13 @@ pub fn traffic_speed_comfort_from_speed(speed_mph: i32) -> i32 {
     }
 }
 
-/// Computes a weighted traffic speed comfort index from nearby ways if the
-/// way of interest does not have a speed limit.
+/// Computes a weighted traffic speed comfort index from nearby edges if the
+/// edge of interest does not have a speed limit.
 pub fn traffic_speed_comfort_from_neighbors<E: SpatialEdge + EdgeForModalMetric>(
     entry: &EdgeRTreeEntry<E>,
-    neighboring_ways: &[&EdgeRTreeEntry<E>],
+    neighboring_edges: &[&EdgeRTreeEntry<E>],
 ) -> i32 {
-    let speed_mph = estimated_speed_from_neighbors(entry, neighboring_ways).unwrap_or(0.0);
+    let speed_mph = estimated_speed_from_neighbors(entry, neighboring_edges).unwrap_or(0.0);
     traffic_speed_comfort_from_speed(speed_mph.round() as i32)
 }
 

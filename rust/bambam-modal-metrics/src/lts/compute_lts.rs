@@ -6,7 +6,7 @@ use crate::common::ops::{estimated_speed_from_neighbors, traffic_speed_from_maxs
 use crate::lts::lts::{Lts, LtsError, MAX_LTS, MIN_LTS};
 use crate::network_traits::{edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge};
 
-/// Computes the level of traffic stress for a given edge entry.
+/// Computes the level of traffic stress for a given edge.
 pub fn compute_lts<E>(
     rtree: &RTree<EdgeRTreeEntry<E>>,
     entry: &EdgeRTreeEntry<E>,
@@ -14,11 +14,11 @@ pub fn compute_lts<E>(
 where
     E: SpatialEdge + EdgeForModalMetric,
 {
-    // Some ways are inherently unsuitable for bikes.
+    // Some edges are inherently unsuitable for bikes.
     if entry.edge.is_unbikeable() {
         return Lts::new(MAX_LTS);
     }
-    // A highway that is non-motorized is inherently low-stress
+    // An edge that is non-motorized is inherently low-stress
     if entry.edge.is_non_motorized() {
         return Lts::new(MIN_LTS);
     }

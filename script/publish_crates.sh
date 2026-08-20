@@ -78,7 +78,7 @@ run_publish() {
 }
 
 for crate in $CRATES; do
-  if [ "$DRY_RUN" -eq 0 ] && [ "$crate" = "bambam" ]; then
+  if [ "$DRY_RUN" -eq 0 ]; then
     # crates.io indexing can lag briefly; wait before publishing the umbrella crate.
     sleep 2
   fi

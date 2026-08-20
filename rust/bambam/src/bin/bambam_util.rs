@@ -37,13 +37,13 @@ pub enum App {
         /// modal metric type to compute, either "WCI" or "LTS"
         #[arg(long)]
         metric_name: String,
-        /// input csv file with edges OSM data
+        /// input csv file with edges data
         #[arg(long)]
-        edges_osm: String,
-        /// input csv file with vertices OSM data
+        edges_file: String,
+        /// input csv file with vertices data
         #[arg(long)]
-        vertices_osm: String,
-        /// file to write modal metric values to, one per line
+        vertices_file: String,
+        /// file to write modal metric values to
         #[arg(long)]
         output_file: String,
     },
@@ -215,8 +215,8 @@ impl App {
             Self::ModalMetricSet {
                 metric_name,
                 output_file,
-                edges_osm,
-                vertices_osm,
+                edges_file,
+                vertices_file,
             } =>
             // TODO: eventually support other types of graph data beyond OSM for modal metric computation.
             // Generic traits are available (see bambam-modal-metrics crate).
@@ -227,8 +227,8 @@ impl App {
             {
                 bulk_compute_modal_metric::<OsmWayDataSerializable, OsmNodeDataSerializable>(
                     metric_name,
-                    edges_osm,
-                    vertices_osm,
+                    edges_file,
+                    vertices_file,
                     output_file,
                 )
                 .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}"))

@@ -2,7 +2,7 @@
 /// level of safety of a cycleway.
 ///
 /// You can generate a new cycleway tag by passing in
-/// the OSM way's cycleway attribute.
+/// the edge's cycleway attribute.
 #[derive(Debug, Clone)]
 pub enum CyclewayTag {
     DedicatedWithBuffer,
