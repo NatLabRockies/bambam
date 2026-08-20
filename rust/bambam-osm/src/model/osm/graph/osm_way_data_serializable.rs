@@ -266,6 +266,10 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
             || self.highway == Highway::Footway
     }
 
+    fn is_pedestrian_priority(&self) -> bool {
+        matches!(self.highway, Highway::LivingStreet | Highway::Pedestrian)
+    }
+
     fn is_unbikeable(&self) -> bool {
         matches!(
             self.highway,

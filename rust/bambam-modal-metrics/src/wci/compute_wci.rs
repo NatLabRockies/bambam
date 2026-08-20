@@ -56,9 +56,11 @@ where
     if !is_walk_eligible {
         // Total WCI score = Min WCI score (unwalkable edge)
         WciComponents::min_wci()
-    } else if entry.edge.is_footway() || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
+    } else if entry.edge.is_footway()
+        || entry.edge.is_pedestrian_priority()
+        || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
     {
-        // Total WCI score = Max WCI score (footway or sidewalk with no adjacent edges)
+        // Total WCI score = Max WCI score (footway, pedestrian-priority street, or sidewalk with no adjacent edges)
         WciComponents::max_wci()
     } else {
         // Compute all component scores.
@@ -134,6 +136,9 @@ mod test {
         }
         fn is_footway(&self) -> bool {
             self.footway
+        }
+        fn is_pedestrian_priority(&self) -> bool {
+            false
         }
         fn is_unbikeable(&self) -> bool {
             false
