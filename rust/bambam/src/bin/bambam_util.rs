@@ -37,7 +37,7 @@ pub enum App {
     ModalMetricSet {
         /// modal metric type to compute, either "WCI" or "LTS"
         #[arg(long)]
-        metric_name: ModalMetric,
+        metric_type: ModalMetric,
         /// input csv file with edges data
         #[arg(long)]
         edges_file: String,
@@ -214,7 +214,7 @@ impl App {
         env_logger::init();
         match self {
             Self::ModalMetricSet {
-                metric_name,
+                metric_type,
                 output_file,
                 edges_file,
                 vertices_file,
@@ -227,7 +227,7 @@ impl App {
             // to specify the type of graph data to use.
             {
                 bulk_compute_modal_metric::<OsmWayDataSerializable, OsmNodeDataSerializable>(
-                    *metric_name,
+                    *metric_type,
                     edges_file,
                     vertices_file,
                     output_file,
