@@ -6,7 +6,7 @@ use crate::network_traits::spatial_edge::SpatialEdge;
 /// The maximum distance (in degrees) within which another edge is considered a
 /// spatial "neighbor" for the purpose of neighbor-aware modal penalty scores.
 /// Roughly 15 meters at mid latitudes.
-pub const MIN_DISTANCE_RTREE_NEIGHBOR: f32 = 0.0001378;
+pub const MIN_DISTANCE_RTREE_NEIGHBOR: f32 = 1.816e-8;
 
 /// `EdgeRTreeEntry` wraps the network edge and caches the bounding box
 /// and centroid of the edge's `linestring`. It is used solely for efficient spatial queries
