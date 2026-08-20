@@ -240,6 +240,7 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
                 | Highway::Steps
                 | Highway::Corridor
                 | Highway::Path
+                | Highway::Cycleway
                 | Highway::Elevator
         )
     }
