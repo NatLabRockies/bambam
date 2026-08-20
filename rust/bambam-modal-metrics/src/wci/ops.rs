@@ -76,10 +76,4 @@ pub fn is_walk_eligible<E: SpatialEdge + EdgeForModalMetric>(
     entry: &EdgeRTreeEntry<E>,
 ) -> bool {
     entry.edge.is_walkable()
-        || rtree
-            .locate_within_distance(
-                [entry.centroid.x(), entry.centroid.y()],
-                MIN_DISTANCE_RTREE_NEIGHBOR,
-            )
-            .any(|neighbor| neighbor.edge.is_sidewalk())
 }
