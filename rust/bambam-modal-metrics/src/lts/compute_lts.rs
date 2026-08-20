@@ -1,49 +1,48 @@
 use rstar::RTree;
 
-use crate::app::network::{
-    common::{
-        cycleway_tag::CyclewayTag,
-        ops::{estimated_speed_from_neighbors, find_neighboring_ways, traffic_speed_from_maxspeed},
-        way_rtree_entry::WayRTreeEntry,
-    },
-    lts::{
-        lts::{Lts, LtsError, MAX_LTS, MIN_LTS},
-        ops::{is_non_motorized_way, is_unbikeable_way},
-    },
-};
+use crate::common::cycleway_tag::CyclewayTag;
+use crate::common::edge_rtree_entry::{find_neighboring_edges, EdgeRTreeEntry};
+use crate::common::ops::{estimated_speed_from_neighbors, traffic_speed_from_maxspeed};
+use crate::lts::lts::{Lts, LtsError, MAX_LTS, MIN_LTS};
+use crate::network_traits::{edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge};
 
-/// Computes the level of traffic stress for a given way entry.
-pub fn compute_lts(rtree: &RTree<WayRTreeEntry>, entry: &WayRTreeEntry) -> Result<Lts, LtsError> {
-    // Some ways are inherently unsuitable for bikes.
-    if is_unbikeable_way(&entry.way.highway) {
+/// Computes the level of traffic stress for a given edge.
+pub fn compute_lts<E>(
+    rtree: &RTree<EdgeRTreeEntry<E>>,
+    entry: &EdgeRTreeEntry<E>,
+) -> Result<Lts, LtsError>
+where
+    E: SpatialEdge + EdgeForModalMetric,
+{
+    // Some edges are inherently unsuitable for bikes.
+    if entry.edge.is_unbikeable() {
         return Lts::new(MAX_LTS);
     }
-    // A highway that is non-motorized is inherently low-stress
-    if is_non_motorized_way(&entry.way.highway) {
+    // An edge that is non-motorized is inherently low-stress
+    if entry.edge.is_non_motorized() {
         return Lts::new(MIN_LTS);
     }
 
     let speed = traffic_speed_from_maxspeed(entry).unwrap_or_else(|| {
-        let neighboring_ways = find_neighboring_ways(entry, rtree);
+        let neighboring_ways = find_neighboring_edges(entry, rtree);
         estimated_speed_from_neighbors(entry, &neighboring_ways).unwrap_or(25.0)
     });
 
     let cycleway_tag = entry
-        .way
-        .cycleway
-        .as_ref()
-        .map(|tag| CyclewayTag::new(tag))
+        .edge
+        .get_cycleway_tag()
         .unwrap_or(CyclewayTag::NoDedicatedNoFacilities);
 
-    let oneway = entry.way.oneway.as_deref() == Some("yes");
+    let oneway = entry.edge.is_oneway();
 
+    // compute the LTS value for this edge via the table lookup
     Lts::from_table_lookup(speed.round() as u8, cycleway_tag, oneway)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::network::common::cycleway_tag::CyclewayTag;
+    use crate::common::cycleway_tag::CyclewayTag;
 
     #[test]
     fn dedicated_with_buffer_is_always_lts1() {

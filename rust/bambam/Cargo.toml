@@ -15,7 +15,8 @@ categories = ["command-line-utilities", "science", "science::geo"]
 bambam-core = { workspace = true }
 bambam-gbfs = { workspace = true } 
 bambam-gtfs = { workspace = true } 
-bambam-gtfs-flex = { workspace = true } 
+bambam-gtfs-flex = { workspace = true }
+bambam-modal-metrics = { workspace = true }
 bambam-omf = { workspace = true }
 bambam-osm = { workspace = true }
 bamcensus = { workspace = true }

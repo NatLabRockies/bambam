@@ -5,7 +5,7 @@ set -eu
 MANIFEST_PATH="rust/Cargo.toml"
 DRY_RUN=0
 CRATES_CSV=""
-DEFAULT_CRATES="bambam-core bambam-osm bambam-gtfs bambam-gbfs bambam-omf bambam-gtfs-flex bambam"
+DEFAULT_CRATES="bambam-core bambam-modal-metrics bambam-osm bambam-gtfs bambam-gbfs bambam-omf bambam-gtfs-flex bambam"
 
 usage() {
   cat <<'EOF'
@@ -78,7 +78,7 @@ run_publish() {
 }
 
 for crate in $CRATES; do
-  if [ "$DRY_RUN" -eq 0 ] && [ "$crate" = "bambam" ]; then
+  if [ "$DRY_RUN" -eq 0 ]; then
     # crates.io indexing can lag briefly; wait before publishing the umbrella crate.
     sleep 2
   fi

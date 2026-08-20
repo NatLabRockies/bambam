@@ -1,0 +1,23 @@
+[package]
+name = "bambam-modal-metrics"
+edition = "2021"
+license = "BSD-3-Clause"
+version.workspace = true
+readme = "README.md"
+repository = "https://github.com/NatLabRockies/bambam"
+documentation = "https://docs.rs/bambam-modal-metrics"
+description = "Modal Metrics for road network data in The Behavior and Advanced Mobility Big Access Model"
+keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
+categories = ["science", "science::geo"]
+
+[dependencies]
+csv = { workspace = true }
+geo = { workspace = true }
+kdam = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true }
+routee-compass-core = { workspace = true }
+rstar = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+uom = { workspace = true }
