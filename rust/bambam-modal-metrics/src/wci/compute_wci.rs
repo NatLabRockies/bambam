@@ -48,7 +48,7 @@ where
     V: VertexForModalMetric,
 {
     // general walk-eligibility based on edge attributes and neighbors.
-    let is_walk_eligible = is_walk_eligible(rtree, entry);
+    let is_walk_eligible = is_walk_eligible(entry);
 
     // grab the neighboring edges
     let neighboring_edges = find_neighboring_edges(entry, rtree);

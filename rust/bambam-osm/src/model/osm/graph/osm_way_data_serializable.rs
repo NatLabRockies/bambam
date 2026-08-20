@@ -249,12 +249,14 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
             .as_ref()
             .is_some_and(|s| s != "no" && s != "none")
             || self.footway == Some("sidewalk".to_string())
+            || self.highway == Highway::Sidewalk
     }
 
     fn is_footway(&self) -> bool {
         self.footway
             .as_ref()
             .is_some_and(|s| s != "no" && s != "none")
+            || self.highway == Highway::Footway
     }
 
     fn is_unbikeable(&self) -> bool {
