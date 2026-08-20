@@ -71,9 +71,6 @@ pub fn traffic_speed_comfort_from_neighbors<E: SpatialEdge + EdgeForModalMetric>
 }
 
 /// Determines if the edge is walk-eligible based on its own attributes or nearby sidewalk edges.
-pub fn is_walk_eligible<E: SpatialEdge + EdgeForModalMetric>(
-    rtree: &RTree<EdgeRTreeEntry<E>>,
-    entry: &EdgeRTreeEntry<E>,
-) -> bool {
+pub fn is_walk_eligible<E: SpatialEdge + EdgeForModalMetric>(entry: &EdgeRTreeEntry<E>) -> bool {
     entry.edge.is_walkable()
 }
