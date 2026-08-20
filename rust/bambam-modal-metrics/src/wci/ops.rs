@@ -1,11 +1,10 @@
 use geo::{Distance, Euclidean};
 
 use crate::common::cycleway_tag::CyclewayTag;
-use crate::common::edge_rtree_entry::{EdgeRTreeEntry, MIN_DISTANCE_RTREE_NEIGHBOR};
+use crate::common::edge_rtree_entry::EdgeRTreeEntry;
 use crate::common::ops::estimated_speed_from_neighbors;
 use crate::network_traits::{edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge};
 use crate::wci::NO_CYCLEWAY_FOUND_SCORE;
-use rstar::RTree;
 
 /// Converts a cycleway tag classification to a numerical comfort index.
 pub fn cycleway_comfort_from_tag(tag: &CyclewayTag) -> i32 {
