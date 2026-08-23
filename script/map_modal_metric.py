@@ -1,3 +1,16 @@
+
+# Highways that are not walk/bike eligible for modal metrics (still kept in RTree).
+MAJOR_UNWALKABLE_HIGHWAYS = {
+    'motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'primary_link',
+}
+
+def metric_value_or_none(highway, value):
+    """Write None for major unwalkable/unbikeable ways in WCI/LTS outputs."""
+    hw = (highway or '').split('.')[0].lower()
+    if hw in MAJOR_UNWALKABLE_HIGHWAYS:
+        return None
+    return value
+
 """Create interactive Modal Metric maps (e.g., WCI, LTS) from merged edge CSV files."""
 
 # Usage:
