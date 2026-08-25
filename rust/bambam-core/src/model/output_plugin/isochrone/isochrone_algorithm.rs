@@ -1,8 +1,6 @@
 use geo::algorithm::concave_hull::ConcaveHull;
 use geo::concave_hull::ConcaveHullOptions;
-use geo::Geometry;
-use geo::KNearestConcaveHull;
-use geo::MultiPoint;
+use geo::{Geometry, KNearestConcaveHull, MultiPoint, Simplify};
 use routee_compass::plugin::output::OutputPluginError;
 use serde::{Deserialize, Serialize};
 
@@ -10,8 +8,14 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum IsochroneAlgorithm {
-    /// uses a concave hull algorithm to draw the isochrone
-    ConcaveHull { concavity: f32 },
+    /// uses a concave hull agorithm to draw the isochrone. as this can lead to many vertices,
+    /// the user can optionally specify an epsilon value for running the RDP Simplification
+    /// algorithm, in lat lon. this value should roughly match what would be acceptable smoothing
+    /// for the human eye. for example, 0.00135 is approx. 10-15 meters.
+    ConcaveHull {
+        concavity: f32,
+        simplify_epsilon_latlon: Option<f32>,
+    },
     /// uses the k-nearest concave hull algorithm. see
     /// [https://docs.rs/geo/latest/geo/algorithm/k_nearest_concave_hull/trait.KNearestConcaveHull.html]
     KNearestConcaveHull { k: u32 },
@@ -30,12 +34,18 @@ pub enum IsochroneAlgorithm {
 impl IsochroneAlgorithm {
     pub fn run(&self, mp: MultiPoint<f32>) -> Result<Geometry<f32>, OutputPluginError> {
         match self {
-            IsochroneAlgorithm::ConcaveHull { concavity } => {
+            IsochroneAlgorithm::ConcaveHull {
+                concavity,
+                simplify_epsilon_latlon,
+            } => {
                 if mp.len() < 3 {
                     Ok(Geometry::Polygon(geo::polygon!()))
                 } else {
                     let options = ConcaveHullOptions::default().concavity(*concavity);
-                    let hull = mp.concave_hull_with_options(options);
+                    let mut hull = mp.concave_hull_with_options(options);
+                    if let Some(epsilon) = simplify_epsilon_latlon {
+                        hull = hull.simplify(*epsilon);
+                    }
                     Ok(Geometry::Polygon(hull))
                 }
             }
