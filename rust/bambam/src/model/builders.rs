@@ -11,9 +11,8 @@ use crate::model::output_plugin::isochrone::isochrone_output_plugin_builder::Iso
 use crate::model::output_plugin::opportunity::OpportunityOutputPluginBuilder;
 use crate::model::traversal::multimodal::MultimodalTraversalBuilder;
 use crate::model::traversal::switch::switch_traversal_builder::SwitchTraversalBuilder;
-use bambam_gbfs::model::constraint::boarding::BoardingConstraintBuilder;
-use bambam_gbfs::model::constraint::geofence::GeofenceConstraintBuilder;
-use bambam_gbfs::model::traversal::boarding::BoardingTraversalBuilder;
+use bambam_gbfs::model::constraint::gbfs_constraint::GbfsConstraintBuilder;
+use bambam_gbfs::model::traversal::gbfs_traversal::GbfsTraversalBuilder;
 use bambam_gtfs::model::traversal::transit::TransitTraversalBuilder;
 use bambam_gtfs_flex::model::constraint::GtfsFlexDepartureFrontierBuilder;
 use bambam_gtfs_flex::model::traversal::flex::GtfsFlexBuilder;
@@ -41,18 +40,8 @@ pub const BUILDER_REGISTRATION: BuilderRegistration = BuilderRegistration(|build
     );
 
     builders.add_traversal_model(String::from("transit"), Rc::new(TransitTraversalBuilder {}));
-    builders.add_constraint_model(
-        "gbfs_geofence".to_string(),
-        Rc::new(GeofenceConstraintBuilder {}),
-    );
-    builders.add_constraint_model(
-        "gbfs_boarding".to_string(),
-        Rc::new(BoardingConstraintBuilder {}),
-    );
-    builders.add_traversal_model(
-        "gbfs_boarding".to_string(),
-        Rc::new(BoardingTraversalBuilder {}),
-    );
+    builders.add_constraint_model("gbfs".to_string(), Rc::new(GbfsConstraintBuilder {}));
+    builders.add_traversal_model("gbfs".to_string(), Rc::new(GbfsTraversalBuilder {}));
 
     builders.add_traversal_model("gtfs-flex".to_string(), Rc::new(GtfsFlexBuilder {}));
 

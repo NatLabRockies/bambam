@@ -20,7 +20,10 @@ pub enum PopulationSourceConfig {
 }
 
 fn env_census_api_token() -> Result<String, String> {
-    std::env::var("CENSUS_API_TOKEN").map_err(|e| format!("ACS token required, {e}"))
+    std::env::var("CENSUS_API_TOKEN").map_err(|_| {
+        "ACS requires token for access. please set via 'CENSUS_API_TOKEN' environment variable"
+            .to_string()
+    })
 }
 
 impl PopulationSourceConfig {

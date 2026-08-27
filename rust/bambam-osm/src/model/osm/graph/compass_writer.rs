@@ -39,7 +39,7 @@ impl CompassWriter for OsmGraphVectorized {
             let dirname = output_directory.as_os_str().to_string_lossy();
             return Err(OsmError::InternalError(format!(
                 "unable to create directory {}",
-                &dirname
+                dirname
             )));
         }
 
