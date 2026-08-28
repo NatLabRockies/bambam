@@ -20,7 +20,7 @@ impl OutputPlugin for BambamOutputPlugin {
     ) -> Result<(), OutputPluginError> {
         let mut row = bambam_typed::BambamOutputRow::new(output);
         let req = row.request()?;
-        let mode = req.get_mode()?;
+        let mode = req.get_trip_mode()?;
         let mut info = row.info_mut()?;
 
         match &self.0 {
