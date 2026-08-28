@@ -3,6 +3,7 @@ use crate::model::{
     output_plugin::{
         isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
         opportunity::OpportunityOrientation,
+        GlobalOrModal,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -14,15 +15,15 @@ use serde::{Deserialize, Serialize};
 pub enum BambamOutputConfig {
     Aggregate {
         /// the method for binning the output. required when opportunity_format == Aggregate.
-        binning: BinningConfig,
+        binning: GlobalOrModal<BinningConfig>,
         /// any additional filters to apply when selecting destinations. optional for both
         /// opportunity_formats.
-        destination_filter: Option<Vec<DestinationPredicate>>,
+        destination_filter: Option<GlobalOrModal<Vec<DestinationPredicate>>>,
         /// algorithm for assigning physical destination locations from a search tree branch.
         /// used in the isochrone drawing procedure.
-        geometry_model: GeometryModelConfig,
+        geometry_model: GlobalOrModal<GeometryModelConfig>,
         /// algorithm used to draw isochrones from the destination points.
-        isochrone_algorithm: IsochroneAlgorithm,
+        isochrone_algorithm: GlobalOrModal<IsochroneAlgorithm>,
         /// geometry format to use when writing isochrones.
         isochrone_format: IsochroneOutputFormat,
         /// location along a roadway where the opportunity is map matched. by default,
