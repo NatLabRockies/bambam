@@ -276,17 +276,17 @@ mod test {
             footway: false,
             speed_limit: Some(45),
             cycleway: None,
-            linestring: LineString::from(vec![(-105.170016, 39.773648), (-105.165381, 39.774176)]),
+            linestring: LineString::from(vec![(-105.170735, 39.773087), (-105.170445, 39.773137)]),
         };
-
+        // the "buffing" edge
         let neighbor = TestEdge {
             id: 43,
             walkable: true,
             sidewalk: false,
             footway: false,
             speed_limit: Some(25),
-            cycleway: Some(CyclewayTag::DedicatedNoBuffer),
-            linestring: LineString::from(vec![(-105.168085, 39.773772), (-105.166755, 39.773937)]),
+            cycleway: Some(CyclewayTag::DedicatedWithBuffer),
+            linestring: LineString::from(vec![(-105.170612, 39.773116), (-105.170499, 39.773017)]),
         };
 
         let src_vertex = TestVertex {
