@@ -69,7 +69,7 @@ pub fn traffic_speed_comfort_from_neighbors<E: SpatialEdge + EdgeForModalMetric>
     traffic_speed_comfort_from_speed(speed_mph.round() as i32)
 }
 
-/// Determines if the edge is walk-eligible based on its own attributes or nearby sidewalk edges.
+/// Determines if the edge is walk-eligible based on its own attributes.
 pub fn is_walk_eligible<E: SpatialEdge + EdgeForModalMetric>(entry: &EdgeRTreeEntry<E>) -> bool {
     entry.edge.is_walkable()
 }

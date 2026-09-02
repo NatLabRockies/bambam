@@ -212,13 +212,10 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
     }
 
     fn get_cycleway_tag(&self) -> Option<CyclewayTag> {
-        if let Some(tag) = self.cycleway.as_ref() {
-            return Some(CyclewayTag::new(tag));
-        }
         if self.highway == Highway::Cycleway {
             return Some(CyclewayTag::DedicatedWithBuffer);
         }
-        None
+        self.cycleway.as_ref().map(|tag| CyclewayTag::new(tag))
     }
 
     fn is_walkable(&self) -> bool {

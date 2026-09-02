@@ -47,7 +47,7 @@ where
     E: SpatialEdge + EdgeForModalMetric,
     V: VertexForModalMetric,
 {
-    // general walk-eligibility based on edge attributes and neighbors.
+    // general walk-eligibility based on edge attributes.
     let is_walk_eligible = is_walk_eligible(entry);
 
     // grab the neighboring edges
