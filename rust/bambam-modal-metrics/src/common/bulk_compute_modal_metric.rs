@@ -18,12 +18,8 @@ use std::{
 
 /// Bulk compute a specific modal metric for all ways in an OSM network by taking in a vertices-complete.csv
 /// and edges-complete.csv.
-///
-/// `metric_name` can either be:
-/// - "WCI" for the Walking Comfort Index metric
-/// - "LTS" for the Level of Traffic Stress (cycling comfort) metric
 pub fn bulk_compute_modal_metric<E, V>(
-    metric_name: &str,
+    metric: ModalMetric,
     edges_file: &str,
     vertices_file: &str,
     output_file: &str,
@@ -32,9 +28,6 @@ where
     E: SpatialEdge + EdgeForModalMetric + DeserializeOwned + Clone + Send + Sync,
     V: VertexForModalMetric + DeserializeOwned + Send + Sync,
 {
-    // determine the modal metric to compute based on the provided metric name.
-    let metric: ModalMetric = metric_name.parse()?;
-
     log::info!(
         "\nLoading files for {:?} modal metric computation.\n",
         metric
