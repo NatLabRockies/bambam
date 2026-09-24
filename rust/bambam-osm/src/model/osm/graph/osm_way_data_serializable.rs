@@ -212,6 +212,9 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
     }
 
     fn get_cycleway_tag(&self) -> Option<CyclewayTag> {
+        if self.highway == Highway::Cycleway {
+            return Some(CyclewayTag::DedicatedWithBuffer);
+        }
         self.cycleway.as_ref().map(|tag| CyclewayTag::new(tag))
     }
 
@@ -240,6 +243,7 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
                 | Highway::Steps
                 | Highway::Corridor
                 | Highway::Path
+                | Highway::Cycleway
                 | Highway::Elevator
         )
     }
@@ -249,12 +253,18 @@ impl EdgeForModalMetric for OsmWayDataSerializable {
             .as_ref()
             .is_some_and(|s| s != "no" && s != "none")
             || self.footway == Some("sidewalk".to_string())
+            || self.highway == Highway::Sidewalk
     }
 
     fn is_footway(&self) -> bool {
         self.footway
             .as_ref()
             .is_some_and(|s| s != "no" && s != "none")
+            || self.highway == Highway::Footway
+    }
+
+    fn is_pedestrian_priority(&self) -> bool {
+        matches!(self.highway, Highway::LivingStreet | Highway::Pedestrian)
     }
 
     fn is_unbikeable(&self) -> bool {

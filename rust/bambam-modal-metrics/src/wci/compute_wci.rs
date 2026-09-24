@@ -47,8 +47,8 @@ where
     E: SpatialEdge + EdgeForModalMetric,
     V: VertexForModalMetric,
 {
-    // general walk-eligibility based on edge attributes and neighbors.
-    let is_walk_eligible = is_walk_eligible(rtree, entry);
+    // general walk-eligibility based on edge attributes.
+    let is_walk_eligible = is_walk_eligible(entry);
 
     // grab the neighboring edges
     let neighboring_edges = find_neighboring_edges(entry, rtree);
@@ -56,9 +56,11 @@ where
     if !is_walk_eligible {
         // Total WCI score = Min WCI score (unwalkable edge)
         WciComponents::min_wci()
-    } else if entry.edge.is_footway() || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
+    } else if entry.edge.is_footway()
+        || entry.edge.is_pedestrian_priority()
+        || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
     {
-        // Total WCI score = Max WCI score (footway or sidewalk with no adjacent edges)
+        // Total WCI score = Max WCI score (footway, pedestrian-priority street, or sidewalk with no adjacent edges)
         WciComponents::max_wci()
     } else {
         // Compute all component scores.
@@ -134,6 +136,9 @@ mod test {
         }
         fn is_footway(&self) -> bool {
             self.footway
+        }
+        fn is_pedestrian_priority(&self) -> bool {
+            false
         }
         fn is_unbikeable(&self) -> bool {
             false
@@ -271,17 +276,17 @@ mod test {
             footway: false,
             speed_limit: Some(45),
             cycleway: None,
-            linestring: LineString::from(vec![(-105.170016, 39.773648), (-105.165381, 39.774176)]),
+            linestring: LineString::from(vec![(-105.170735, 39.773087), (-105.170445, 39.773137)]),
         };
-
+        // the "buffing" edge
         let neighbor = TestEdge {
             id: 43,
             walkable: true,
             sidewalk: false,
             footway: false,
             speed_limit: Some(25),
-            cycleway: Some(CyclewayTag::DedicatedNoBuffer),
-            linestring: LineString::from(vec![(-105.168085, 39.773772), (-105.166755, 39.773937)]),
+            cycleway: Some(CyclewayTag::DedicatedWithBuffer),
+            linestring: LineString::from(vec![(-105.170612, 39.773116), (-105.170499, 39.773017)]),
         };
 
         let src_vertex = TestVertex {

@@ -24,6 +24,8 @@ pub trait EdgeForModalMetric {
     fn is_sidewalk(&self) -> bool;
     /// returns true if the edge is a footway.
     fn is_footway(&self) -> bool;
+    /// returns true if the edge is a pedestrian-priority street (e.g. pedestrian mall, living street).
+    fn is_pedestrian_priority(&self) -> bool;
     // LTS - only
     /// returns true if the edge is unbikeable.
     fn is_unbikeable(&self) -> bool;
