@@ -190,14 +190,14 @@ type = "combined"
 
 [[system.response_output_policy.policies]]
 type = "file"
-filename = "result.json"
+path = "result.json"
 [system.response_output_policy.policies.format]
 type = "json"
 newline_delimited = false
 
 [[system.response_output_policy.policies]]
 type = "file"
-filename = "result.csv"
+path = "result.csv"
 [system.response_output_policy.policies.format]
 type = "csv"
 sorted = true
