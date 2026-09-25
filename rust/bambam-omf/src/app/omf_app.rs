@@ -2,12 +2,12 @@ use std::{fs, path::Path};
 
 use clap::{Parser, Subcommand};
 use config::{Config, File};
-use geo::MapCoords;
+use geo::{BoundingRect, MapCoords};
 use geozero::{wkt::Wkt as WktReader, ToGeo};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app::{cli_bbox::parse_bbox, network::NetworkEdgeListConfiguration, CliBoundingBox},
+    app::{network::NetworkEdgeListConfiguration, CliBoundingBox},
     collection::OvertureMapsCollectionError,
     graph::island_detection::IslandDetectionAlgorithm,
 };
@@ -48,10 +48,6 @@ pub enum OmfOperation {
         #[arg(short, long)]
         store_raw: bool,
 
-        /// bounding box to filter data (format: xmin,xmax,ymin,ymax)
-        #[arg(short, long, value_parser = parse_bbox, allow_hyphen_values(true))]
-        bbox: Option<CliBoundingBox>,
-
         /// write the list of segment and connector IDs for each edge created
         #[arg(long)]
         omf_ids: bool,
@@ -71,7 +67,6 @@ impl OmfOperation {
                 output_directory,
                 local_source,
                 store_raw,
-                bbox,
                 omf_ids,
                 extent_file,
             } => {
@@ -128,6 +123,20 @@ impl OmfOperation {
                         Ok(polygon)
                     })
                     .transpose()?;
+                let bbox = match &extent {
+                    Some(geom) => match geom.bounding_rect() {
+                        Some(rect) => CliBoundingBox::from_coords(&rect.min(), &rect.max())
+                            .map_err(OvertureMapsCollectionError::InvalidGeometry)
+                            .map(Some),
+                        None => {
+                            let msg =
+                                "provided extent does not have a bbox (maybe empty?)".to_string();
+                            Err(OvertureMapsCollectionError::InvalidGeometry(msg))
+                        }
+                    },
+                    None => Ok(None),
+                }?;
+
                 crate::app::network::run(
                     name,
                     bbox.as_ref(),
