@@ -269,13 +269,13 @@ pub fn process_bundle(
         .sorted_by_cached_key(|e| e.edge.edge_id)
         .collect_vec();
 
-    let metadata = json! [{
-        "agencies": json![&gtfs.agencies],
-        "feed_info": json![&gtfs.feed_info],
-        "read_duration": json![&gtfs.read_duration],
-        "calendar": json![&gtfs.calendar],
-        "calendar_dates": json![&gtfs.calendar_dates],
-    }];
+    let metadata = json!({
+        "agencies": json!(&gtfs.agencies),
+        "feed_info": json!(&gtfs.feed_info),
+        "read_duration": json!(&gtfs.read_duration),
+        "calendar": json!(&gtfs.calendar),
+        "calendar_dates": json!(&gtfs.calendar_dates),
+    });
 
     let result = GtfsBundle {
         edges: edges_sorted,
@@ -284,6 +284,12 @@ pub fn process_bundle(
     };
 
     Ok(Some(result))
+}
+
+/// combines multiple GTFS bundles into a single bundle with consolidated edges
+/// and dense sequential edge IDs.
+pub fn merge_bundles(bundles: impl IntoIterator<Item = GtfsBundle>) -> GtfsBundle {
+    GtfsBundle::merge_all(bundles)
 }
 
 /// reads a GTFS archive. applies the missing stop matching policy, removing any disconnected
