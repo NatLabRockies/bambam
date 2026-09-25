@@ -574,7 +574,7 @@ mod tests {
     /// Request section: read mode field.
     #[test]
     fn request_section_get_mode() {
-        let mut value = json!({"request": {"mode": "transit"}});
+        let mut value = json!({"request": {"trip_mode": "transit"}});
         let row = BambamOutputRow::new(&mut value);
         assert_eq!(row.request().unwrap().get_trip_mode().unwrap(), "transit");
     }
