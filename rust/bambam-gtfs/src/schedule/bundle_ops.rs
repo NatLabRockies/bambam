@@ -208,6 +208,11 @@ pub fn process_bundle(
         .map(|(stop_id, stop)| (stop_id.clone(), get_stop_location(stop.clone(), &gtfs)))
         .collect();
 
+    let feed_id = Path::new(bundle_file)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string());
+
     // Construct edge lists
     let mut edge_id: EdgeId = EdgeId(0);
     let mut edges: HashMap<(VertexId, VertexId), GtfsEdge> = HashMap::new();
@@ -232,6 +237,7 @@ pub fn process_bundle(
                     ))
                 })?;
                 let dm = DateMapping {
+                    feed_id: feed_id.clone(),
                     agency_id: route.agency_id.clone(),
                     route_id: trip.route_id.clone(),
                     service_id: trip.service_id.clone(),
@@ -252,6 +258,7 @@ pub fn process_bundle(
                     c.clone(),
                     gtfs.clone(),
                     &stop_locations,
+                    feed_id.as_deref(),
                 )?;
             }
         }
@@ -452,6 +459,7 @@ fn process_schedule(
     c: Arc<ProcessBundlesConfig>,
     gtfs: Arc<Gtfs>,
     stop_locations: &HashMap<String, Option<Point<f64>>>,
+    feed_id: Option<&str>,
 ) -> Result<Option<ScheduleRow>, ScheduleError> {
     // ignore times not within our expected time range
     if !c.date_mapping_policy.within_time_range(src, dst) {
@@ -522,6 +530,7 @@ fn process_schedule(
     // update schedules + date mapping
     let schedule = ScheduleRow::new(
         gtfs_edge.edge.edge_id.0,
+        feed_id.map(|s| s.to_string()),
         trip.route_id.clone(),
         trip.service_id.clone(),
         route.agency_id.clone(),
@@ -584,6 +593,7 @@ fn construct_fq_route_id_list(bundle: &GtfsBundle, edge_list_id: usize) -> Vec<S
         .flat_map(|e| {
             e.schedules.iter().map(|s| {
                 fq_ops::get_fully_qualified_route_id(
+                    s.feed_id.as_deref(),
                     s.agency_id.as_deref(),
                     &s.route_id,
                     &s.service_id,
