@@ -46,19 +46,30 @@ impl CompassAppBindings for BambamAppWrapper {
 /// Accepts a dictionary, a Pydantic model (with `model_dump`), or a JSON string.
 #[pyfunction]
 fn run_omf_network(py: Python<'_>, args: &Bound<'_, PyAny>) -> PyResult<()> {
-    let network_args: bambam_omf::app::OmfNetworkArgs = if let Ok(json_str) = args.extract::<String>() {
-        serde_json::from_str(&json_str)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("failed to deserialize JSON string: {e}")))?
-    } else if let Ok(dict) = args.call_method0("model_dump") {
-        pythonize::depythonize(&dict)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("failed to deserialize Pydantic model: {e}")))?
-    } else {
-        pythonize::depythonize(args)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(format!("failed to deserialize arguments: {e}")))?
-    };
+    let network_args: bambam_omf::app::OmfNetworkArgs =
+        if let Ok(json_str) = args.extract::<String>() {
+            serde_json::from_str(&json_str).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize JSON string: {e}"
+                ))
+            })?
+        } else if let Ok(dict) = args.call_method0("model_dump") {
+            pythonize::depythonize(&dict).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize Pydantic model: {e}"
+                ))
+            })?
+        } else {
+            pythonize::depythonize(args).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize arguments: {e}"
+                ))
+            })?
+        };
 
     py.detach(move || {
-        network_args.run()
+        network_args
+            .run()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
     })
 }
