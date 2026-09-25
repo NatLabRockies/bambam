@@ -67,10 +67,9 @@ pub enum GtfsOperation {
         /// a single GTFS archive or a directory of GTFS archives
         #[arg(long)]
         input: String,
-        /// in this case of a single input file, this sets the edge list id for that input.
-        /// for a directory input, sets the starting edge list id.
-        #[arg(long)]
-        starting_edge_list_id: usize,
+        /// sets the edge list id for the generated transit edge list.
+        #[arg(long, default_value_t = 1, alias = "starting-edge-list-id")]
+        edge_list_id: usize,
 
         #[arg(long, default_value_t = 1)]
         parallelism: usize,
@@ -163,7 +162,7 @@ impl GtfsOperation {
             }
             GtfsOperation::PreprocessBundle {
                 input,
-                starting_edge_list_id,
+                edge_list_id,
                 vertices_compass_filename,
                 start_date,
                 end_date,
@@ -215,7 +214,7 @@ impl GtfsOperation {
                     start_date: start_date.clone(),
                     end_date: end_date.clone(),
                     spatial_index,
-                    starting_edge_list_id: *starting_edge_list_id,
+                    starting_edge_list_id: *edge_list_id,
                     missing_stop_location_policy: missing_stop_location_policy.clone(),
                     distance_calculation_policy: distance_calculation_policy.clone(),
                     date_mapping_policy: date_mapping_policy.clone(),
