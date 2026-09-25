@@ -21,6 +21,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+orch = [
+    "pydantic>2.13,<2.14",
+    "consist>0.3,<0.4"
+]
 dev = [
     "pytest>=8.0,<9.0",
     "maturin>=1.0,<2.0",
@@ -47,7 +51,7 @@ osm = [
     "numpy>=1.26,<3.0",
     "seaborn>=0.12.0,<1.0",
 ]
-all = ["bambam[osm]", "bambam[dev]"]
+all = ["bambam[osm]", "bambam[dev]", "bambam[orch]"]
 
 [project.urls]
 Homepage = "https://github.com/NatLabRockies/bambam"
