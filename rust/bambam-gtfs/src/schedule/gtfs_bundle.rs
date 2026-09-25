@@ -126,92 +126,110 @@ fn merge_metadata(target: &mut serde_json::Value, source: &serde_json::Value) {
         source.as_object()
     };
 
+    // step through the keys in the metadata and merge arrays for each key.
     if let (Some(target_obj), Some(source_obj)) = (target.as_object_mut(), source_obj) {
         for (key, source_val) in source_obj {
-            match key.as_str() {
-                "agencies" | "feed_info" => {
-                    if let Some(target_arr) = target_obj.get_mut(key).and_then(|v| v.as_array_mut())
-                    {
-                        if let Some(source_arr) = source_val.as_array() {
-                            target_arr.extend(source_arr.clone());
-                        }
-                    } else {
-                        target_obj.insert(key.clone(), source_val.clone());
+            let merged_val = match key.as_str() {
+                "agencies" | "feed_info" => merge_json_arrays(target_obj.get(key), source_val),
+                "read_duration" => merge_read_duration(target_obj.get(key), source_val),
+                "calendar" => merge_calendar(target_obj.get(key), source_val),
+                "calendar_dates" => merge_calendar_dates(target_obj.get(key), source_val),
+                _ => match target_obj.get(key) {
+                    Some(existing) => existing.clone(),
+                    None => source_val.clone(),
+                },
+            };
+            target_obj.insert(key.clone(), merged_val);
+        }
+    }
+}
+
+/// Combines two JSON arrays into a single array value.
+fn merge_json_arrays(
+    target: Option<&serde_json::Value>,
+    source: &serde_json::Value,
+) -> serde_json::Value {
+    match (target.and_then(|v| v.as_array()), source.as_array()) {
+        (Some(t_arr), Some(s_arr)) => {
+            let mut out = t_arr.clone();
+            out.extend(s_arr.clone());
+            serde_json::Value::Array(out)
+        }
+        (Some(t_arr), None) => serde_json::Value::Array(t_arr.clone()),
+        (None, _) => source.clone(),
+    }
+}
+
+/// Sums duration seconds and nanoseconds across bundles into a single Duration JSON object.
+fn merge_read_duration(
+    target: Option<&serde_json::Value>,
+    source: &serde_json::Value,
+) -> serde_json::Value {
+    let s_secs = target
+        .and_then(|d| d.get("secs"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let s_nanos = target
+        .and_then(|d| d.get("nanos"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let o_secs = source.get("secs").and_then(|v| v.as_i64()).unwrap_or(0);
+    let o_nanos = source.get("nanos").and_then(|v| v.as_u64()).unwrap_or(0);
+
+    let total_nanos = s_nanos + o_nanos;
+    let carry_secs = (total_nanos / 1_000_000_000) as i64;
+    let rem_nanos = (total_nanos % 1_000_000_000) as u32;
+    let total_secs = s_secs + o_secs + carry_secs;
+
+    serde_json::json!({
+        "secs": total_secs,
+        "nanos": rem_nanos,
+    })
+}
+
+/// Merges calendar entries from two archives, keying by service_id.
+fn merge_calendar(
+    target: Option<&serde_json::Value>,
+    source: &serde_json::Value,
+) -> serde_json::Value {
+    match (target.and_then(|v| v.as_object()), source.as_object()) {
+        (Some(target_cal), Some(source_cal)) => {
+            let mut out = target_cal.clone();
+            for (cal_k, cal_v) in source_cal {
+                out.insert(cal_k.clone(), cal_v.clone());
+            }
+            serde_json::Value::Object(out)
+        }
+        (Some(target_cal), None) => serde_json::Value::Object(target_cal.clone()),
+        (None, _) => source.clone(),
+    }
+}
+
+/// Merges calendar_dates exceptions from two archives, concatenating arrays for shared service_ids.
+fn merge_calendar_dates(
+    target: Option<&serde_json::Value>,
+    source: &serde_json::Value,
+) -> serde_json::Value {
+    match (target.and_then(|v| v.as_object()), source.as_object()) {
+        (Some(target_cd), Some(source_cd)) => {
+            let mut out = target_cd.clone();
+            for (cd_k, cd_v) in source_cd {
+                match (
+                    out.get_mut(cd_k).and_then(|v| v.as_array_mut()),
+                    cd_v.as_array(),
+                ) {
+                    (Some(t_arr), Some(s_arr)) => {
+                        t_arr.extend(s_arr.clone());
                     }
-                }
-                "read_duration" => {
-                    let s_secs = target_obj
-                        .get("read_duration")
-                        .and_then(|d| d.get("secs"))
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0);
-                    let s_nanos = target_obj
-                        .get("read_duration")
-                        .and_then(|d| d.get("nanos"))
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let o_secs = source_val.get("secs").and_then(|v| v.as_i64()).unwrap_or(0);
-                    let o_nanos = source_val
-                        .get("nanos")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0);
-                    let total_nanos = s_nanos + o_nanos;
-                    let carry_secs = (total_nanos / 1_000_000_000) as i64;
-                    let rem_nanos = (total_nanos % 1_000_000_000) as u32;
-                    let total_secs = s_secs + o_secs + carry_secs;
-                    target_obj.insert(
-                        "read_duration".to_string(),
-                        serde_json::json!({
-                            "secs": total_secs,
-                            "nanos": rem_nanos,
-                        }),
-                    );
-                }
-                "calendar" => {
-                    if let Some(target_cal) = target_obj
-                        .get_mut("calendar")
-                        .and_then(|v| v.as_object_mut())
-                    {
-                        if let Some(source_cal) = source_val.as_object() {
-                            for (cal_k, cal_v) in source_cal {
-                                target_cal.insert(cal_k.clone(), cal_v.clone());
-                            }
-                        }
-                    } else {
-                        target_obj.insert(key.clone(), source_val.clone());
-                    }
-                }
-                "calendar_dates" => {
-                    if let Some(target_cd) = target_obj
-                        .get_mut("calendar_dates")
-                        .and_then(|v| v.as_object_mut())
-                    {
-                        if let Some(source_cd) = source_val.as_object() {
-                            for (cd_k, cd_v) in source_cd {
-                                match (
-                                    target_cd.get_mut(cd_k).and_then(|v| v.as_array_mut()),
-                                    cd_v.as_array(),
-                                ) {
-                                    (Some(t_arr), Some(s_arr)) => {
-                                        t_arr.extend(s_arr.clone());
-                                    }
-                                    _ => {
-                                        target_cd.insert(cd_k.clone(), cd_v.clone());
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        target_obj.insert(key.clone(), source_val.clone());
-                    }
-                }
-                _ => {
-                    if !target_obj.contains_key(key) {
-                        target_obj.insert(key.clone(), source_val.clone());
+                    _ => {
+                        out.insert(cd_k.clone(), cd_v.clone());
                     }
                 }
             }
+            serde_json::Value::Object(out)
         }
+        (Some(target_cd), None) => serde_json::Value::Object(target_cd.clone()),
+        (None, _) => source.clone(),
     }
 }
 
