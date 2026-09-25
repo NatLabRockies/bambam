@@ -41,13 +41,8 @@ mod tests {
 
     #[test]
     fn test_fully_qualified_route_id_with_feed_and_agency() {
-        let fq_id = get_fully_qualified_route_id(
-            Some("denver_rtd"),
-            Some("RTD"),
-            "15",
-            "weekday",
-            1,
-        );
+        let fq_id =
+            get_fully_qualified_route_id(Some("denver_rtd"), Some("RTD"), "15", "weekday", 1);
         assert_eq!(fq_id, "1->denver_rtd->RTD->15->weekday");
     }
 
