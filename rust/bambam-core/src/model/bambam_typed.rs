@@ -146,8 +146,8 @@ pub struct RequestSection<'a>(&'a Value);
 
 impl<'a> RequestSection<'a> {
     /// Returns the transport `mode` string (e.g. `"car"`, `"transit"`).
-    pub fn get_mode(&self) -> Result<String, OutputPluginError> {
-        get_field(self.0, bambam_field::MODE)
+    pub fn get_trip_mode(&self) -> Result<String, OutputPluginError> {
+        get_field(self.0, bambam_field::TRIP_MODE)
     }
 }
 
@@ -576,7 +576,7 @@ mod tests {
     fn request_section_get_mode() {
         let mut value = json!({"request": {"mode": "transit"}});
         let row = BambamOutputRow::new(&mut value);
-        assert_eq!(row.request().unwrap().get_mode().unwrap(), "transit");
+        assert_eq!(row.request().unwrap().get_trip_mode().unwrap(), "transit");
     }
 
     /// Request section: missing request key returns error.

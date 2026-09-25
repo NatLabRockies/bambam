@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 pub const TIME_BINS: &str = "bin";
 pub const TIME_BIN: &str = "time_bin";
 pub const INFO: &str = "info";
-pub const MODE: &str = "mode";
+pub const TRIP_MODE: &str = "trip_mode";
 pub const OUTPUT_CONFIG: &str = "output_config";
 pub const ISOCHRONE: &str = "isochrone";
 pub const ISOCHRONE_ALGORITHM: &str = "isochrone_algorithm";
@@ -54,7 +54,7 @@ pub mod get {
     };
 
     pub fn mode(value: &Value) -> Result<String, OutputPluginError> {
-        let path = ["request", super::MODE];
+        let path = ["request", super::TRIP_MODE];
         super::get_nested(value, &path).map_err(|e| {
             let dot_path = path.join(".");
             OutputPluginError::OutputPluginFailed(format!(
