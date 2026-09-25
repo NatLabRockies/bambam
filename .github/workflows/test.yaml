@@ -47,6 +47,14 @@ jobs:
         run: |
           cargo test --workspace --verbose --manifest-path rust/Cargo.toml
 
+      - name: Build Python Extension & Run Python Tests
+        run: |
+          uv venv
+          uv pip install ".[all]"
+          uv run maturin develop -m rust/bambam-py/Cargo.toml
+          uv run pytest python/tests
+          uv run mypy python
+
       - name: End-to-end GTFS BAMBAM test
         run: |
           cargo build -r --manifest-path rust/Cargo.toml

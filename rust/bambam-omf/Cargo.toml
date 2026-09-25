@@ -41,6 +41,7 @@ reqwest = { workspace = true }
 routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 # routee-compass-powertrain = { workspace = true }
+schemars = { workspace = true }
 serde = { workspace = true }
 serde_arrow = { workspace = true }
 serde_bytes = { workspace = true }
