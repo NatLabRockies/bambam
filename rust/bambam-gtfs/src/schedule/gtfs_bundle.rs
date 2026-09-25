@@ -71,7 +71,10 @@ impl GtfsBundle {
         }
 
         // 2. Sort edges deterministically by (src_vertex_id, dst_vertex_id)
-        let mut sorted_edges = edge_map.into_values().collect::<Vec<_>>();
+        let mut sorted_edges = edge_map
+            .into_values()
+            .filter(|e| !e.schedules.is_empty())
+            .collect::<Vec<_>>();
         sorted_edges.sort_by_key(|e| (e.edge.src_vertex_id.0, e.edge.dst_vertex_id.0));
 
         // 3. Renumber edge_ids sequentially starting from 0, updating schedules

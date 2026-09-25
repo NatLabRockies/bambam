@@ -5,8 +5,8 @@ use crate::schedule::bundle_ops::ProcessBundlesConfig;
 use crate::schedule::distance_calculation_policy::DistanceCalculationPolicy;
 use crate::schedule::schedule_error::ScheduleError;
 use crate::schedule::{
-    bundle_ops, DateMappingPolicy, DateMappingPolicyConfig, DateMappingPolicyType, GtfsProvider,
-    GtfsSummary, MissingStopLocationPolicy,
+    bundle_ops, DateMappingPolicy, DateMappingPolicyConfig, DateMappingPolicyType, GtfsBundle,
+    GtfsProvider, GtfsSummary, MissingStopLocationPolicy,
 };
 use clap::Subcommand;
 use geo::{Coord, Geometry, LineString};
@@ -236,7 +236,8 @@ impl GtfsOperation {
                     let bundle = bundle_opt.expect(
                         "GTFS archive import was skipped as the extent does not intersect any archives",
                     );
-                    bundle_ops::write_bundle(&bundle, config.clone(), config.starting_edge_list_id)
+                    let merged = GtfsBundle::merge_all(vec![bundle]);
+                    bundle_ops::write_bundle(&merged, config.clone(), config.starting_edge_list_id)
                         .expect("failure writing GTFS bundle");
                 }
             }

@@ -147,34 +147,24 @@ pub fn batch_process(
         }
     }
 
-    // write results to file
-    let (_, write_errors): (Vec<_>, Vec<_>) = bundles
-        .into_iter()
-        .enumerate()
-        .collect_vec()
-        .par_chunks(chunk_size)
-        .map(|chunk| {
-            chunk.iter().map(|(index, bundle)| {
-                let edge_list_id = conf.starting_edge_list_id + index;
-                write_bundle(bundle, conf.clone(), edge_list_id)
-            })
-        })
-        .collect_vec_list()
-        .into_iter()
-        .flat_map(|chunks| {
-            chunks
-                .into_iter()
-                .flat_map(|chunk| chunk.into_iter().filter(|r| r.is_err()).collect_vec())
-        })
-        .collect_vec()
-        .into_iter()
-        .partition_result();
-
-    if !write_errors.is_empty() {
-        Err(batch_processing_error(&write_errors))
-    } else {
-        Ok(())
+    if bundles.is_empty() {
+        log::warn!("no non-empty GTFS bundles found to process");
+        return Ok(());
     }
+
+    log::info!(
+        "merging {} GTFS bundles into a single transit edge list",
+        bundles.len()
+    );
+    let merged_bundle = GtfsBundle::merge_all(bundles);
+    log::info!(
+        "writing merged GTFS bundle with {} edges to {}",
+        merged_bundle.edges.len(),
+        conf.output_directory
+    );
+    write_bundle(&merged_bundle, conf.clone(), conf.starting_edge_list_id)?;
+
+    Ok(())
 }
 
 /// read a single GTFS archive and prepare a Compass EdgeList dataset from it.
@@ -438,7 +428,7 @@ pub fn write_bundle(
                 .map_err(|e| {
                     ScheduleError::GtfsApp(format!(
                         "Failed to write to geometry file {}: {}",
-                        String::from(&edges_filename),
+                        String::from(&geometries_filename),
                         e
                     ))
                 })?;
@@ -751,5 +741,198 @@ fn calculate_chunk_size(archives: usize, parallelism: usize) -> usize {
         1
     } else {
         archives / par_denom
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::traversal::transit::{
+        ScheduleLoadingPolicy, TransitTraversalConfig, TransitTraversalEngine,
+    };
+    use crate::schedule::{
+        distance_calculation_policy::DistanceCalculationPolicy, gtfs_edge::GtfsEdge,
+        missing_stop_matching_policy::MissingStopLocationPolicy, DateMappingPolicy, ScheduleRow,
+    };
+    use chrono::{NaiveDate, NaiveDateTime};
+    use geo::LineString;
+    use routee_compass_core::model::map::SpatialIndex;
+    use routee_compass_core::model::network::{EdgeConfig, EdgeId, VertexId};
+    use std::collections::HashSet;
+
+    fn make_test_edge(
+        src: usize,
+        dst: usize,
+        edge_id: usize,
+        feed_id: &str,
+        route_id: &str,
+        dep_time: &str,
+        arr_time: &str,
+    ) -> GtfsEdge {
+        let edge = EdgeConfig {
+            edge_id: EdgeId(edge_id),
+            src_vertex_id: VertexId(src),
+            dst_vertex_id: VertexId(dst),
+            distance: 100.0,
+        };
+        let geometry = LineString::from(vec![(0.0, 0.0), (1.0, 1.0)]);
+        let mut gtfs_edge = GtfsEdge::new(edge, geometry);
+        let src_dep = NaiveDateTime::parse_from_str(dep_time, "%Y-%m-%d %H:%M:%S").unwrap();
+        let dst_arr = NaiveDateTime::parse_from_str(arr_time, "%Y-%m-%d %H:%M:%S").unwrap();
+        gtfs_edge.add_schedule(ScheduleRow::new(
+            edge_id,
+            Some(feed_id.to_string()),
+            route_id.to_string(),
+            "service_1".to_string(),
+            Some("agency_1".to_string()),
+            src_dep,
+            dst_arr,
+        ));
+        gtfs_edge
+    }
+
+    #[test]
+    fn test_write_and_load_merged_bundle() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir().join(format!("gtfs_test_{nanos}"));
+        let conf = Arc::new(ProcessBundlesConfig {
+            start_date: "01-01-2025".to_string(),
+            end_date: "01-01-2025".to_string(),
+            spatial_index: Arc::new(SpatialIndex::new_vertex_oriented(&[], None)),
+            starting_edge_list_id: 1,
+            missing_stop_location_policy: MissingStopLocationPolicy::Fail,
+            distance_calculation_policy: DistanceCalculationPolicy::Haversine,
+            date_mapping_policy: DateMappingPolicy::ExactDate(
+                NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            ),
+            extent: None,
+            output_directory: temp_dir.to_string_lossy().to_string(),
+            overwrite: true,
+        });
+
+        // Bundle 1 (Feed A) with 2 edges
+        let bundle1 = GtfsBundle {
+            edges: vec![
+                make_test_edge(
+                    1,
+                    2,
+                    0,
+                    "feed_a",
+                    "route_1",
+                    "2025-01-01 08:00:00",
+                    "2025-01-01 08:15:00",
+                ),
+                make_test_edge(
+                    2,
+                    3,
+                    1,
+                    "feed_a",
+                    "route_2",
+                    "2025-01-01 08:20:00",
+                    "2025-01-01 08:35:00",
+                ),
+            ],
+            metadata: json!({
+                "agencies": [{"id": "agency_a"}],
+                "feed_info": [{"publisher": "pub_a"}],
+                "read_duration": {"secs": 1, "nanos": 0},
+                "calendar": {"service_1": "cal_1"},
+                "calendar_dates": {"service_1": ["20250101"]},
+            }),
+            date_mapping: HashSet::from([DateMapping {
+                feed_id: Some("feed_a".to_string()),
+                agency_id: Some("agency_1".to_string()),
+                route_id: "route_1".to_string(),
+                service_id: "service_1".to_string(),
+                target_date: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+                picked_date: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            }]),
+        };
+
+        // Bundle 2 (Feed B) sharing edge (1 -> 2) and adding edge (3 -> 4)
+        let bundle2 = GtfsBundle {
+            edges: vec![
+                make_test_edge(
+                    1,
+                    2,
+                    0,
+                    "feed_b",
+                    "route_x",
+                    "2025-01-01 08:10:00",
+                    "2025-01-01 08:25:00",
+                ),
+                make_test_edge(
+                    3,
+                    4,
+                    1,
+                    "feed_b",
+                    "route_y",
+                    "2025-01-01 08:40:00",
+                    "2025-01-01 08:55:00",
+                ),
+            ],
+            metadata: json!({
+                "agencies": [{"id": "agency_b"}],
+                "feed_info": [{"publisher": "pub_b"}],
+                "read_duration": {"secs": 2, "nanos": 0},
+                "calendar": {"service_2": "cal_2"},
+                "calendar_dates": {"service_2": ["20250101"]},
+            }),
+            date_mapping: HashSet::from([DateMapping {
+                feed_id: Some("feed_b".to_string()),
+                agency_id: Some("agency_1".to_string()),
+                route_id: "route_x".to_string(),
+                service_id: "service_1".to_string(),
+                target_date: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+                picked_date: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+            }]),
+        };
+
+        let merged = GtfsBundle::merge_all(vec![bundle1, bundle2]);
+        write_bundle(&merged, conf.clone(), 1).expect("write_bundle failed");
+
+        // Verify all 4 files were created
+        let metadata_path = temp_dir.join("edges-gtfs-metadata-1.json");
+        let edges_path = temp_dir.join("edges-compass-1.csv.gz");
+        let schedules_path = temp_dir.join("edges-schedules-1.csv.gz");
+        let geometries_path = temp_dir.join("edges-geometries-enumerated-1.txt.gz");
+
+        assert!(metadata_path.exists());
+        assert!(edges_path.exists());
+        assert!(schedules_path.exists());
+        assert!(geometries_path.exists());
+
+        // Now load into TransitTraversalEngine and verify dense schedules
+        let transit_config = TransitTraversalConfig {
+            edges_schedules_input_file: schedules_path.to_string_lossy().to_string(),
+            gtfs_metadata_input_file: metadata_path.to_string_lossy().to_string(),
+            schedule_loading_policy: ScheduleLoadingPolicy::All,
+            route_ids_input_file: None,
+        };
+
+        let engine = TransitTraversalEngine::try_from(transit_config)
+            .expect("TransitTraversalEngine failed to build from merged output");
+
+        // There were 3 unique edges: (1->2), (2->3), (3->4)
+        assert_eq!(engine.edge_schedules.len(), 3);
+
+        // Edge 0 (1->2) has departures from both feeds: 08:00 (Feed A) and 08:10 (Feed B)
+        let dep = engine
+            .get_next_departure(
+                0,
+                &NaiveDateTime::parse_from_str("2025-01-01 07:55:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+            )
+            .unwrap()
+            .expect("expected departure at 08:00");
+        assert_eq!(
+            dep.1.src_departure_time,
+            NaiveDateTime::parse_from_str("2025-01-01 08:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
+        );
+
+        // Clean up temp dir
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
