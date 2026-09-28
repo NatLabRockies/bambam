@@ -49,7 +49,6 @@ jobs:
 
       - name: Build Python Extension & Run Python Tests
         run: |
-          uv venv
           uv pip install ".[all]"
           uv run maturin develop -m rust/bambam-py/Cargo.toml
           uv run pytest python/tests
