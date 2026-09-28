@@ -9,8 +9,8 @@
 
 module load bzip2
 
-/projects/mepcore/bin/bambam_gtfs \
-    preprocess-bundle \
+/projects/mepcore/bin/bambam-gtfs \
+    import \
     --input /home/$USER/data/bam/gtfs/2025-10-08 \
     --starting-edge-list-id 1 \
     --parallelism 50 \

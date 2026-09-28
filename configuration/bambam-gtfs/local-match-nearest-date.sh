@@ -1,6 +1,6 @@
 #!/bin/sh
 
-./rust/target/release/bambam_gtfs preprocess-bundle \
+./rust/target/release/bambam-gtfs import \
     --input "boulder_co/ucb-gtfs.zip" \
     --starting-edge-list-id 1 \
     --parallelism 1 \

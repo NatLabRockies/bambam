@@ -238,7 +238,7 @@ impl GtfsOperation {
                 if input_path.is_dir() {
                     bundle_ops::batch_process(input_path, *parallelism, config, *ignore_bad_gtfs)
                         .unwrap_or_else(|e| {
-                            log::error!("failure running preprocess-bundle: {e}");
+                            log::error!("failure running import: {e}");
                         })
                 } else {
                     let bundle_opt = bundle_ops::process_bundle(input, config.clone())
