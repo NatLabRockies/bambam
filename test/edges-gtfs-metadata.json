@@ -1,0 +1,499 @@
+{
+  "agencies": [
+    {
+      "agency_id": "RTD",
+      "agency_name": "Regional Transportation District",
+      "agency_url": "https://www.rtd-denver.com",
+      "agency_timezone": "America/Denver",
+      "agency_lang": "en",
+      "agency_phone": null,
+      "agency_fare_url": "https://www.rtd-denver.com/fares-passes/fares",
+      "agency_email": null
+    },
+    {
+      "agency_id": "RTD",
+      "agency_name": "Regional Transportation District",
+      "agency_url": "http://rtd-denver.com",
+      "agency_timezone": "America/Denver",
+      "agency_lang": "en",
+      "agency_phone": null,
+      "agency_fare_url": null,
+      "agency_email": null
+    }
+  ],
+  "feed_info": [
+    {
+      "feed_publisher_name": "RTD",
+      "feed_publisher_url": "https://www.rtd-denver.com",
+      "feed_lang": "en",
+      "default_lang": null,
+      "feed_start_date": "20260927",
+      "feed_end_date": "20270102",
+      "feed_version": "Sep26-37178-7-7-20260927-085140",
+      "feed_contact_email": "bidevelopmentteam@rtd-denver.com",
+      "feed_contact_url": "https://www.rtd-denver.com/contact-us"
+    },
+    {
+      "feed_publisher_name": "RTD",
+      "feed_publisher_url": "http://rtd-denver.com",
+      "feed_lang": "en",
+      "default_lang": null,
+      "feed_start_date": "20260607",
+      "feed_end_date": "20260926",
+      "feed_version": "Jun26-37102-23-30-20260916-035140",
+      "feed_contact_email": null,
+      "feed_contact_url": null
+    }
+  ],
+  "read_duration": {
+    "secs": 2,
+    "nanos": 264436709
+  },
+  "calendar": {
+    "MT": {
+      "service_id": "MT",
+      "monday": 1,
+      "tuesday": 1,
+      "wednesday": 1,
+      "thursday": 1,
+      "friday": 0,
+      "saturday": 0,
+      "sunday": 0,
+      "start_date": "20260607",
+      "end_date": "20260926"
+    },
+    "SA": {
+      "service_id": "SA",
+      "monday": 0,
+      "tuesday": 0,
+      "wednesday": 0,
+      "thursday": 0,
+      "friday": 0,
+      "saturday": 1,
+      "sunday": 0,
+      "start_date": "20260607",
+      "end_date": "20260926"
+    },
+    "SU_3872": {
+      "service_id": "SU_3872",
+      "monday": 0,
+      "tuesday": 0,
+      "wednesday": 0,
+      "thursday": 0,
+      "friday": 0,
+      "saturday": 0,
+      "sunday": 1,
+      "start_date": "20260927",
+      "end_date": "20260927"
+    },
+    "FR": {
+      "service_id": "FR",
+      "monday": 0,
+      "tuesday": 0,
+      "wednesday": 0,
+      "thursday": 0,
+      "friday": 1,
+      "saturday": 0,
+      "sunday": 0,
+      "start_date": "20260607",
+      "end_date": "20260926"
+    },
+    "WK": {
+      "service_id": "WK",
+      "monday": 1,
+      "tuesday": 1,
+      "wednesday": 1,
+      "thursday": 1,
+      "friday": 1,
+      "saturday": 0,
+      "sunday": 0,
+      "start_date": "20260607",
+      "end_date": "20260926"
+    },
+    "SU": {
+      "service_id": "SU",
+      "monday": 0,
+      "tuesday": 0,
+      "wednesday": 0,
+      "thursday": 0,
+      "friday": 0,
+      "saturday": 0,
+      "sunday": 1,
+      "start_date": "20260607",
+      "end_date": "20260926"
+    },
+    "WK_3844": {
+      "service_id": "WK_3844",
+      "monday": 1,
+      "tuesday": 1,
+      "wednesday": 1,
+      "thursday": 1,
+      "friday": 1,
+      "saturday": 0,
+      "sunday": 0,
+      "start_date": "20260812",
+      "end_date": "20260925"
+    },
+    "SU_3869": {
+      "service_id": "SU_3869",
+      "monday": 0,
+      "tuesday": 0,
+      "wednesday": 0,
+      "thursday": 0,
+      "friday": 0,
+      "saturday": 0,
+      "sunday": 1,
+      "start_date": "20260920",
+      "end_date": "20260920"
+    },
+    "P_Fri": {
+      "service_id": "P_Fri",
+      "monday": 0,
+      "tuesday": 0,
+      "wednesday": 0,
+      "thursday": 0,
+      "friday": 1,
+      "saturday": 0,
+      "sunday": 0,
+      "start_date": "20260607",
+      "end_date": "20260926"
+    },
+    "WK_3843": {
+      "service_id": "WK_3843",
+      "monday": 1,
+      "tuesday": 1,
+      "wednesday": 1,
+      "thursday": 1,
+      "friday": 1,
+      "saturday": 0,
+      "sunday": 0,
+      "start_date": "20260824",
+      "end_date": "20260925"
+    }
+  },
+  "calendar_dates": {
+    "WK": [
+      {
+        "service_id": "WK",
+        "date": "20261126",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "WK",
+        "date": "20261127",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "WK",
+        "date": "20261225",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "WK",
+        "date": "20270101",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "WK",
+        "date": "20260703",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "WK",
+        "date": "20260907",
+        "exception_type": "2"
+      }
+    ],
+    "MT": [
+      {
+        "service_id": "MT",
+        "date": "20261126",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "MT",
+        "date": "20260907",
+        "exception_type": "2"
+      }
+    ],
+    "SU": [
+      {
+        "service_id": "SU",
+        "date": "20261126",
+        "exception_type": "1"
+      },
+      {
+        "service_id": "SU",
+        "date": "20261127",
+        "exception_type": "1"
+      },
+      {
+        "service_id": "SU",
+        "date": "20261225",
+        "exception_type": "1"
+      },
+      {
+        "service_id": "SU",
+        "date": "20270101",
+        "exception_type": "1"
+      },
+      {
+        "service_id": "SU",
+        "date": "20260703",
+        "exception_type": "1"
+      },
+      {
+        "service_id": "SU",
+        "date": "20260907",
+        "exception_type": "1"
+      }
+    ],
+    "FR": [
+      {
+        "service_id": "FR",
+        "date": "20261127",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "FR",
+        "date": "20261225",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "FR",
+        "date": "20270101",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "FR",
+        "date": "20260703",
+        "exception_type": "2"
+      }
+    ],
+    "SU_3844": [
+      {
+        "service_id": "SU_3844",
+        "date": "20260907",
+        "exception_type": "1"
+      }
+    ],
+    "WK_3844": [
+      {
+        "service_id": "WK_3844",
+        "date": "20260907",
+        "exception_type": "2"
+      }
+    ],
+    "WK_3843": [
+      {
+        "service_id": "WK_3843",
+        "date": "20260907",
+        "exception_type": "2"
+      }
+    ],
+    "P_Fri": [
+      {
+        "service_id": "P_Fri",
+        "date": "20260703",
+        "exception_type": "2"
+      },
+      {
+        "service_id": "P_Fri",
+        "date": "20260907",
+        "exception_type": "2"
+      }
+    ],
+    "SU_3843": [
+      {
+        "service_id": "SU_3843",
+        "date": "20260907",
+        "exception_type": "1"
+      }
+    ]
+  },
+  "date_mapping": {
+    "mdb-2054-202609170129->RTD->10->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->101E->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->40->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->4->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->8->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->A->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->GMFX->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->101E->FR": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->40->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->73->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->10->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->FMR->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->FREE->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->12->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->ART->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->40->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->65->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->73->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->10->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->65->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->43->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->101E->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->43->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->FREE->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->0L->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->43->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->65->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->A->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->101E->MT": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->4->SA": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->PLFX->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->A->MT": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->73->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->ART->WK": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->FREE->SU": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->A->FR": {
+      "2026-09-28": "2026-09-21"
+    },
+    "mdb-2054-202609170129->RTD->ART->SA": {
+      "2026-09-28": "2026-09-21"
+    }
+  },
+  "fq_route_ids": [
+    "google_transit->RTD->0L->WK",
+    "google_transit->RTD->10->SA",
+    "google_transit->RTD->10->SU",
+    "google_transit->RTD->10->WK",
+    "google_transit->RTD->101E->SA",
+    "google_transit->RTD->101E->SU",
+    "google_transit->RTD->11->WK",
+    "google_transit->RTD->12->WK",
+    "google_transit->RTD->24->WK",
+    "google_transit->RTD->4->SA",
+    "google_transit->RTD->4->WK",
+    "google_transit->RTD->40->SA",
+    "google_transit->RTD->40->SU",
+    "google_transit->RTD->40->WK",
+    "google_transit->RTD->43->SA",
+    "google_transit->RTD->43->SU",
+    "google_transit->RTD->43->WK",
+    "google_transit->RTD->51->WK",
+    "google_transit->RTD->65->SA",
+    "google_transit->RTD->65->SU",
+    "google_transit->RTD->65->WK",
+    "google_transit->RTD->73->SA",
+    "google_transit->RTD->73->SU",
+    "google_transit->RTD->73->WK",
+    "google_transit->RTD->8->WK",
+    "google_transit->RTD->A->FR",
+    "google_transit->RTD->A->MT",
+    "google_transit->RTD->A->SA",
+    "google_transit->RTD->A->SU",
+    "google_transit->RTD->ART->SA",
+    "google_transit->RTD->ART->SU",
+    "google_transit->RTD->ART->WK",
+    "google_transit->RTD->FMR->WK",
+    "google_transit->RTD->FREE->SA",
+    "google_transit->RTD->FREE->SU",
+    "google_transit->RTD->FREE->WK",
+    "mdb-2054-202609170129->RTD->0L->WK",
+    "mdb-2054-202609170129->RTD->10->SA",
+    "mdb-2054-202609170129->RTD->10->SU",
+    "mdb-2054-202609170129->RTD->10->WK",
+    "mdb-2054-202609170129->RTD->101E->SA",
+    "mdb-2054-202609170129->RTD->101E->SU",
+    "mdb-2054-202609170129->RTD->12->WK",
+    "mdb-2054-202609170129->RTD->4->SA",
+    "mdb-2054-202609170129->RTD->4->WK",
+    "mdb-2054-202609170129->RTD->40->SA",
+    "mdb-2054-202609170129->RTD->40->SU",
+    "mdb-2054-202609170129->RTD->40->WK",
+    "mdb-2054-202609170129->RTD->43->SA",
+    "mdb-2054-202609170129->RTD->43->SU",
+    "mdb-2054-202609170129->RTD->43->WK",
+    "mdb-2054-202609170129->RTD->65->SA",
+    "mdb-2054-202609170129->RTD->65->SU",
+    "mdb-2054-202609170129->RTD->65->WK",
+    "mdb-2054-202609170129->RTD->73->SA",
+    "mdb-2054-202609170129->RTD->73->SU",
+    "mdb-2054-202609170129->RTD->73->WK",
+    "mdb-2054-202609170129->RTD->8->WK",
+    "mdb-2054-202609170129->RTD->A->FR",
+    "mdb-2054-202609170129->RTD->A->MT",
+    "mdb-2054-202609170129->RTD->A->SA",
+    "mdb-2054-202609170129->RTD->A->SU",
+    "mdb-2054-202609170129->RTD->ART->SA",
+    "mdb-2054-202609170129->RTD->ART->SU",
+    "mdb-2054-202609170129->RTD->ART->WK",
+    "mdb-2054-202609170129->RTD->FMR->WK",
+    "mdb-2054-202609170129->RTD->FREE->SA",
+    "mdb-2054-202609170129->RTD->FREE->SU",
+    "mdb-2054-202609170129->RTD->FREE->WK",
+    "mdb-2054-202609170129->RTD->PLFX->WK"
+  ]
+}

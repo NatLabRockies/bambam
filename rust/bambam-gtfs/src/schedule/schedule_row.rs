@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 /// a row in the schedules CSV file representing, for a given route,
 /// the time of departure from some source stop location and arrival at some destination
 /// stop location, along some EdgeId in the RouteE Compass Graph. its unique namespace
-/// is defined by it's edge_list_id, feed_id, agency_id, service_id and route_id.
+/// is defined by its feed_id, agency_id, service_id and route_id.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ScheduleRow {
     /// edge in Compass graph this row corresponds to.

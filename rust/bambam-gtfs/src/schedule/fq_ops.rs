@@ -5,7 +5,7 @@ pub const FQ_METADATA_FIELDNAME: &str = "fq_route_ids";
 
 pub const FQ_ROUTE_ID_SEPARATOR: &str = "->";
 
-/// the concatenation of the edge list, feed, agency, route, and service id.
+/// the concatenation of the feed, agency, route, and service id.
 ///
 /// names are cleaned of commas for CSV compatibility.
 ///
@@ -18,7 +18,6 @@ pub fn get_fully_qualified_route_id(
     agency_id: Option<&str>,
     route_id: &str,
     service_id: &str,
-    edge_list_id: usize,
 ) -> String {
     let feed_id = match &feed_id {
         Some(id) if !id.is_empty() => id,
@@ -29,7 +28,7 @@ pub fn get_fully_qualified_route_id(
         _ => EMPTY_AGENCY_PLACEHOLDER,
     };
     let name = format!(
-        "{edge_list_id}{FQ_ROUTE_ID_SEPARATOR}{feed_id}{FQ_ROUTE_ID_SEPARATOR}{agency_id}{FQ_ROUTE_ID_SEPARATOR}{route_id}{FQ_ROUTE_ID_SEPARATOR}{service_id}"
+        "{feed_id}{FQ_ROUTE_ID_SEPARATOR}{agency_id}{FQ_ROUTE_ID_SEPARATOR}{route_id}{FQ_ROUTE_ID_SEPARATOR}{service_id}"
     );
 
     name.replace(",", "_")
@@ -42,14 +41,14 @@ mod tests {
     #[test]
     fn test_fully_qualified_route_id_with_feed_and_agency() {
         let fq_id =
-            get_fully_qualified_route_id(Some("denver_rtd"), Some("RTD"), "15", "weekday", 1);
-        assert_eq!(fq_id, "1->denver_rtd->RTD->15->weekday");
+            get_fully_qualified_route_id(Some("denver_rtd"), Some("RTD"), "15", "weekday");
+        assert_eq!(fq_id, "denver_rtd->RTD->15->weekday");
     }
 
     #[test]
     fn test_fully_qualified_route_id_empty_feed_and_agency() {
-        let fq_id = get_fully_qualified_route_id(None, None, "15", "weekday", 0);
-        assert_eq!(fq_id, "0->()->()->15->weekday");
+        let fq_id = get_fully_qualified_route_id(None, None, "15", "weekday");
+        assert_eq!(fq_id, "()->()->15->weekday");
     }
 
     #[test]
@@ -59,8 +58,7 @@ mod tests {
             Some("agency,1"),
             "route,1",
             "service,1",
-            2,
         );
-        assert_eq!(fq_id, "2->feed_1->agency_1->route_1->service_1");
+        assert_eq!(fq_id, "feed_1->agency_1->route_1->service_1");
     }
 }

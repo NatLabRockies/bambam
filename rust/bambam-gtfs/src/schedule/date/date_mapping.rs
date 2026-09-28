@@ -14,13 +14,12 @@ pub struct DateMapping {
 }
 
 impl DateMapping {
-    pub fn get_fully_qualified_id(&self, edge_list_id: usize) -> String {
+    pub fn get_fully_qualified_id(&self) -> String {
         fq_ops::get_fully_qualified_route_id(
             self.feed_id.as_deref(),
             self.agency_id.as_deref(),
             &self.route_id,
             &self.service_id,
-            edge_list_id,
         )
     }
 }

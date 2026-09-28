@@ -38,8 +38,6 @@ pub struct ProcessBundlesConfig {
     pub start_date: String,
     /// upper value of date range for collecting a schedule for route planning
     pub end_date: String,
-    /// offset for edge list identifier, can be zero or (last edge list id + 1)
-    pub starting_edge_list_id: usize,
     /// used for map matching into the Compass graph.
     pub spatial_index: Arc<SpatialIndex>,
     /// app logic applied when a missing stop is encountered
@@ -121,7 +119,6 @@ pub fn batch_process(
                             "unable to convert directory entry into string: {dir_entry:?}"
                         ))
                     })?;
-                    // let edge_list_id = *start_edge_list_id + edge_list_offset;
                     process_bundle(bundle_file, conf.clone()).map_err(|e| {
                         ScheduleError::GtfsApp(format!("while processing {bundle_file}, {e}"))
                     })
@@ -168,7 +165,7 @@ pub fn batch_process(
         merged_bundle.edges.len(),
         conf.output_directory
     );
-    write_bundle(&merged_bundle, conf.clone(), conf.starting_edge_list_id)?;
+    write_bundle(&merged_bundle, conf.clone())?;
 
     Ok(())
 }
@@ -351,16 +348,15 @@ pub fn read_gtfs(
     Ok(gtfs)
 }
 
-/// writes the provided bundle to files enumerated by the provided edge_list_id.
+/// writes the provided bundle to files.
 pub fn write_bundle(
     bundle: &GtfsBundle,
     c: Arc<ProcessBundlesConfig>,
-    edge_list_id: usize,
 ) -> Result<(), ScheduleError> {
     // Write to files
     let output_directory = Path::new(&c.output_directory);
 
-    let metadata_filename = format!("edges-gtfs-metadata-{edge_list_id}.json");
+    let metadata_filename = "edges-gtfs-metadata.json";
     std::fs::create_dir_all(output_directory).map_err(|e| {
         let outdir = output_directory.to_str().unwrap_or_default();
         ScheduleError::GtfsApp(format!(
@@ -370,8 +366,8 @@ pub fn write_bundle(
 
     // update the metadata with fully-qualified route ids
     let mut metadata = bundle.metadata.clone();
-    let date_mapping = construct_fq_date_mapping(&bundle.date_mapping, edge_list_id);
-    let fq_route_ids = construct_fq_route_id_list(bundle, edge_list_id);
+    let date_mapping = construct_fq_date_mapping(&bundle.date_mapping);
+    let fq_route_ids = construct_fq_route_id_list(bundle);
     metadata["date_mapping"] = json![date_mapping];
     metadata["fq_route_ids"] = json![fq_route_ids];
 
@@ -380,26 +376,26 @@ pub fn write_bundle(
     })?;
     std::fs::write(output_directory.join(metadata_filename), &metadata_str)
         .map_err(|e| ScheduleError::GtfsApp(format!("failed writing GTFS Agency metadata: {e}")))?;
-    let edges_filename = format!("edges-compass-{edge_list_id}.csv.gz");
-    let schedules_filename = format!("edges-schedules-{edge_list_id}.csv.gz");
-    let geometries_filename = format!("edges-geometries-enumerated-{edge_list_id}.txt.gz");
+    let edges_filename = "edges-compass.csv.gz";
+    let schedules_filename = "edges-schedules.csv.gz";
+    let geometries_filename = "edges-geometries-enumerated.txt.gz";
     let mut edges_writer = create_writer(
         output_directory,
-        &edges_filename,
+        edges_filename,
         true,
         QuoteStyle::Necessary,
         c.overwrite,
     );
     let mut schedules_writer = create_writer(
         output_directory,
-        &schedules_filename,
+        schedules_filename,
         true,
         QuoteStyle::Necessary,
         c.overwrite,
     );
     let mut geometries_writer = create_writer(
         output_directory,
-        &geometries_filename,
+        geometries_filename,
         false,
         QuoteStyle::Never,
         c.overwrite,
@@ -414,21 +410,17 @@ pub fn write_bundle(
         if let Some(ref mut writer) = edges_writer {
             writer.serialize(edge).map_err(|e| {
                 ScheduleError::GtfsApp(format!(
-                    "Failed to write to edges file {}: {}",
-                    String::from(&edges_filename),
-                    e
+                    "Failed to write to edges file {edges_filename}: {e}"
                 ))
             })?;
         }
 
         if let Some(ref mut writer) = schedules_writer {
             for schedule in schedules.iter() {
-                let fq_schedule = FullyQualifiedScheduleRow::new(schedule, edge_list_id);
+                let fq_schedule = FullyQualifiedScheduleRow::new(schedule);
                 writer.serialize(fq_schedule).map_err(|e| {
                     ScheduleError::GtfsApp(format!(
-                        "Failed to write to schedules file {}: {}",
-                        String::from(&schedules_filename),
-                        e
+                        "Failed to write to schedules file {schedules_filename}: {e}"
                     ))
                 })?;
             }
@@ -443,9 +435,7 @@ pub fn write_bundle(
                 )
                 .map_err(|e| {
                     ScheduleError::GtfsApp(format!(
-                        "Failed to write to geometry file {}: {}",
-                        String::from(&geometries_filename),
-                        e
+                        "Failed to write to geometry file {geometries_filename}: {e}"
                     ))
                 })?;
         }
@@ -602,7 +592,7 @@ fn get_stop_location(stop: Arc<Stop>, gtfs: &Gtfs) -> Option<Point<f64>> {
 
 /// helper function that creates a list of all unique, fully-qualified route ids in this
 /// bundle, sorted lexicagraphically.
-fn construct_fq_route_id_list(bundle: &GtfsBundle, edge_list_id: usize) -> Vec<String> {
+fn construct_fq_route_id_list(bundle: &GtfsBundle) -> Vec<String> {
     bundle
         .edges
         .iter()
@@ -613,7 +603,6 @@ fn construct_fq_route_id_list(bundle: &GtfsBundle, edge_list_id: usize) -> Vec<S
                     s.agency_id.as_deref(),
                     &s.route_id,
                     &s.service_id,
-                    edge_list_id,
                 )
             })
         })
@@ -626,12 +615,11 @@ fn construct_fq_route_id_list(bundle: &GtfsBundle, edge_list_id: usize) -> Vec<S
 /// helper function to build the nested map for date mapping using the fully-qualified route ids
 fn construct_fq_date_mapping(
     dms: &HashSet<DateMapping>,
-    edge_list_id: usize,
 ) -> HashMap<String, HashMap<NaiveDate, NaiveDate>> {
     dms.iter()
         .map(|dm| {
             (
-                dm.get_fully_qualified_id(edge_list_id),
+                dm.get_fully_qualified_id(),
                 (dm.target_date, dm.picked_date),
             )
         })
@@ -822,7 +810,6 @@ mod tests {
             start_date: "01-01-2025".to_string(),
             end_date: "01-01-2025".to_string(),
             spatial_index: Arc::new(SpatialIndex::new_vertex_oriented(&[], None)),
-            starting_edge_list_id: 1,
             missing_stop_location_policy: MissingStopLocationPolicy::Fail,
             distance_calculation_policy: DistanceCalculationPolicy::Haversine,
             malformed_trip_policy: MalformedTripPolicy::Drop,
@@ -913,13 +900,13 @@ mod tests {
         };
 
         let merged = GtfsBundle::merge_all(vec![bundle1, bundle2]);
-        write_bundle(&merged, conf.clone(), 1).expect("write_bundle failed");
+        write_bundle(&merged, conf.clone()).expect("write_bundle failed");
 
         // Verify all 4 files were created
-        let metadata_path = temp_dir.join("edges-gtfs-metadata-1.json");
-        let edges_path = temp_dir.join("edges-compass-1.csv.gz");
-        let schedules_path = temp_dir.join("edges-schedules-1.csv.gz");
-        let geometries_path = temp_dir.join("edges-geometries-enumerated-1.txt.gz");
+        let metadata_path = temp_dir.join("edges-gtfs-metadata.json");
+        let edges_path = temp_dir.join("edges-compass.csv.gz");
+        let schedules_path = temp_dir.join("edges-schedules.csv.gz");
+        let geometries_path = temp_dir.join("edges-geometries-enumerated.txt.gz");
 
         assert!(metadata_path.exists());
         assert!(edges_path.exists());
