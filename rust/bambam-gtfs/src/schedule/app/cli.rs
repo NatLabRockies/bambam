@@ -24,6 +24,17 @@ use std::sync::Arc;
 use std::{collections::HashSet, fs::File, io::Write, path::Path, time::Duration};
 use uom::si::f64::Length;
 
+use clap::Parser;
+
+/// command line tool for batch downloading and summarizing of GTFS archives
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+#[command(propagate_version = true)]
+pub struct GtfsApp {
+    #[command(subcommand)]
+    pub op: GtfsOperation,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Subcommand)]
 pub enum GtfsOperation {
     /// summarize attributes for the downloaded GTFS archives
@@ -62,8 +73,8 @@ pub enum GtfsOperation {
         #[arg(long, default_value_t=String::from("2024-08-13-mobilitydataacatalog.csv"))]
         manifest_file: String,
     },
-    /// Process bundle into EdgeLists
-    PreprocessBundle {
+    /// Process GTFS archive(s) into an edge list
+    Import {
         /// a single GTFS archive or a directory of GTFS archives
         #[arg(long)]
         input: String,
@@ -163,7 +174,7 @@ impl GtfsOperation {
                     .expect("failed reading manifest");
                 download(&rows, *parallelism)
             }
-            GtfsOperation::PreprocessBundle {
+            GtfsOperation::Import {
                 input,
                 edge_list_id,
                 vertices_compass_filename,
