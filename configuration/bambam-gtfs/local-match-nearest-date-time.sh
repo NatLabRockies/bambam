@@ -2,7 +2,6 @@
 
 ./rust/target/release/bambam_gtfs preprocess-bundle \
     --input "boulder_co/ucb-gtfs.zip" \
-    --starting-edge-list-id 1 \
     --parallelism 1 \
     --date-mapping-policy nearest-date-time-range \
     --date-mapping-date-tolerance 7 \
