@@ -1,5 +1,6 @@
 mod date_mapping_policy_config;
 mod distance_calculation_policy;
+mod malformed_trip_policy;
 mod missing_stop_matching_policy;
 mod provider;
 mod schedule_error;
@@ -21,6 +22,7 @@ pub use date_mapping_policy::DateMappingPolicy;
 pub use date_mapping_policy_config::{DateMappingPolicyConfig, DateMappingPolicyType};
 pub use gtfs_bundle::GtfsBundle;
 pub use gtfs_edge::GtfsEdge;
+pub use malformed_trip_policy::MalformedTripPolicy;
 pub use missing_stop_matching_policy::MissingStopLocationPolicy;
 pub use provider::GtfsProvider;
 pub use schedule_error::batch_processing_error;

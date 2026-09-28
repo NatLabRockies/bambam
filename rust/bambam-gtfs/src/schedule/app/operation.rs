@@ -6,7 +6,7 @@ use crate::schedule::distance_calculation_policy::DistanceCalculationPolicy;
 use crate::schedule::schedule_error::ScheduleError;
 use crate::schedule::{
     bundle_ops, DateMappingPolicy, DateMappingPolicyConfig, DateMappingPolicyType, GtfsBundle,
-    GtfsProvider, GtfsSummary, MissingStopLocationPolicy,
+    GtfsProvider, GtfsSummary, MalformedTripPolicy, MissingStopLocationPolicy,
 };
 use clap::Subcommand;
 use geo::{Coord, Geometry, LineString};
@@ -101,6 +101,9 @@ pub enum GtfsOperation {
         #[arg(long, value_enum, default_value_t=DistanceCalculationPolicy::Haversine)]
         distance_calculation_policy: DistanceCalculationPolicy,
 
+        #[arg(long, value_enum, default_value_t=MalformedTripPolicy::Drop)]
+        malformed_trip_policy: MalformedTripPolicy,
+
         #[arg(long, value_enum)]
         date_mapping_policy: DateMappingPolicyType,
 
@@ -171,6 +174,7 @@ impl GtfsOperation {
                 vertex_match_tolerance,
                 missing_stop_location_policy,
                 distance_calculation_policy,
+                malformed_trip_policy,
                 extent_file,
                 output_directory,
                 overwrite,
@@ -217,6 +221,7 @@ impl GtfsOperation {
                     starting_edge_list_id: *edge_list_id,
                     missing_stop_location_policy: missing_stop_location_policy.clone(),
                     distance_calculation_policy: distance_calculation_policy.clone(),
+                    malformed_trip_policy: malformed_trip_policy.clone(),
                     date_mapping_policy: date_mapping_policy.clone(),
                     extent,
                     output_directory: output_directory.clone(),

@@ -340,6 +340,11 @@ impl DateMappingPolicy {
                     Err(e) => e,
                 };
 
+                // if e1 is this type of error, then e2 + e3 are as well.
+                if let ScheduleError::TripWithInvalidServiceId(e) = e1 {
+                    return Err(ScheduleError::TripWithInvalidServiceId(e));
+                }
+
                 // all three strategies failed, return a detailed error message
                 let msg = [
                     String::from("Failed to pick date with best_case strategy."),
@@ -392,10 +397,9 @@ fn pick_exact_date(
     let c_opt = gtfs.get_calendar(&trip.service_id).ok();
     let cd_opt = gtfs.get_calendar_date(&trip.service_id).ok();
     match (c_opt, cd_opt) {
-        (None, None) => {
-            let msg = format!("cannot pick date with trip_id '{}' as it does not match calendar or calendar dates", trip.trip_id);
-            Err(ScheduleError::MalformedGtfs(msg))
-        }
+        (None, None) => Err(ScheduleError::TripWithInvalidServiceId(
+            trip.trip_id.clone(),
+        )),
         (Some(c), None) => date_ops::find_in_calendar(target, c),
         (None, Some(cd)) => date_ops::confirm_add_exception(target, cd),
         (Some(c), Some(cd)) => match date_ops::find_in_calendar(target, c) {
@@ -427,10 +431,9 @@ fn pick_nearest_date(
     let c_opt = gtfs.get_calendar(&trip.service_id).ok();
     let cd_opt = gtfs.get_calendar_date(&trip.service_id).ok();
     match (c_opt, cd_opt) {
-        (None, None) => {
-            let msg = format!("cannot pick date with trip_id '{}' as it does not match calendar or calendar dates", trip.trip_id);
-            Err(ScheduleError::MalformedGtfs(msg))
-        }
+        (None, None) => Err(ScheduleError::TripWithInvalidServiceId(
+            trip.trip_id.clone(),
+        )),
         (None, Some(cd)) => {
             date_ops::find_nearest_add_exception(target, cd, date_tolerance, match_weekday)
         }

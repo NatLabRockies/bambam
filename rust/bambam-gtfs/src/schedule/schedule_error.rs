@@ -34,6 +34,10 @@ pub enum ScheduleError {
     InvalidData(String),
     #[error("GTFS archive is malformed: {0}")]
     MalformedGtfs(String),
+    #[error(
+        "Trip '{0}' has a service id that is not present in calendar.txt or calendar_dates.txt"
+    )]
+    TripWithInvalidServiceId(String),
     #[error("Internal Error: {0}")]
     Internal(String),
     #[error("errors encountered during batch bundle processing: {0}")]

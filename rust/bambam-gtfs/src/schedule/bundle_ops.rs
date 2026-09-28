@@ -14,7 +14,7 @@ use routee_compass_core::model::{
 use serde_json::json;
 use std::{
     collections::{HashMap, HashSet},
-    fs::File,
+    fs::{DirEntry, File},
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -28,7 +28,7 @@ use crate::schedule::{
     fq_ops,
     fq_schedule_row::FullyQualifiedScheduleRow,
     schedule_error::ScheduleError,
-    DateMappingPolicy, MissingStopLocationPolicy, ScheduleRow, SortedTrip,
+    DateMappingPolicy, MalformedTripPolicy, MissingStopLocationPolicy, ScheduleRow, SortedTrip,
 };
 
 /// API for running batch or single bundle processing. configures the run of the GTFS import.
@@ -46,6 +46,8 @@ pub struct ProcessBundlesConfig {
     pub missing_stop_location_policy: MissingStopLocationPolicy,
     /// app logic applied to compute edge distances
     pub distance_calculation_policy: DistanceCalculationPolicy,
+    /// app logic applied when trip is malformed
+    pub malformed_trip_policy: MalformedTripPolicy,
     /// app logic applied when filtering/mapping by date and time
     pub date_mapping_policy: DateMappingPolicy,
     /// optional boundary for including GTFS archives. if included, filters archives
@@ -76,6 +78,10 @@ pub fn batch_process(
     let archive_paths = bundle_directory_path
         .read_dir()
         .map_err(|e| ScheduleError::GtfsApp(format!("failure reading directory: {e}")))?
+        .filter(|entry| match entry {
+            Ok(entry) if is_not_zip(entry) => false,
+            _ => true,
+        })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| ScheduleError::GtfsApp(format!("failure reading directory: {e}")))?;
 
@@ -216,9 +222,19 @@ pub fn process_bundle(
             };
 
             // apply date mapping
-            let picked_date = c
-                .date_mapping_policy
-                .pick_date(&target_date, &trip, gtfs.clone())?;
+            let picked_date_result =
+                c.date_mapping_policy
+                    .pick_date(&target_date, &trip, gtfs.clone());
+
+            // if the trip was malformed in a way that we can catch, then we can handle it here.
+            // otherwise, unpack the mapping result.
+            let picked_date = match (picked_date_result, &c.malformed_trip_policy) {
+                (Err(ScheduleError::TripWithInvalidServiceId(_)), MalformedTripPolicy::Drop) => {
+                    continue
+                }
+                (Ok(date), _) => date,
+                (Err(e), _) => return Err(e),
+            };
             if target_date != picked_date {
                 let route = gtfs.get_route(&trip.route_id).map_err(|_| {
                     ScheduleError::MalformedGtfs(format!(
@@ -435,6 +451,10 @@ pub fn write_bundle(
         }
     }
     Ok(())
+}
+
+fn is_not_zip(entry: &DirEntry) -> bool {
+    entry.path().extension().is_none_or(|ext| ext != "zip")
 }
 
 /// worker function that constructs a schedule row between some src and dst StopTime
@@ -805,6 +825,7 @@ mod tests {
             starting_edge_list_id: 1,
             missing_stop_location_policy: MissingStopLocationPolicy::Fail,
             distance_calculation_policy: DistanceCalculationPolicy::Haversine,
+            malformed_trip_policy: MalformedTripPolicy::Drop,
             date_mapping_policy: DateMappingPolicy::ExactDate(
                 NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
             ),
