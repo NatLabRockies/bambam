@@ -40,8 +40,7 @@ mod tests {
 
     #[test]
     fn test_fully_qualified_route_id_with_feed_and_agency() {
-        let fq_id =
-            get_fully_qualified_route_id(Some("denver_rtd"), Some("RTD"), "15", "weekday");
+        let fq_id = get_fully_qualified_route_id(Some("denver_rtd"), Some("RTD"), "15", "weekday");
         assert_eq!(fq_id, "denver_rtd->RTD->15->weekday");
     }
 
@@ -53,12 +52,8 @@ mod tests {
 
     #[test]
     fn test_fully_qualified_route_id_cleans_commas() {
-        let fq_id = get_fully_qualified_route_id(
-            Some("feed,1"),
-            Some("agency,1"),
-            "route,1",
-            "service,1",
-        );
+        let fq_id =
+            get_fully_qualified_route_id(Some("feed,1"), Some("agency,1"), "route,1", "service,1");
         assert_eq!(fq_id, "feed_1->agency_1->route_1->service_1");
     }
 }
