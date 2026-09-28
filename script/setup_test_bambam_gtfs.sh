@@ -24,7 +24,6 @@ uv run --with "geopandas,numpy,osmnx,nrel.routee.compass[all]" script/setup_test
 echo "Process gtfs archive for date matching"
 rust/target/release/bambam-gtfs import \
     --input "denver_rtd/rtd_gtfs.zip" \
-    --starting-edge-list-id 1 \
     --parallelism 1 \
     --vertex-match-tolerance 2500 \
     --date-mapping-policy nearest-date-time-range \
