@@ -22,7 +22,7 @@ uv run --with "geopandas,numpy,osmnx,nrel.routee.compass[all]" script/setup_test
 
 # 3. Create RouteE Compass edge list inputs for this archive
 echo "Process gtfs archive for date matching"
-rust/target/release/bambam_gtfs preprocess-bundle \
+rust/target/release/bambam-gtfs import \
     --input "denver_rtd/rtd_gtfs.zip" \
     --parallelism 1 \
     --vertex-match-tolerance 2500 \

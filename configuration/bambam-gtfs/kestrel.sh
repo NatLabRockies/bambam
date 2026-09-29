@@ -9,8 +9,8 @@
 
 module load bzip2
 
-/projects/mepcore/bin/bambam_gtfs \
-    preprocess-bundle \
+/projects/mepcore/bin/bambam-gtfs \
+    import \
     --input /home/$USER/data/bam/gtfs/2025-10-08 \
     --parallelism 50 \
     --output-directory "/projects/mepcore/data/out/rfitzger/2025-10-17-gtfs" \

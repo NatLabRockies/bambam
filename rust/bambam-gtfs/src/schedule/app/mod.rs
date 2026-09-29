@@ -1,5 +1,3 @@
-mod gtfs_app;
-mod operation;
+mod cli;
 
-pub use gtfs_app::GtfsApp;
-pub use operation::GtfsOperation;
+pub use cli::{GtfsApp, GtfsOperation};

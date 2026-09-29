@@ -5,8 +5,8 @@ use crate::schedule::bundle_ops::ProcessBundlesConfig;
 use crate::schedule::distance_calculation_policy::DistanceCalculationPolicy;
 use crate::schedule::schedule_error::ScheduleError;
 use crate::schedule::{
-    bundle_ops, DateMappingPolicy, DateMappingPolicyConfig, DateMappingPolicyType, GtfsProvider,
-    GtfsSummary, MissingStopLocationPolicy,
+    bundle_ops, DateMappingPolicy, DateMappingPolicyConfig, DateMappingPolicyType, GtfsBundle,
+    GtfsProvider, GtfsSummary, MalformedTripPolicy, MissingStopLocationPolicy,
 };
 use clap::Subcommand;
 use geo::{Coord, Geometry, LineString};
@@ -23,6 +23,17 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::{collections::HashSet, fs::File, io::Write, path::Path, time::Duration};
 use uom::si::f64::Length;
+
+use clap::Parser;
+
+/// command line tool for batch downloading and summarizing of GTFS archives
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+#[command(propagate_version = true)]
+pub struct GtfsApp {
+    #[command(subcommand)]
+    pub op: GtfsOperation,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Subcommand)]
 pub enum GtfsOperation {
@@ -62,15 +73,11 @@ pub enum GtfsOperation {
         #[arg(long, default_value_t=String::from("2024-08-13-mobilitydataacatalog.csv"))]
         manifest_file: String,
     },
-    /// Process bundle into EdgeLists
-    PreprocessBundle {
+    /// Process GTFS archive(s) into an edge list
+    Import {
         /// a single GTFS archive or a directory of GTFS archives
         #[arg(long)]
         input: String,
-        /// in this case of a single input file, this sets the edge list id for that input.
-        /// for a directory input, sets the starting edge list id.
-        #[arg(long)]
-        starting_edge_list_id: usize,
 
         #[arg(long, default_value_t = 1)]
         parallelism: usize,
@@ -101,6 +108,9 @@ pub enum GtfsOperation {
 
         #[arg(long, value_enum, default_value_t=DistanceCalculationPolicy::Haversine)]
         distance_calculation_policy: DistanceCalculationPolicy,
+
+        #[arg(long, value_enum, default_value_t=MalformedTripPolicy::Drop)]
+        malformed_trip_policy: MalformedTripPolicy,
 
         #[arg(long, value_enum)]
         date_mapping_policy: DateMappingPolicyType,
@@ -161,9 +171,8 @@ impl GtfsOperation {
                     .expect("failed reading manifest");
                 download(&rows, *parallelism)
             }
-            GtfsOperation::PreprocessBundle {
+            GtfsOperation::Import {
                 input,
-                starting_edge_list_id,
                 vertices_compass_filename,
                 start_date,
                 end_date,
@@ -172,6 +181,7 @@ impl GtfsOperation {
                 vertex_match_tolerance,
                 missing_stop_location_policy,
                 distance_calculation_policy,
+                malformed_trip_policy,
                 extent_file,
                 output_directory,
                 overwrite,
@@ -215,9 +225,9 @@ impl GtfsOperation {
                     start_date: start_date.clone(),
                     end_date: end_date.clone(),
                     spatial_index,
-                    starting_edge_list_id: *starting_edge_list_id,
                     missing_stop_location_policy: missing_stop_location_policy.clone(),
                     distance_calculation_policy: distance_calculation_policy.clone(),
+                    malformed_trip_policy: malformed_trip_policy.clone(),
                     date_mapping_policy: date_mapping_policy.clone(),
                     extent,
                     output_directory: output_directory.clone(),
@@ -228,7 +238,7 @@ impl GtfsOperation {
                 if input_path.is_dir() {
                     bundle_ops::batch_process(input_path, *parallelism, config, *ignore_bad_gtfs)
                         .unwrap_or_else(|e| {
-                            log::error!("failure running preprocess-bundle: {e}");
+                            log::error!("failure running import: {e}");
                         })
                 } else {
                     let bundle_opt = bundle_ops::process_bundle(input, config.clone())
@@ -236,7 +246,8 @@ impl GtfsOperation {
                     let bundle = bundle_opt.expect(
                         "GTFS archive import was skipped as the extent does not intersect any archives",
                     );
-                    bundle_ops::write_bundle(&bundle, config.clone(), config.starting_edge_list_id)
+                    let merged = GtfsBundle::merge_all(vec![bundle]);
+                    bundle_ops::write_bundle(&merged, config.clone())
                         .expect("failure writing GTFS bundle");
                 }
             }
