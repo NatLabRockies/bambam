@@ -9,7 +9,9 @@ use crate::{
         record::SegmentHeading, OvertureMapsCollectionError, SegmentFullType, SegmentSpeedLimit,
         TransportationSegmentRecord,
     },
-    graph::{connector_in_segment::ConnectorInSegment, consts},
+    graph::{
+        connector_in_segment::ConnectorInSegment, consts, vertex_serializable::EdgeMappingRecord,
+    },
 };
 
 /// splits at the connectors (vertices) ignoring linear-referenced split points
@@ -290,6 +292,23 @@ impl SegmentSplit {
     ) -> Result<(String, f64), OvertureMapsCollectionError> {
         let segment = self.get_segment(segments, segment_lookup)?;
         Ok((segment.id.clone(), self.src.linear_reference.0))
+    }
+
+    /// get the standardized EdgeMappingRecord for this split
+    pub fn get_edge_mapping(
+        &self,
+        edge_id: usize,
+        segments: &[&TransportationSegmentRecord],
+        segment_lookup: &HashMap<String, usize>,
+    ) -> Result<EdgeMappingRecord, OvertureMapsCollectionError> {
+        let segment = self.get_segment(segments, segment_lookup)?;
+        Ok(EdgeMappingRecord {
+            edge_id,
+            source_id: segment.id.clone(),
+            start_lr: self.src.linear_reference.0,
+            end_lr: self.dst.linear_reference.0,
+            heading: self.heading.clone(),
+        })
     }
 
     /// get a reference to the segment that contains this split

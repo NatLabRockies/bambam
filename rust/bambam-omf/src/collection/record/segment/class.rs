@@ -2,8 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Debug, Clone, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SegmentClass {
     Motorway,
     Primary,
@@ -22,8 +21,16 @@ pub enum SegmentClass {
     Cycleway,
     Bridleway,
     Unknown,
-    #[serde(untagged)]
     Custom(String),
+}
+
+impl Serialize for SegmentClass {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
 }
 
 impl fmt::Display for SegmentClass {

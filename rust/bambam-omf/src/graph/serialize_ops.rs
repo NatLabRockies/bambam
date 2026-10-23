@@ -9,7 +9,10 @@ use crate::{
         OvertureMapsCollectionError, SegmentAccessRestrictionWhen, SegmentFullType,
         TransportationConnectorRecord, TransportationSegmentRecord,
     },
-    graph::{consts, omf_graph::OmfEdgeList, segment_split::SegmentSplit},
+    graph::{
+        consts, omf_graph::OmfEdgeList, segment_split::SegmentSplit,
+        vertex_serializable::EdgeMappingRecord,
+    },
 };
 
 /// serializes the Connector records into Vertices and creates a GERS id -> index mapping.
@@ -176,6 +179,21 @@ pub fn get_segment_omf_ids(
     splits
         .par_iter()
         .map(|split| split.get_omf_segment_id_and_linear_ref(segments, segment_lookup))
+        .collect()
+}
+
+/// get standardized edge mapping records referencing the original OMF segment ID, linear reference bounds, and heading
+pub fn get_edge_mappings(
+    segments: &[&TransportationSegmentRecord],
+    segment_lookup: &HashMap<String, usize>,
+    splits: &[SegmentSplit],
+) -> Result<Vec<EdgeMappingRecord>, OvertureMapsCollectionError> {
+    splits
+        .iter()
+        .enumerate()
+        .collect_vec()
+        .par_iter()
+        .map(|(idx, split)| split.get_edge_mapping(*idx, segments, segment_lookup))
         .collect()
 }
 
@@ -384,6 +402,20 @@ pub fn clean_omf_edge_list(
         .map(|(_, i)| i)
         .collect();
 
+    let edge_mappings = omf_list
+        .edge_mappings
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, _)| mask[*idx])
+        .enumerate()
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|(new_idx, (_, mut m))| {
+            m.edge_id = new_idx;
+            m
+        })
+        .collect();
+
     Ok(OmfEdgeList {
         edge_list_id: omf_list.edge_list_id,
         edges,
@@ -393,5 +425,6 @@ pub fn clean_omf_edge_list(
         speed_lookup: omf_list.speed_lookup,
         bearings,
         omf_segment_ids,
+        edge_mappings,
     })
 }

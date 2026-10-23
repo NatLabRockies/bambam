@@ -14,6 +14,7 @@ categories = ["command-line-utilities", "science", "science::geo"]
 [dependencies]
 
 arrow = { workspace = true }
+bambam-modal-metrics = { workspace = true }
 bamcensus = { workspace = true }
 bamcensus-acs = { workspace = true }
 bamcensus-core = { workspace = true }
@@ -41,6 +42,7 @@ reqwest = { workspace = true }
 routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 # routee-compass-powertrain = { workspace = true }
+rstar = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_arrow = { workspace = true }

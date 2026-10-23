@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::collection::collector_ops::{process_meta_obj_into_tasks, RowGroupTask};
+use crate::collection::record::InfrastructureRecord;
 use crate::collection::record::TransportationConnectorRecord;
 use crate::collection::record::TransportationSegmentRecord;
 use crate::collection::BuildingsRecord;
@@ -197,6 +198,9 @@ impl OvertureMapsCollector {
                 }
                 OvertureRecordType::Connector => {
                     record_type.process_batch::<TransportationConnectorRecord>(batch)
+                }
+                OvertureRecordType::Infrastructure => {
+                    record_type.process_batch::<InfrastructureRecord>(batch)
                 }
             })
             .collect::<Result<Vec<_>, _>>()?

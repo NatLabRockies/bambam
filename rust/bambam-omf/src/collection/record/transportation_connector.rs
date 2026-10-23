@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Represents a transportation connector record as defined in the Overture Maps Foundation schema.
 /// This struct contains the fields describing a transportation connector, including its unique
 /// identifier, geometry, bounding box, version, and data sources.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransportationConnectorRecord {
     pub id: String,
     #[serde(
@@ -17,11 +17,13 @@ pub struct TransportationConnectorRecord {
         skip_serializing_if = "Option::is_none",
         default
     )]
-    geometry: Option<Geometry<f32>>,
-    bbox: OvertureMapsBbox,
-    version: i32,
+    pub geometry: Option<Geometry<f32>>,
+    #[serde(default)]
+    pub bbox: OvertureMapsBbox,
+    #[serde(default)]
+    pub version: i32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    sources: Option<Vec<Option<OvertureMapsSource>>>,
+    pub sources: Option<Vec<Option<OvertureMapsSource>>>,
 }
 
 impl TryFrom<OvertureRecord> for TransportationConnectorRecord {

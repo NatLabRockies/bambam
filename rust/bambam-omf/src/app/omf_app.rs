@@ -62,6 +62,11 @@ pub struct OmfNetworkArgs {
     /// Optional WKT extent in json format. expects a json file with a single "extent" key
     #[arg(short, long)]
     pub extent_file: Option<String>,
+
+    /// Maximum distance in meters for matching Overture infrastructure features to connector vertices (defaults to 15.0)
+    #[arg(long)]
+    #[serde(default)]
+    pub infrastructure_match_distance_meters: Option<f64>,
 }
 
 impl OmfNetworkArgs {
@@ -133,6 +138,13 @@ impl OmfNetworkArgs {
             None => Ok(None),
         }?;
 
+        let config_match_distance = config
+            .get::<Option<f64>>("infrastructure_match_distance_meters")
+            .unwrap_or(None);
+        let match_distance = self
+            .infrastructure_match_distance_meters
+            .or(config_match_distance);
+
         crate::app::network::run(
             &self.name,
             bbox.as_ref(),
@@ -143,6 +155,7 @@ impl OmfNetworkArgs {
             island_algorithm_configuration,
             self.omf_ids,
             extent,
+            match_distance,
         )
     }
 }

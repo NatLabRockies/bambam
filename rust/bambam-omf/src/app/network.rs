@@ -51,14 +51,15 @@ pub fn run(
     island_detection_configuration: Option<IslandDetectionAlgorithm>,
     export_omf_ids: bool,
     extent: Option<Geometry<f32>>,
+    infrastructure_match_distance_meters: Option<f64>,
 ) -> Result<(), OvertureMapsCollectionError> {
     let collection: TransportationCollection = match local_source {
         Some(src_path) => read_local(src_path),
         None => run_collector(bbox),
     }?;
 
+    util::fs::create_dirs(output_directory)?;
     if write_json {
-        util::fs::create_dirs(output_directory)?;
         collection.to_json(output_directory)?;
     }
 
@@ -68,8 +69,22 @@ pub fn run(
         collection
     };
 
-    let vectorized_graph =
-        OmfGraphVectorized::new(&collection, modes, island_detection_configuration)?;
+    // Always retain the raw OMF dataset in `<output_directory>/raw/*.parquet`
+    // unless `local_source` is already reading from that exact directory.
+    let target_raw_dir = output_directory.join("raw");
+    let same_raw_source = local_source.is_some_and(|src| {
+        src == output_directory || src == target_raw_dir || src.parent() == Some(&target_raw_dir)
+    });
+    if !same_raw_source {
+        collection.to_parquet(output_directory)?;
+    }
+
+    let vectorized_graph = OmfGraphVectorized::new_with_match_distance(
+        &collection,
+        modes,
+        island_detection_configuration,
+        infrastructure_match_distance_meters,
+    )?;
 
     // summarize imported graph
     let release = match local_source {
@@ -86,18 +101,7 @@ pub fn run(
 }
 
 fn read_local(path: &Path) -> Result<TransportationCollection, OvertureMapsCollectionError> {
-    let contents = std::fs::read(path).map_err(|e| OvertureMapsCollectionError::ReadError {
-        path: path.to_owned(),
-        message: e.to_string(),
-    })?;
-    let collection =
-        serde_json::from_slice::<TransportationCollection>(&contents).map_err(|e| {
-            OvertureMapsCollectionError::ReadError {
-                path: path.to_owned(),
-                message: format!("failed to deserialize from JSON: {e}"),
-            }
-        })?;
-    Ok(collection)
+    TransportationCollection::from_local_source(path)
 }
 
 /// retrieve a TransportationCollection from a URL.
@@ -180,9 +184,25 @@ fn apply_extent_to_collection(
         .filter(|connector| arc_ids.contains(&connector.id))
         .collect();
 
+    log::info!("Started applying extent to infrastructure");
+    let filtered_infrastructure = collection
+        .infrastructure
+        .into_par_iter()
+        .filter(|infra| match infra.get_geometry() {
+            Some(geom) => {
+                let Some(bbox) = geom.bounding_rect() else {
+                    return false;
+                };
+                extent_arc.intersects(&bbox) && extent_arc.intersects(geom)
+            }
+            None => false,
+        })
+        .collect();
+
     TransportationCollection {
         release: collection.release.clone(),
         connectors: filtered_connectors,
         segments: filtered_segments,
+        infrastructure: filtered_infrastructure,
     }
 }

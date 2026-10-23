@@ -14,7 +14,10 @@ use crate::{
         island_detection::IslandDetectionAlgorithm,
         segment_ops,
         serialize_ops::{clean_omf_edge_list, compute_vertex_remapping},
-        vertex_serializable::VertexSerializable,
+        vertex_serializable::{
+            attach_infrastructure_to_vertices, EdgeMappingRecord, OmfVertexComplete,
+            VertexMappingRecord, VertexSerializable, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+        },
         OmfGraphSummary,
     },
 };
@@ -26,7 +29,14 @@ use rayon::prelude::*;
 use routee_compass_core::model::network::{EdgeConfig, EdgeId, EdgeList, EdgeListId, Vertex};
 
 pub const COMPASS_VERTEX_FILENAME: &str = "vertices-compass.csv.gz";
+pub const COMPLETE_VERTEX_FILENAME: &str = "vertices-complete.csv.gz";
+pub const VERTEX_MAPPING_FILENAME: &str = "vertices-mapping.csv.gz";
+pub const VERTEX_TRAFFIC_SIGNALS_FILENAME: &str = "vertices-traffic-signals-enumerated.txt.gz";
+pub const VERTEX_STOP_FILENAME: &str = "vertices-stop-enumerated.txt.gz";
+pub const VERTEX_GIVE_WAY_FILENAME: &str = "vertices-give-way-enumerated.txt.gz";
+pub const VERTEX_CROSSING_FILENAME: &str = "vertices-crossing-enumerated.txt.gz";
 pub const COMPASS_EDGES_FILENAME: &str = "edges-compass.csv.gz";
+pub const EDGE_MAPPING_FILENAME: &str = "edges-mapping.csv.gz";
 pub const GEOMETRIES_FILENAME: &str = "edges-geometries-enumerated.txt.gz";
 pub const SPEEDS_FILENAME: &str = "edges-speeds-mph-enumerated.txt.gz";
 pub const CLASSES_FILENAME: &str = "edges-classes-enumerated.txt.gz";
@@ -38,6 +48,8 @@ pub const GLOBAL_AVG_SPEED_KEY: &str = "_global_";
 
 pub struct OmfGraphVectorized {
     pub vertices: Vec<Vertex>,
+    pub vertices_complete: Vec<OmfVertexComplete>,
+    pub vertex_mappings: Vec<VertexMappingRecord>,
     pub edge_lists: Vec<OmfEdgeList>,
     pub edge_list_config: Vec<NetworkEdgeListConfiguration>,
     /// for each OMF ID, the vertex index
@@ -53,6 +65,7 @@ pub struct OmfEdgeList {
     pub speed_lookup: HashMap<String, f64>,
     pub bearings: Vec<f64>,
     pub omf_segment_ids: Vec<(String, f64)>,
+    pub edge_mappings: Vec<EdgeMappingRecord>,
 }
 
 impl OmfGraphVectorized {
@@ -61,6 +74,22 @@ impl OmfGraphVectorized {
         collection: &TransportationCollection,
         configuration: &[NetworkEdgeListConfiguration],
         island_detection_configuration: Option<IslandDetectionAlgorithm>,
+    ) -> Result<Self, OvertureMapsCollectionError> {
+        Self::new_with_match_distance(
+            collection,
+            configuration,
+            island_detection_configuration,
+            None,
+        )
+    }
+
+    /// create a vectorized graph dataset from a [TransportationCollection] with a configurable
+    /// spatial matching distance (in meters) for attaching infrastructure records to vertices.
+    pub fn new_with_match_distance(
+        collection: &TransportationCollection,
+        configuration: &[NetworkEdgeListConfiguration],
+        island_detection_configuration: Option<IslandDetectionAlgorithm>,
+        infrastructure_match_distance_meters: Option<f64>,
     ) -> Result<Self, OvertureMapsCollectionError> {
         // process all connectors into vertices
         log::info!("Creating vertex lookup");
@@ -136,9 +165,10 @@ impl OmfGraphVectorized {
             let global_speed =
                 ops::get_global_average_speed(&speeds, &segments, &segment_lookup, &splits)?;
 
-            // omf ids
-            log::info!("Computing omf_ids");
+            // omf ids and standardized edge mappings
+            log::info!("Computing omf_ids and edge mappings");
             let omf_segment_ids = ops::get_segment_omf_ids(&segments, &segment_lookup, &splits)?;
+            let edge_mappings = ops::get_edge_mappings(&segments, &segment_lookup, &splits)?;
 
             // match speeds according to classes
             log::info!("Completing speeds vector with default global");
@@ -172,6 +202,7 @@ impl OmfGraphVectorized {
                 speed_lookup,
                 bearings,
                 omf_segment_ids,
+                edge_mappings,
             };
             edge_lists.push(edge_list);
         }
@@ -234,8 +265,40 @@ impl OmfGraphVectorized {
                 .collect::<Result<Vec<OmfEdgeList>, OvertureMapsCollectionError>>()?;
         };
 
+        // Order connector IDs by final vertex_id
+        let connector_ids: Vec<String> = vertex_lookup
+            .iter()
+            .sorted_by_key(|(_, v)| **v)
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        let vertex_mappings: Vec<VertexMappingRecord> = connector_ids
+            .iter()
+            .enumerate()
+            .map(|(vertex_id, source_id)| VertexMappingRecord {
+                vertex_id,
+                source_id: source_id.clone(),
+            })
+            .collect();
+
+        let match_distance = infrastructure_match_distance_meters
+            .unwrap_or(DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS);
+        log::info!(
+            "Attaching {} infrastructure records to {} vertices (tolerance: {match_distance}m)",
+            collection.infrastructure.len(),
+            vertices.len()
+        );
+        let vertices_complete = attach_infrastructure_to_vertices(
+            &vertices,
+            &connector_ids,
+            &collection.infrastructure,
+            match_distance,
+        );
+
         let result = Self {
             vertices,
+            vertices_complete,
+            vertex_mappings,
             edge_lists,
             edge_list_config: configuration.to_vec(),
             vertex_lookup,
@@ -268,7 +331,7 @@ impl OmfGraphVectorized {
         // copy default configuration file into the output directory
         crate::util::fs::copy_default_config(output_directory)?;
 
-        // write vertices
+        // write compass vertices
         serialize_into_csv(
             self.vertices.iter().map(|v| VertexSerializable::from(*v)),
             COMPASS_VERTEX_FILENAME,
@@ -277,16 +340,62 @@ impl OmfGraphVectorized {
             "write vertex dataset",
         )?;
 
-        // reversing the vertex lookup to get the connector id of each vertex
+        // write complete vertices with infrastructure attributes
+        serialize_into_csv(
+            self.vertices_complete.iter(),
+            COMPLETE_VERTEX_FILENAME,
+            output_directory,
+            overwrite,
+            "write complete vertex dataset",
+        )?;
+
+        // always write standardized vertex mapping CSV
+        serialize_into_csv(
+            self.vertex_mappings.iter(),
+            VERTEX_MAPPING_FILENAME,
+            output_directory,
+            overwrite,
+            "write vertex ID mappings",
+        )?;
+
+        // write enumerated vertex infrastructure files
+        serialize_into_enumerated_txt(
+            self.vertices_complete.iter().map(|v| v.traffic_signals),
+            VERTEX_TRAFFIC_SIGNALS_FILENAME,
+            output_directory,
+            overwrite,
+            "write vertex traffic signals",
+        )?;
+        serialize_into_enumerated_txt(
+            self.vertices_complete.iter().map(|v| v.stop),
+            VERTEX_STOP_FILENAME,
+            output_directory,
+            overwrite,
+            "write vertex stop signs",
+        )?;
+        serialize_into_enumerated_txt(
+            self.vertices_complete.iter().map(|v| v.give_way),
+            VERTEX_GIVE_WAY_FILENAME,
+            output_directory,
+            overwrite,
+            "write vertex give way signs",
+        )?;
+        serialize_into_enumerated_txt(
+            self.vertices_complete.iter().map(|v| v.crossing),
+            VERTEX_CROSSING_FILENAME,
+            output_directory,
+            overwrite,
+            "write vertex crossings",
+        )?;
+
+        // legacy connector OMF IDs file if requested
         if export_omf_ids {
             let connectors_omf_ids = self
-                .vertex_lookup
+                .vertex_mappings
                 .iter()
-                .sorted_by_key(|(_, v)| *v)
-                .map(|(k, _)| k.clone())
+                .map(|m| m.source_id.clone())
                 .collect::<Vec<String>>();
 
-            // Write connector OMF IDs
             serialize_into_enumerated_txt(
                 &connectors_omf_ids,
                 OMF_CONNECTOR_IDS_FILENAME,
@@ -320,6 +429,15 @@ impl OmfGraphVectorized {
                 &mode_dir,
                 overwrite,
                 "write edges",
+            )?;
+
+            // Always write standardized edge mapping CSV
+            serialize_into_csv(
+                edge_list.edge_mappings.iter(),
+                EDGE_MAPPING_FILENAME,
+                &mode_dir,
+                overwrite,
+                "write edge ID mappings",
             )?;
 
             // Write geometries
@@ -370,7 +488,7 @@ impl OmfGraphVectorized {
                 "write bearings",
             )?;
 
-            // Write OMF ids
+            // Write legacy OMF ids if requested
             if export_omf_ids {
                 serialize_into_csv(
                     &edge_list.omf_segment_ids,

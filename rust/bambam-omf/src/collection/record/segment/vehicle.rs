@@ -33,11 +33,95 @@ impl SegmentVehicleComparator {
 }
 
 /// units in vehicle restrictions which may be length or weight units.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SegmentUnit {
     Length(SegmentLengthUnit),
     Weight(SegmentWeightUnit),
+}
+
+impl SegmentUnit {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SegmentUnit::Length(SegmentLengthUnit::Inches) => "in",
+            SegmentUnit::Length(SegmentLengthUnit::Feet) => "ft",
+            SegmentUnit::Length(SegmentLengthUnit::Yard) => "yd",
+            SegmentUnit::Length(SegmentLengthUnit::Mile) => "mi",
+            SegmentUnit::Length(SegmentLengthUnit::Centimeter) => "cm",
+            SegmentUnit::Length(SegmentLengthUnit::Meter) => "m",
+            SegmentUnit::Length(SegmentLengthUnit::Kilometer) => "km",
+            SegmentUnit::Weight(SegmentWeightUnit::Imperial(SegmentImperialWeightUnit::Ounce)) => {
+                "oz"
+            }
+            SegmentUnit::Weight(SegmentWeightUnit::Imperial(SegmentImperialWeightUnit::Pound)) => {
+                "lb"
+            }
+            SegmentUnit::Weight(SegmentWeightUnit::Imperial(SegmentImperialWeightUnit::Stone)) => {
+                "st"
+            }
+            SegmentUnit::Weight(SegmentWeightUnit::Imperial(
+                SegmentImperialWeightUnit::LongTon,
+            )) => "lt",
+            SegmentUnit::Weight(SegmentWeightUnit::Metric(SegmentMetricWeightUnit::Gram)) => "g",
+            SegmentUnit::Weight(SegmentWeightUnit::Metric(SegmentMetricWeightUnit::Kilogram)) => {
+                "kg"
+            }
+            SegmentUnit::Weight(SegmentWeightUnit::Metric(SegmentMetricWeightUnit::MetricTon)) => {
+                "t"
+            }
+        }
+    }
+}
+
+impl Serialize for SegmentUnit {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SegmentUnit {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "in" => Ok(SegmentUnit::Length(SegmentLengthUnit::Inches)),
+            "ft" => Ok(SegmentUnit::Length(SegmentLengthUnit::Feet)),
+            "yd" => Ok(SegmentUnit::Length(SegmentLengthUnit::Yard)),
+            "mi" => Ok(SegmentUnit::Length(SegmentLengthUnit::Mile)),
+            "cm" => Ok(SegmentUnit::Length(SegmentLengthUnit::Centimeter)),
+            "m" => Ok(SegmentUnit::Length(SegmentLengthUnit::Meter)),
+            "km" => Ok(SegmentUnit::Length(SegmentLengthUnit::Kilometer)),
+            "oz" => Ok(SegmentUnit::Weight(SegmentWeightUnit::Imperial(
+                SegmentImperialWeightUnit::Ounce,
+            ))),
+            "lb" => Ok(SegmentUnit::Weight(SegmentWeightUnit::Imperial(
+                SegmentImperialWeightUnit::Pound,
+            ))),
+            "st" => Ok(SegmentUnit::Weight(SegmentWeightUnit::Imperial(
+                SegmentImperialWeightUnit::Stone,
+            ))),
+            "lt" => Ok(SegmentUnit::Weight(SegmentWeightUnit::Imperial(
+                SegmentImperialWeightUnit::LongTon,
+            ))),
+            "g" => Ok(SegmentUnit::Weight(SegmentWeightUnit::Metric(
+                SegmentMetricWeightUnit::Gram,
+            ))),
+            "kg" => Ok(SegmentUnit::Weight(SegmentWeightUnit::Metric(
+                SegmentMetricWeightUnit::Kilogram,
+            ))),
+            "t" => Ok(SegmentUnit::Weight(SegmentWeightUnit::Metric(
+                SegmentMetricWeightUnit::MetricTon,
+            ))),
+            "" => Ok(SegmentUnit::Length(SegmentLengthUnit::Meter)),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown SegmentUnit '{other}'"
+            ))),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -76,8 +160,7 @@ impl SegmentLengthUnit {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SegmentWeightUnit {
     Imperial(SegmentImperialWeightUnit),
     Metric(SegmentMetricWeightUnit),

@@ -7,29 +7,34 @@ use serde::{Deserialize, Serialize};
 /// more information.
 ///
 /// <https://wiki.openstreetmap.org/wiki/Key:opening_hours>
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(untagged)]
+#[derive(Debug, Clone)]
 pub enum DuringExpression {
-    #[serde(with = "opening_hours_codec")]
     Osm(OpeningHoursExpression),
     Unexpected(String),
 }
 
-mod opening_hours_codec {
-    use opening_hours_syntax::rules::OpeningHoursExpression;
-    use serde::Deserialize;
-    pub fn serialize<S>(t: &OpeningHoursExpression, s: S) -> Result<S::Ok, S::Error>
+impl Serialize for DuringExpression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        s.serialize_str(&t.to_string())
+        match self {
+            DuringExpression::Osm(expr) => serializer.serialize_str(&expr.to_string()),
+            DuringExpression::Unexpected(s) => serializer.serialize_str(s),
+        }
     }
-    pub fn deserialize<'de, D>(d: D) -> Result<OpeningHoursExpression, D::Error>
+}
+
+impl<'de> Deserialize<'de> for DuringExpression {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let s = String::deserialize(d)?;
-        opening_hours_syntax::parse(&s).map_err(serde::de::Error::custom)
+        let s = String::deserialize(deserializer)?;
+        match opening_hours_syntax::parse(&s) {
+            Ok(expr) => Ok(DuringExpression::Osm(expr)),
+            Err(_) => Ok(DuringExpression::Unexpected(s)),
+        }
     }
 }
 
