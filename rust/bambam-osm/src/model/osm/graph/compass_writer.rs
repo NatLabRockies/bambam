@@ -26,8 +26,10 @@ pub trait CompassWriter {
 mod filenames {
     pub const VERTICES_COMPLETE: &str = "vertices-complete.csv.gz";
     pub const VERTICES_COMPASS: &str = "vertices-compass.csv.gz";
+    pub const VERTICES_MAPPING: &str = "vertices-mapping.csv.gz";
     pub const EDGES_COMPLETE: &str = "edges-complete.csv.gz";
     pub const EDGES_COMPASS: &str = "edges-compass.csv.gz";
+    pub const EDGES_MAPPING: &str = "edges-mapping.csv.gz";
     pub const GEOMETRIES_ENUMERATED: &str = "edges-geometries-enumerated.txt.gz";
     pub const MAXSPEEDS_AVGFILL: &str = "speed-maxspeed-avgfill-enumerated.txt.gz";
     pub const HIGHWAY_TAG: &str = "edges-highway-tag-enumerated.txt.gz";
@@ -35,12 +37,95 @@ mod filenames {
 
 impl CompassWriter for OsmGraphVectorized {
     fn write_compass(&self, output_directory: &Path, overwrite: bool) -> Result<(), OsmError> {
-        if !output_directory.is_dir() && std::fs::create_dir(output_directory).is_err() {
-            let dirname = output_directory.as_os_str().to_string_lossy();
-            return Err(OsmError::InternalError(format!(
-                "unable to create directory {}",
-                dirname
-            )));
+        bambam_network::fs::create_dirs(output_directory)?;
+
+        // Always retain raw OSM nodes and ways as Parquet files in `<output_directory>/raw/`
+        if let Some(ref raw) = self.raw_collection {
+            raw.to_parquet(output_directory)?;
+        }
+
+        // Write standardized vertex mappings (`vertices-mapping.csv.gz`)
+        if !self.vertex_mappings.is_empty() {
+            bambam_network::fs::serialize_into_csv(
+                self.vertex_mappings.iter(),
+                filenames::VERTICES_MAPPING,
+                output_directory,
+                overwrite,
+                "write vertex ID mappings",
+            )?;
+        }
+
+        // Write enumerated vertex infrastructure files
+        if !self.vertices_complete.is_empty() {
+            bambam_network::fs::serialize_into_enumerated_txt(
+                self.vertices_complete.iter().map(|v| v.traffic_signals),
+                bambam_network::VERTEX_TRAFFIC_SIGNALS_FILENAME,
+                output_directory,
+                overwrite,
+                "write vertex traffic signals",
+            )?;
+            bambam_network::fs::serialize_into_enumerated_txt(
+                self.vertices_complete.iter().map(|v| v.stop),
+                bambam_network::VERTEX_STOP_FILENAME,
+                output_directory,
+                overwrite,
+                "write vertex stop signs",
+            )?;
+            bambam_network::fs::serialize_into_enumerated_txt(
+                self.vertices_complete.iter().map(|v| v.give_way),
+                bambam_network::VERTEX_GIVE_WAY_FILENAME,
+                output_directory,
+                overwrite,
+                "write vertex give way signs",
+            )?;
+            bambam_network::fs::serialize_into_enumerated_txt(
+                self.vertices_complete.iter().map(|v| v.crossing),
+                bambam_network::VERTEX_CROSSING_FILENAME,
+                output_directory,
+                overwrite,
+                "write vertex crossings",
+            )?;
+        }
+
+        // Write standardized edge mappings (`edges-mapping.csv.gz`) and shared OMF-compatible edge files
+        if !self.edge_mappings.is_empty() {
+            bambam_network::fs::serialize_into_csv(
+                self.edge_mappings.iter(),
+                filenames::EDGES_MAPPING,
+                output_directory,
+                overwrite,
+                "write edge ID mappings",
+            )?;
+        }
+        if let Some(ref edge_list) = self.edge_list {
+            bambam_network::fs::serialize_into_enumerated_txt(
+                &edge_list.speeds,
+                bambam_network::SPEEDS_FILENAME,
+                output_directory,
+                overwrite,
+                "write speeds (mph)",
+            )?;
+            bambam_network::fs::serialize_into_enumerated_txt(
+                edge_list.classes.iter().map(|c| c.to_string()),
+                bambam_network::CLASSES_FILENAME,
+                output_directory,
+                overwrite,
+                "write classes",
+            )?;
+            bambam_network::fs::serialize_into_csv(
+                edge_list.speed_lookup.iter(),
+                bambam_network::SPEED_MAPPING_FILENAME,
+                output_directory,
+                overwrite,
+                "write speed mapping",
+            )?;
+            bambam_network::fs::serialize_into_enumerated_txt(
+                &edge_list.bearings,
+                bambam_network::BEARINGS_FILENAME,
+                output_directory,
+                overwrite,
+                "write bearings",
+            )?;
         }
 
         let mut node_writer = create_writer(

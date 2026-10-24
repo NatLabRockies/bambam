@@ -41,3 +41,28 @@ pub enum OsmError {
     #[error("{0}")]
     InternalError(String),
 }
+
+impl From<bambam_network::NetworkImportError> for OsmError {
+    fn from(value: bambam_network::NetworkImportError) -> Self {
+        use bambam_network::NetworkImportError as N;
+        match value {
+            N::InvalidUserInput(s) | N::MissingAttribute(s) | N::InvalidBetweenVector(s) => {
+                Self::ConfigurationError(s)
+            }
+            N::InvalidGeometry(s) => Self::InvalidWKT(s),
+            N::SerializationError(s) | N::CsvWriteError(s) => Self::GraphSerializationError(s),
+            N::InvalidSegmentConnectors(s) => Self::InvalidOsmData(s),
+            N::InvalidLinearReference(v) => {
+                Self::InvalidOsmData(format!("invalid linear reference {v}"))
+            }
+            N::ReadError { path, message } => {
+                Self::ConfigurationError(format!("error reading '{}': {message}", path.display()))
+            }
+            N::WriteError { path, message } => Self::GraphSerializationError(format!(
+                "error writing '{}': {message}",
+                path.display()
+            )),
+            N::InternalError(s) => Self::InternalError(s),
+        }
+    }
+}

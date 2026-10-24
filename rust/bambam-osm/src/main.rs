@@ -93,7 +93,20 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use bambam_osm::model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable};
+    use std::path::Path;
+
+    use bambam_network::{EdgeMappingRecord, VertexMappingRecord};
+    use bambam_osm::{
+        algorithm::truncation::ComponentFilter,
+        model::osm::{
+            graph::{
+                osm_element_filter::ElementFilter, CompassWriter, OsmNodeDataSerializable,
+                OsmWayDataSerializable,
+            },
+            import_ops::OsmCollection,
+            OsmSource,
+        },
+    };
     use routee_compass_core::util::fs::read_utils;
 
     #[test]
@@ -120,6 +133,20 @@ mod tests {
             panic!("bambam-osm run failure during import: {e}");
         }
 
+        // Verify raw Parquet retention and round-trip
+        let raw_loaded = OsmCollection::from_parquet_dir(Path::new(temp_directory))
+            .expect("failed to load retained raw OSM Parquet files");
+        assert!(!raw_loaded.nodes.is_empty());
+        assert!(!raw_loaded.ways.is_empty());
+
+        // Verify standardized ID mappings
+        let v_mappings: Box<[VertexMappingRecord]> =
+            read_utils::from_csv(&"src/test/tmp/vertices-mapping.csv.gz", true, None, None)
+                .expect("failed to read vertices-mapping.csv.gz");
+        let e_mappings: Box<[EdgeMappingRecord]> =
+            read_utils::from_csv(&"src/test/tmp/edges-mapping.csv.gz", true, None, None)
+                .expect("failed to read edges-mapping.csv.gz");
+
         // test graph connectivity
         let mut disconnected: Vec<String> = vec![];
         let ways_result: Result<Box<[OsmWayDataSerializable]>, _> =
@@ -135,6 +162,8 @@ mod tests {
             )),
         };
         if let (Ok(ways), Ok(nodes)) = (ways_result, nodes_result) {
+            assert_eq!(v_mappings.len(), nodes.len());
+            assert_eq!(e_mappings.len(), ways.len());
             for way in ways.iter() {
                 let src_id = way.src_vertex_id.0;
                 let way_id = way.osmid.0;
@@ -151,9 +180,38 @@ mod tests {
             }
         }
 
+        // Also verify simplified + largest component import on the same Liechtenstein PBF
+        let simplified_dir = Path::new("src/test/tmp_simplified");
+        let simplified_source = OsmSource::Pbf {
+            pbf_filepath: pbf_file.to_string(),
+            network_filter: Some(ElementFilter::OsmnxAllPublic),
+            extent_filter_filepath: Some(extent_file.to_string()),
+            component_filter: Some(ComponentFilter::Largest),
+            truncate_by_edge: true,
+            ignore_errors: true,
+            simplify: true,
+            consolidate: false,
+            consolidation_threshold: uom::si::f64::Length::new::<uom::si::length::meter>(15.0),
+            parallelize: true,
+        };
+        let simplified_graph = simplified_source
+            .import()
+            .expect("simplified OSM import failed");
+        simplified_graph
+            .write_compass(simplified_dir, true)
+            .expect("writing simplified OSM compass files failed");
+        assert!(!simplified_graph.nodes.is_empty());
+        assert!(!simplified_graph.ways.is_empty());
+        for way in &simplified_graph.ways {
+            assert!(way.src_vertex_id.0 < simplified_graph.nodes.len());
+            assert!(way.dst_vertex_id.0 < simplified_graph.nodes.len());
+        }
+
         // cleanup before exits, order is important.
         if cleanup_tmp_dir {
             std::fs::remove_dir_all(temp_directory).expect("failed to remove tmp directory");
+            std::fs::remove_dir_all(simplified_dir)
+                .expect("failed to remove tmp_simplified directory");
         }
         // error if we couldn't read the output files or if the graph connectivity was invalid.
         match invariant_error_msg {

@@ -53,6 +53,47 @@ pub struct OsmWayDataSerializable {
 impl OsmWayDataSerializable {
     /// a delimter for aggregated fields which does not collide with CSV delimiters
     pub const VALUE_DELIMITER: &'static str = ";";
+
+    /// Constructs a serializable OSM way record directly from a split sub-segment,
+    /// its resolved source/destination `VertexId`s, and its `LineString<f32>` geometry.
+    pub fn from_split_way(
+        way: &OsmWayData,
+        node_sequence: &[OsmNodeId],
+        src_vertex_id: VertexId,
+        dst_vertex_id: VertexId,
+        linestring: LineString<f32>,
+        length_meters: f64,
+    ) -> Result<Self, OsmError> {
+        let highway = top_highway(&way.highway, OsmWayData::VALUE_DELIMITER)?;
+        Ok(Self {
+            osmid: way.osmid,
+            src_vertex_id,
+            dst_vertex_id,
+            highway,
+            linestring,
+            length_meters,
+            area: max(way.area.as_ref()),
+            est_width: min(way.est_width.as_ref()),
+            lanes: min(way.lanes.as_ref()),
+            maxspeed: min(way.maxspeed.as_ref()),
+            width: min(way.width.as_ref()),
+            _ref: unique(way._ref.as_ref()),
+            access: unique(way.access.as_ref()),
+            bridge: unique(way.bridge.as_ref()),
+            cycleway: unique(way.cycleway.as_ref()),
+            footway: unique(way.footway.as_ref()),
+            junction: unique(way.junction.as_ref()),
+            landuse: unique(way.landuse.as_ref()),
+            maxspeed_raw: replace_delimiter(way.maxspeed.as_ref()),
+            name: unique(way.name.as_ref()),
+            nodes: join_node_ids(node_sequence),
+            oneway: unique(way.oneway.as_ref()),
+            sidewalk: unique(way.sidewalk.as_ref()),
+            service: unique(way.service.as_ref()),
+            tunnel: unique(way.tunnel.as_ref()),
+            way_ids: join_way_ids(way.way_ids.as_slice()),
+        })
+    }
 }
 
 impl OsmWayDataSerializable {
@@ -427,7 +468,7 @@ pub fn create_linestring_for_od_path(
         .iter()
         .map(|n| {
             let node = graph.get_node_data(n)?;
-            Ok(Coord::from((node.x, node.y)))
+            Ok::<_, OsmError>(Coord::from((node.x, node.y)))
         })
         .collect::<Result<Vec<Coord<f32>>, _>>()?;
     Ok(LineString(coords))

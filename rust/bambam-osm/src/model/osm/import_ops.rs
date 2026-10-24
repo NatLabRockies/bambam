@@ -1,7 +1,8 @@
 use super::{
     graph::{
-        osm_element_filter::ElementFilter, osm_segment::OsmSegment, AdjacencyListDeprecated,
-        OsmNodeId, OsmNodes, OsmWays,
+        osm_element_filter::ElementFilter, osm_node_data::OsmConnectorRecord,
+        osm_segment::OsmSegment, osm_way_ops, AdjacencyListDeprecated, OsmNodeId, OsmNodes,
+        OsmWayId, OsmWays,
     },
     OsmError,
 };
@@ -14,14 +15,30 @@ use crate::{
         },
     },
 };
-use geo::{Geometry, Intersects};
+use arrow::datatypes::FieldRef;
+use bambam_network::{ConnectorInSegment, ImportSegment, NetworkImportError, SegmentHeading, SegmentSplit};
+use geo::{BoundingRect, Coord, Geometry, Haversine, Intersects, Length, Line, LineString};
 use itertools::Itertools;
 use kdam::{term, tqdm, Bar, BarExt};
 use osmpbf::{Element, ElementReader};
+use parquet::{
+    arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ArrowWriter},
+    basic::Compression,
+    file::{metadata::KeyValue, properties::WriterProperties},
+};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_arrow::schema::{SchemaLike, TracingOptions};
 use std::{
     collections::{HashMap, HashSet},
+    fs::File,
     path::Path,
+    str::FromStr,
 };
+
+pub const RAW_DIRNAME: &str = "raw";
+pub const RAW_NODES_PARQUET: &str = "nodes.parquet";
+pub const RAW_WAYS_PARQUET: &str = "ways.parquet";
+pub const PARQUET_SOURCE_METADATA_KEY: &str = "osm_source";
 
 /// an estimate of this is fine, it's used to buffer the extent of the study area
 /// by a smidge so we don't prematurely truncate edges when reading the network source.
@@ -48,7 +65,7 @@ pub fn read_pbf(
             let g_buf = buffer::scale_exterior(g, BUFFER_500M).map_err(|e| {
                 OsmError::ConfigurationError(format!("failure buffering extent: {e}"))
             })?;
-            Ok(Some(g_buf))
+            Ok::<_, OsmError>(Some(g_buf))
         }
         None => Ok(None),
     }?;
@@ -163,64 +180,47 @@ pub fn read_pbf(
     // // # _add_paths(G, paths.values(), bidirectional)  # where paths is Map[Osmid, Way]
 
     if extent_opt.is_some() {
-        // we may have filtered nodes along the way, so here we must remove the ways that were attached to them
-        let mut disconnected_ways = vec![];
+        // Clip ways to contiguous runs of nodes that exist within the buffered extent,
+        // rather than discarding an entire long highway if one of its ends extends beyond the buffer.
+        let mut retained_ways: OsmWays = HashMap::default();
         let mut connected_nodes: HashSet<OsmNodeId> = HashSet::new();
-        let find_disconnected_ways_iter = tqdm!(
-            ways_map.values(),
-            desc = "find ways disconnected by extent filtering",
-            total = ways_map.len()
-        );
 
-        // remove this way if it contains any nodes which are not present in our nodes_map
-        // as they may lie outside of the study region.
-        for way in find_disconnected_ways_iter {
-            let disconnected_way = way.nodes.iter().any(|n_id| !nodes_map.contains_key(n_id));
-            if disconnected_way {
-                disconnected_ways.push(way.osmid);
-            } else {
-                // update our set of all nodes still connected to ways after filtering
-                for node_id in way.nodes.iter() {
-                    connected_nodes.insert(*node_id);
+        for way in ways_map.into_values() {
+            let mut run_idx = 0usize;
+            for slice in way.nodes.split(|n_id| !nodes_map.contains_key(n_id)) {
+                if slice.len() >= 2 {
+                    for node_id in slice {
+                        connected_nodes.insert(*node_id);
+                    }
+                    let mut sub_way = way.clone();
+                    sub_way.nodes = slice.to_vec();
+                    // If a way was split into multiple disconnected runs across the boundary,
+                    // derive a deterministic synthetic key while keeping the original osmid in `way_ids`.
+                    if run_idx > 0 {
+                        if !sub_way.way_ids.contains(&way.osmid) {
+                            sub_way.way_ids.push(way.osmid);
+                        }
+                        let synthetic_id = OsmWayId(
+                            way.osmid
+                                .0
+                                .wrapping_mul(1_000_000)
+                                .wrapping_add(run_idx as i64),
+                        );
+                        sub_way.osmid = synthetic_id;
+                        retained_ways.insert(synthetic_id, sub_way);
+                    } else {
+                        retained_ways.insert(way.osmid, sub_way);
+                    }
+                    run_idx += 1;
                 }
             }
         }
-        eprintln!();
+        ways_map = retained_ways;
 
-        let remove_disconnected_ways_iter = tqdm!(
-            disconnected_ways.iter(),
-            desc = "remove ways disconnected by extent filtering",
-            total = disconnected_ways.len()
-        );
-        for way_id in remove_disconnected_ways_iter {
-            ways_map.remove(way_id);
-        }
-        eprintln!();
-
-        // finally, remove nodes that became detached after way filtering
-        let mut disconnected_nodes = vec![];
-        let find_disconnected_node_iter = tqdm!(
-            nodes_map.values(),
-            desc = "find nodes disconnected by extent filtering",
-            total = nodes_map.len()
-        );
-        for node in find_disconnected_node_iter {
-            let disconnected = !connected_nodes.contains(&node.osmid);
-            if disconnected {
-                disconnected_nodes.push(node.osmid);
-            }
-        }
-        eprintln!();
-
-        let remove_disconnected_node_iter = tqdm!(
-            disconnected_nodes.iter(),
-            desc = "remove nodes disconnected by extent filtering",
-            total = disconnected_nodes.len()
-        );
-        for node_id in remove_disconnected_node_iter {
-            nodes_map.remove(node_id);
-        }
-        eprintln!();
+        // Retain connected way nodes plus any standalone control/signal nodes inside the extent
+        nodes_map.retain(|node_id, node_data| {
+            connected_nodes.contains(node_id) || node_data.has_control_or_intersection_tag()
+        });
     }
 
     log::info!(
@@ -390,6 +390,485 @@ pub fn build_rev_adjacency_list(fwd: &AdjacencyListDeprecated) -> AdjacencyListD
         }
     }
     rev
+}
+
+/// Raw OSM collection containing extracted nodes and ways, supporting always-on
+/// GeoParquet/Parquet persistence in `<output_directory>/raw/`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OsmCollection {
+    pub source: String,
+    pub nodes: Vec<OsmNodeData>,
+    pub ways: Vec<OsmWayData>,
+}
+
+impl OsmCollection {
+    pub fn from_maps(source: impl Into<String>, nodes: &OsmNodes, ways: &OsmWays) -> Self {
+        let sorted_nodes = nodes
+            .values()
+            .sorted_by_key(|n| n.osmid)
+            .cloned()
+            .collect_vec();
+        let sorted_ways = ways
+            .values()
+            .sorted_by_key(|w| w.osmid)
+            .cloned()
+            .collect_vec();
+        Self {
+            source: source.into(),
+            nodes: sorted_nodes,
+            ways: sorted_ways,
+        }
+    }
+
+    /// Write raw OSM nodes and ways to `<output_directory>/raw/nodes.parquet` and `ways.parquet`.
+    pub fn to_parquet(&self, output_directory: &Path) -> Result<(), OsmError> {
+        let raw_dir = output_directory.join(RAW_DIRNAME);
+        bambam_network::fs::create_dirs(&raw_dir)?;
+
+        write_records_to_parquet(
+            &self.nodes,
+            &raw_dir.join(RAW_NODES_PARQUET),
+            &self.source,
+        )?;
+        write_records_to_parquet(
+            &self.ways,
+            &raw_dir.join(RAW_WAYS_PARQUET),
+            &self.source,
+        )?;
+        Ok(())
+    }
+
+    /// Read raw OSM nodes and ways from `<path>/raw/` or `<path>/`.
+    pub fn from_parquet_dir(path: &Path) -> Result<Self, OsmError> {
+        let raw_dir = if path.join(RAW_WAYS_PARQUET).exists() {
+            path.to_path_buf()
+        } else if path.join(RAW_DIRNAME).join(RAW_WAYS_PARQUET).exists() {
+            path.join(RAW_DIRNAME)
+        } else {
+            return Err(OsmError::ConfigurationError(format!(
+                "expected '{RAW_WAYS_PARQUET}' in '{}' or '{}/{RAW_DIRNAME}'",
+                path.display(),
+                path.display()
+            )));
+        };
+
+        let (nodes, n_src) = read_records_from_parquet::<OsmNodeData>(&raw_dir.join(RAW_NODES_PARQUET))?;
+        let (ways, w_src) = read_records_from_parquet::<OsmWayData>(&raw_dir.join(RAW_WAYS_PARQUET))?;
+        let source = w_src
+            .or(n_src)
+            .unwrap_or_else(|| format!("file://{}", raw_dir.to_string_lossy()));
+
+        Ok(Self {
+            source,
+            nodes,
+            ways,
+        })
+    }
+}
+
+fn write_records_to_parquet<T>(
+    records: &[T],
+    filepath: &Path,
+    source: &str,
+) -> Result<(), OsmError>
+where
+    T: Serialize + DeserializeOwned,
+{
+    let tracing_options = TracingOptions::default()
+        .allow_null_fields(true)
+        .enums_without_data_as_strings(true)
+        .map_as_struct(false);
+    let fields = Vec::<FieldRef>::from_type::<T>(tracing_options).map_err(|e| {
+        OsmError::GraphSerializationError(format!(
+            "failed to trace Arrow schema for '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+    let batch = serde_arrow::to_record_batch::<&[T]>(&fields, &records).map_err(|e| {
+        OsmError::GraphSerializationError(format!(
+            "failed to serialize records into Arrow RecordBatch for '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+
+    let file = File::create(filepath).map_err(|e| {
+        OsmError::GraphSerializationError(format!(
+            "failed to create '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+
+    let props = WriterProperties::builder()
+        .set_compression(Compression::SNAPPY)
+        .set_key_value_metadata(Some(vec![KeyValue::new(
+            PARQUET_SOURCE_METADATA_KEY.to_string(),
+            Some(source.to_string()),
+        )]))
+        .build();
+
+    let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props)).map_err(|e| {
+        OsmError::GraphSerializationError(format!(
+            "failed to initialize Parquet writer for '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+
+    writer.write(&batch).map_err(|e| {
+        OsmError::GraphSerializationError(format!(
+            "failed to write Parquet batch to '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+
+    writer.close().map_err(|e| {
+        OsmError::GraphSerializationError(format!(
+            "failed to close Parquet writer for '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+
+    Ok(())
+}
+
+fn read_records_from_parquet<T>(filepath: &Path) -> Result<(Vec<T>, Option<String>), OsmError>
+where
+    T: DeserializeOwned,
+{
+    let file = File::open(filepath).map_err(|e| {
+        OsmError::ConfigurationError(format!("failed to open '{}': {e}", filepath.display()))
+    })?;
+
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file).map_err(|e| {
+        OsmError::ConfigurationError(format!(
+            "failed to open Parquet reader for '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+
+    let source = builder
+        .metadata()
+        .file_metadata()
+        .key_value_metadata()
+        .and_then(|kvs| {
+            kvs.iter()
+                .find(|kv| kv.key == PARQUET_SOURCE_METADATA_KEY)
+                .and_then(|kv| kv.value.clone())
+        });
+
+    let reader = builder.build().map_err(|e| {
+        OsmError::ConfigurationError(format!(
+            "failed to build Parquet RecordBatch reader for '{}': {e}",
+            filepath.display()
+        ))
+    })?;
+
+    let mut all_records = Vec::new();
+    for batch_result in reader {
+        let batch = batch_result.map_err(|e| {
+            OsmError::ConfigurationError(format!(
+                "failed to read RecordBatch from '{}': {e}",
+                filepath.display()
+            ))
+        })?;
+        let mut rows: Vec<T> = serde_arrow::from_record_batch(&batch).map_err(|e| {
+            OsmError::ConfigurationError(format!(
+                "failed to deserialize RecordBatch from '{}': {e}",
+                filepath.display()
+            ))
+        })?;
+        all_records.append(&mut rows);
+    }
+
+    Ok((all_records, source))
+}
+
+/// Topological road segment between two OSM connector nodes, implementing
+/// `bambam_network::ImportSegment<Highway>` for split-based graph construction.
+#[derive(Debug, Clone)]
+pub struct OsmSegmentRecord {
+    pub segment_key: String,
+    pub parent_way_id: OsmWayId,
+    pub parent_start_lr: f64,
+    pub parent_end_lr: f64,
+    pub src_node_id: OsmNodeId,
+    pub dst_node_id: OsmNodeId,
+    pub node_sequence: Vec<OsmNodeId>,
+    pub way: OsmWayData,
+    pub linestring: LineString<f32>,
+    pub highway: Highway,
+    pub speed_mph: Option<f64>,
+}
+
+impl ImportSegment<Highway> for OsmSegmentRecord {
+    fn segment_id(&self) -> &str {
+        &self.segment_key
+    }
+
+    fn get_linestring(&self) -> Result<&LineString<f32>, NetworkImportError> {
+        Ok(&self.linestring)
+    }
+
+    fn get_split_speed(
+        &self,
+        _start_lr: f64,
+        _end_lr: f64,
+        _heading: &SegmentHeading,
+    ) -> Result<Option<f64>, NetworkImportError> {
+        Ok(self.speed_mph)
+    }
+
+    fn get_split_class(
+        &self,
+        _start_lr: f64,
+        _end_lr: f64,
+    ) -> Result<Highway, NetworkImportError> {
+        Ok(self.highway.clone())
+    }
+
+    fn class_to_string(class: &Highway) -> String {
+        class.to_string()
+    }
+}
+
+/// Produces directed `SegmentSplit`s for an `OsmSegmentRecord`, respecting OSM `oneway`
+/// and reverse-direction (`oneway=-1` / `reverse`) semantics.
+pub fn process_osm_segment_splits(
+    segment: &OsmSegmentRecord,
+    heading_filter: Option<&SegmentHeading>,
+) -> Result<Vec<SegmentSplit>, OsmError> {
+    let oneway = segment.way.is_one_way();
+    let reverse = segment.way.is_reverse();
+
+    let supported_headings = if oneway && reverse {
+        vec![SegmentHeading::Backward]
+    } else if oneway {
+        vec![SegmentHeading::Forward]
+    } else {
+        vec![SegmentHeading::Forward, SegmentHeading::Backward]
+    };
+
+    let src = ConnectorInSegment::new(
+        segment.segment_key.clone(),
+        segment.src_node_id.to_string(),
+        0.0,
+    );
+    let dst = ConnectorInSegment::new(
+        segment.segment_key.clone(),
+        segment.dst_node_id.to_string(),
+        1.0,
+    );
+
+    let splits = supported_headings
+        .into_iter()
+        .filter(|h| heading_filter.is_none_or(|filter_h| filter_h == h))
+        .map(|heading| SegmentSplit::new(src.clone(), dst.clone(), heading))
+        .collect();
+
+    Ok(splits)
+}
+
+pub type OsmExtractedNetwork = (
+    Vec<OsmConnectorRecord>,
+    Vec<OsmConnectorRecord>,
+    Vec<OsmSegmentRecord>,
+);
+
+/// Extracts topological connectors, infrastructure control points, and `OsmSegmentRecord`s
+/// from raw OSM nodes and ways using the OMF-style Connector + Segment workflow:
+/// - When `simplify == true`, intermediate degree-2 shape nodes are kept purely as geometry
+///   coordinates on `OsmSegmentRecord.linestring` rather than becoming graph vertices.
+/// - When `simplify == false`, every way node becomes a connector vertex.
+pub fn extract_osm_connectors_and_segments(
+    nodes_map: &OsmNodes,
+    ways_map: &OsmWays,
+    extent_opt: Option<&Geometry<f32>>,
+    truncate_by_edge: bool,
+    simplify: bool,
+    ignore_errors: bool,
+) -> Result<OsmExtractedNetwork, OsmError> {
+    // 1. Count node occurrences across all accepted ways and identify way endpoints
+    let mut node_degree: HashMap<OsmNodeId, usize> = HashMap::new();
+    let mut endpoint_nodes: HashSet<OsmNodeId> = HashSet::new();
+
+    let sorted_ways = ways_map
+        .values()
+        .sorted_by_key(|w| w.osmid)
+        .collect_vec();
+
+    for way in &sorted_ways {
+        let valid_nodes: Vec<OsmNodeId> = way
+            .nodes
+            .iter()
+            .copied()
+            .filter(|nid| nodes_map.contains_key(nid))
+            .collect();
+        if valid_nodes.len() < 2 {
+            continue;
+        }
+        if let Some(first) = valid_nodes.first() {
+            endpoint_nodes.insert(*first);
+        }
+        if let Some(last) = valid_nodes.last() {
+            endpoint_nodes.insert(*last);
+        }
+        for nid in valid_nodes {
+            *node_degree.entry(nid).or_insert(0) += 1;
+        }
+    }
+
+    // 2. Slice each way at its topological connector nodes
+    let mut segments: Vec<OsmSegmentRecord> = Vec::new();
+    let mut referenced_connector_ids: HashSet<OsmNodeId> = HashSet::new();
+
+    for way in sorted_ways {
+        let valid_nodes: Vec<OsmNodeId> = way
+            .nodes
+            .iter()
+            .copied()
+            .filter(|nid| nodes_map.contains_key(nid))
+            .collect();
+        if valid_nodes.len() < 2 {
+            continue;
+        }
+
+        let highway = match &way.highway {
+            Some(h) => match Highway::from_str(h) {
+                Ok(hw) => hw,
+                Err(_) if ignore_errors => Highway::Unclassified,
+                Err(e) => {
+                    return Err(OsmError::InvalidOsmData(format!(
+                        "unable to parse highway tag '{h}' on way {}: {e}",
+                        way.osmid
+                    )))
+                }
+            },
+            None => Highway::Unclassified,
+        };
+
+        let speed_mph = way
+            .maxspeed
+            .as_deref()
+            .and_then(|s| {
+                osm_way_ops::deserialize_speed(s, Some(OsmWayData::VALUE_DELIMITER), true)
+                    .ok()
+                    .flatten()
+            })
+            .map(|vel| vel.get::<uom::si::velocity::mile_per_hour>());
+
+        // Compute cumulative Haversine distances along the way for linear referencing
+        let mut cum_dists: Vec<f32> = Vec::with_capacity(valid_nodes.len());
+        cum_dists.push(0.0);
+        for (u_id, v_id) in valid_nodes.iter().tuple_windows() {
+            let u = &nodes_map[u_id];
+            let v = &nodes_map[v_id];
+            let step_len =
+                Haversine.length(&Line::new(Coord::from((u.x, u.y)), Coord::from((v.x, v.y))));
+            let prev = *cum_dists.last().unwrap_or(&0.0);
+            cum_dists.push(prev + step_len);
+        }
+        let total_way_dist = *cum_dists.last().unwrap_or(&0.0);
+        if total_way_dist <= bambam_network::F32_DISTANCE_TOLERANCE {
+            continue;
+        }
+
+        // Determine which indices in `valid_nodes` are topological connectors
+        let connector_indices: Vec<usize> = (0..valid_nodes.len())
+            .filter(|&idx| {
+                if idx == 0 || idx + 1 == valid_nodes.len() || !simplify {
+                    return true;
+                }
+                let nid = valid_nodes[idx];
+                if endpoint_nodes.contains(&nid)
+                    || node_degree.get(&nid).copied().unwrap_or(0) >= 2
+                {
+                    return true;
+                }
+                nodes_map
+                    .get(&nid)
+                    .is_some_and(|n| n.has_control_or_intersection_tag())
+            })
+            .collect();
+
+        let original_way_id = way.way_ids.first().copied().unwrap_or(way.osmid);
+
+        for (&idx_a, &idx_b) in connector_indices.iter().tuple_windows() {
+            let sub_nodes = &valid_nodes[idx_a..=idx_b];
+            let sub_coords: Vec<Coord<f32>> = sub_nodes
+                .iter()
+                .map(|nid| {
+                    let n = &nodes_map[nid];
+                    Coord::from((n.x, n.y))
+                })
+                .collect();
+            let sub_linestring = LineString::new(sub_coords);
+            let sub_len = Haversine.length(&sub_linestring);
+            if sub_len <= bambam_network::F32_DISTANCE_TOLERANCE {
+                continue;
+            }
+
+            // Apply polygon extent filter if present
+            if let Some(ext) = extent_opt {
+                let keep = if truncate_by_edge {
+                    sub_linestring
+                        .bounding_rect()
+                        .is_some_and(|bbox| ext.intersects(&bbox) && ext.intersects(&sub_linestring))
+                } else {
+                    sub_nodes
+                        .iter()
+                        .all(|nid| nodes_map.get(nid).is_some_and(|n| n.intersects(ext)))
+                };
+                if !keep {
+                    continue;
+                }
+            }
+
+            let src_node_id = valid_nodes[idx_a];
+            let dst_node_id = valid_nodes[idx_b];
+            let start_lr = (cum_dists[idx_a] / total_way_dist) as f64;
+            let end_lr = (cum_dists[idx_b] / total_way_dist) as f64;
+
+            referenced_connector_ids.insert(src_node_id);
+            referenced_connector_ids.insert(dst_node_id);
+
+            let mut sub_way = way.clone();
+            sub_way.osmid = original_way_id;
+            sub_way.nodes = sub_nodes.to_vec();
+
+            let segment_key = format!("{}@{idx_a}..{idx_b}", way.osmid);
+            segments.push(OsmSegmentRecord {
+                segment_key,
+                parent_way_id: original_way_id,
+                parent_start_lr: start_lr.clamp(0.0, 1.0),
+                parent_end_lr: end_lr.clamp(0.0, 1.0),
+                src_node_id,
+                dst_node_id,
+                node_sequence: sub_nodes.to_vec(),
+                way: sub_way,
+                linestring: sub_linestring,
+                highway: highway.clone(),
+                speed_mph,
+            });
+        }
+    }
+
+    let connectors: Vec<OsmConnectorRecord> = referenced_connector_ids
+        .iter()
+        .sorted()
+        .filter_map(|nid| nodes_map.get(nid).cloned().map(OsmConnectorRecord::new))
+        .collect();
+
+    let infrastructure: Vec<OsmConnectorRecord> = nodes_map
+        .values()
+        .filter(|n| {
+            n.has_traffic_signals() || n.has_stop() || n.has_give_way() || n.has_crossing()
+        })
+        .filter(|n| extent_opt.is_none_or(|ext| n.intersects(ext)))
+        .sorted_by_key(|n| n.osmid)
+        .cloned()
+        .map(OsmConnectorRecord::new)
+        .collect();
+
+    Ok((connectors, infrastructure, segments))
 }
 
 // #[cfg(test)]

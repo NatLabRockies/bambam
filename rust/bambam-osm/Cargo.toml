@@ -12,11 +12,9 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
+arrow = { workspace = true }
 bambam-modal-metrics = { workspace = true }
-bamcensus = { workspace = true }
-bamcensus-acs = { workspace = true }
-bamcensus-core = { workspace = true }
-
+bambam-network = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
 csv = { workspace = true }
@@ -25,14 +23,13 @@ flate2 = { workspace = true }
 geo = { workspace = true }
 geo-buffer = { workspace = true }
 geozero = { workspace = true }
-gtfs-structures = { git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
-h3o = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
 num-traits = { workspace = true }
-osmio = { workspace = true }
+ordered-float = { workspace = true }
 osmpbf = { workspace = true }
+parquet = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
 routee-compass = { workspace = true, default-features = false }
@@ -40,6 +37,7 @@ routee-compass-core = { workspace = true }
 # routee-compass-powertrain = { workspace = true }
 rstar = { workspace = true }
 serde = { workspace = true }
+serde_arrow = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }

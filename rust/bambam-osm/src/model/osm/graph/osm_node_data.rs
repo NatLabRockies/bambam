@@ -1,6 +1,7 @@
 use crate::model::osm::OsmError;
 use geo::{Centroid, Coord, Geometry, Intersects, MultiPoint, Point};
 use itertools::Itertools;
+use routee_compass_core::model::network::Vertex;
 use serde::{Deserialize, Serialize};
 
 use super::OsmNodeId;
@@ -46,6 +47,37 @@ impl OsmNodeData {
 
     pub fn get_point(&self) -> Point<f32> {
         Point::new(self.x, self.y)
+    }
+
+    pub fn has_traffic_signals(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|h| h.contains("traffic_signals"))
+    }
+
+    pub fn has_stop(&self) -> bool {
+        self.highway.as_ref().is_some_and(|h| h.contains("stop"))
+    }
+
+    pub fn has_give_way(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|h| h.contains("give_way"))
+    }
+
+    pub fn has_crossing(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|h| h.contains("crossing"))
+    }
+
+    pub fn has_control_or_intersection_tag(&self) -> bool {
+        self.has_traffic_signals()
+            || self.has_stop()
+            || self.has_give_way()
+            || self.has_crossing()
+            || self.junction.is_some()
+            || self.railway.is_some()
     }
 
     pub fn consolidate(
@@ -101,6 +133,75 @@ impl OsmNodeData {
 impl Intersects<Geometry<f32>> for OsmNodeData {
     fn intersects(&self, rhs: &Geometry<f32>) -> bool {
         rhs.intersects(&geo::Point::new(self.x, self.y))
+    }
+}
+
+/// Wrapper around `OsmNodeData` with a cached string ID to implement
+/// `bambam_network::ImportConnector` and `bambam_network::ImportInfrastructure`.
+#[derive(Debug, Clone)]
+pub struct OsmConnectorRecord {
+    pub id_str: String,
+    pub node: OsmNodeData,
+}
+
+impl OsmConnectorRecord {
+    pub fn new(node: OsmNodeData) -> Self {
+        Self {
+            id_str: node.osmid.to_string(),
+            node,
+        }
+    }
+}
+
+impl bambam_network::ImportConnector for OsmConnectorRecord {
+    fn connector_id(&self) -> &str {
+        &self.id_str
+    }
+
+    fn try_to_vertex(&self, idx: usize) -> Result<Vertex, bambam_network::NetworkImportError> {
+        Ok(Vertex::new(idx, self.node.x, self.node.y))
+    }
+
+    fn has_traffic_signals(&self) -> bool {
+        self.node.has_traffic_signals()
+    }
+
+    fn has_stop(&self) -> bool {
+        self.node.has_stop()
+    }
+
+    fn has_give_way(&self) -> bool {
+        self.node.has_give_way()
+    }
+
+    fn has_crossing(&self) -> bool {
+        self.node.has_crossing()
+    }
+}
+
+impl bambam_network::ImportInfrastructure for OsmConnectorRecord {
+    fn infrastructure_id(&self) -> &str {
+        &self.id_str
+    }
+
+    fn reference_point(&self) -> Option<Point<f32>> {
+        Some(self.node.get_point())
+    }
+
+    fn is_traffic_signals(&self) -> bool {
+        self.node.has_traffic_signals()
+    }
+
+    fn is_stop(&self) -> bool {
+        self.node.has_stop()
+    }
+
+    fn is_give_way(&self) -> bool {
+        self.node.has_give_way()
+    }
+
+    fn is_crossing(&self) -> bool {
+        self.node.has_crossing()
     }
 }
 
