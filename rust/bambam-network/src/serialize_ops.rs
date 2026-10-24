@@ -26,7 +26,6 @@ pub struct VectorizedEdgeList<C> {
     pub speeds: Vec<f64>,
     pub speed_lookup: HashMap<String, f64>,
     pub bearings: Vec<f64>,
-    pub omf_segment_ids: Vec<(String, f64)>,
     pub edge_mappings: Vec<EdgeMappingRecord>,
 }
 
@@ -206,21 +205,6 @@ where
         .filter(|&(_k, (_wx, w))| w != 0.0)
         .map(|(k, (wx, w))| (k, wx / w))
         .collect::<HashMap<&C, f64>>())
-}
-
-pub fn get_segment_omf_ids<S, C>(
-    segments: &[&S],
-    segment_lookup: &HashMap<String, usize>,
-    splits: &[SegmentSplit],
-) -> Result<Vec<(String, f64)>, NetworkImportError>
-where
-    C: Clone + Eq + Hash + Send + Sync,
-    S: ImportSegment<C>,
-{
-    splits
-        .par_iter()
-        .map(|split| split.get_omf_segment_id_and_linear_ref(segments, segment_lookup))
-        .collect()
 }
 
 pub fn get_edge_mappings<S, C>(
@@ -428,16 +412,6 @@ pub fn clean_omf_edge_list<C: Send>(
         .map(|(_, b)| b)
         .collect();
 
-    let omf_segment_ids = omf_list
-        .omf_segment_ids
-        .into_iter()
-        .enumerate()
-        .filter(|(idx, _)| mask[*idx])
-        .collect::<Vec<_>>()
-        .into_par_iter()
-        .map(|(_, i)| i)
-        .collect();
-
     let edge_mappings = omf_list
         .edge_mappings
         .into_iter()
@@ -460,7 +434,6 @@ pub fn clean_omf_edge_list<C: Send>(
         speeds,
         speed_lookup: omf_list.speed_lookup,
         bearings,
-        omf_segment_ids,
         edge_mappings,
     })
 }

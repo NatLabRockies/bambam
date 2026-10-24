@@ -1,8 +1,7 @@
 use super::{
     graph::{
-        osm_element_filter::ElementFilter, osm_node_data::OsmConnectorRecord,
-        osm_segment::OsmSegment, osm_way_ops, AdjacencyListDeprecated, OsmNodeId, OsmNodes,
-        OsmWayId, OsmWays,
+        osm_element_filter::ElementFilter, osm_node_data::OsmConnectorRecord, osm_way_ops,
+        OsmNodeId, OsmNodes, OsmWayId, OsmWays,
     },
     OsmError,
 };
@@ -10,16 +9,14 @@ use crate::{
     algorithm::buffer,
     model::{
         feature::highway::Highway,
-        osm::graph::{
-            osm_node_data::OsmNodeData, osm_way_data::OsmWayData, AdjacencyDirection, AdjacencyList,
-        },
+        osm::graph::{osm_node_data::OsmNodeData, osm_way_data::OsmWayData},
     },
 };
 use arrow::datatypes::FieldRef;
 use bambam_network::{ConnectorInSegment, ImportSegment, NetworkImportError, SegmentHeading, SegmentSplit};
 use geo::{BoundingRect, Coord, Geometry, Haversine, Intersects, Length, Line, LineString};
 use itertools::Itertools;
-use kdam::{term, tqdm, Bar, BarExt};
+use kdam::{term, Bar, BarExt};
 use osmpbf::{Element, ElementReader};
 use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ArrowWriter},
@@ -229,167 +226,6 @@ pub fn read_pbf(
         nodes_map.len(),
     );
     Ok((nodes_map, ways_map))
-}
-
-pub fn build_adjacencies(ways_map: &OsmWays) -> Result<AdjacencyList, OsmError> {
-    let mut adj: AdjacencyList = HashMap::new();
-
-    let ways_iter = tqdm!(
-        ways_map.values(),
-        total = ways_map.len(),
-        desc = "building adjacency list"
-    );
-    for way in ways_iter {
-        // # extract/remove the ordered list of nodes from this path element so
-        // # we don't add it as a superfluous attribute to the edge later
-        let mut nodes = way.nodes.clone();
-
-        // # reverse the order of nodes in the path if this path is both one-way
-        // # and only allows travel in the opposite direction of nodes' order
-        let oneway = way.is_one_way();
-        let reverse = way.is_reverse();
-        if oneway && reverse {
-            nodes.reverse();
-        }
-
-        // # set the oneway attribute, but only if when not forcing all edges to
-        // # oneway with the all_oneway setting. With the all_oneway setting, you
-        // # want to preserve the original OSM oneway attribute for later clarity
-        // --> SKIPPED since we don't support this
-
-        // # zip path nodes to get (u, v) tuples like [(0,1), (1,2), (2,3)].
-        // # add all the edge tuples and give them the path's tag:value attrs
-        for (src_id, dst_id) in nodes.iter().tuple_windows() {
-            // # G.add_edges_from(edges, **path)
-            // insert forward-oriented segment
-            let fwd_segs = adj
-                .entry((*src_id, AdjacencyDirection::Forward))
-                .or_default();
-            insert_op(dst_id, way, oneway, fwd_segs)?;
-
-            if !oneway {
-                // # G.add_edges_from((v, u) for u, v in edges], **path)
-                // insert reverse-oriented segment
-                let rev_segs = adj
-                    .entry((*dst_id, AdjacencyDirection::Reverse))
-                    .or_default();
-                insert_op(src_id, way, false, rev_segs)?;
-            }
-        }
-    }
-    eprintln!();
-
-    log::info!(
-        "adjacency list has {} nodes, {} segments",
-        adj.len(),
-        adj.values().map(|adj| adj.len()).sum::<usize>()
-    );
-    Ok(adj)
-}
-
-/// inserts adjacencies into the adjacency list during initialization.
-/// not intended for simplified graphs, as this maintains the invariant that there
-/// exists one way between each (src, dst) node pair.
-fn insert_op(
-    target_id: &OsmNodeId,
-    way: &OsmWayData,
-    is_oneway: bool,
-    entry: &mut HashMap<OsmNodeId, Vec<OsmSegment>>,
-) -> Result<(), OsmError> {
-    let highway = match &way.highway {
-        Some(h) => {
-            let highway = h
-                .parse::<Highway>()
-                .map_err(|e| OsmError::InvalidOsmData(format!("unknown highway tag '{h}': {e}")))?;
-            Some(highway)
-        }
-        None => None,
-    };
-    let next_segment = OsmSegment::new(way.osmid, highway, is_oneway);
-
-    // from osmnx.graph.simplification:378:
-    //      # ...if multiple edges exist between
-    //      # them (see above), we retain only one in the simplified graph
-    //      # We can't assume that there exists an edge from u to v
-    //      # with key=0, so we get a list of all edges from u to v
-    //      # and just take the first one.
-    // aka, OSMNX randomly picks a tiebreaker. here let's pick the option that
-    // is higher in the road network hierarchy if possible (defaulting to random).
-    match entry.get(target_id) {
-        Some(prev_segments) => {
-            match &prev_segments.as_slice() {
-                [prev_segment] if &next_segment <= prev_segment => {
-                    let _ = entry.insert(*target_id, vec![next_segment]);
-                    // newly-inserted segment has greater highway authority, replace the old one
-                }
-                _ => {} // NOOP
-            }
-        }
-        None => {
-            let _ = entry.insert(*target_id, vec![next_segment]);
-        }
-    }
-    Ok(())
-}
-
-// fn insert_op2(
-//     target_id: &OsmNodeId,
-//     way: &OsmWayData,
-//     entry: &mut HashMap<OsmNodeId, OsmWayData>,
-// ) -> Result<(), OsmError> {
-//     // determine if we should insert this new way, depending on whether there is an
-//     // existing way in this entry, and if so, how their highway tags compare.
-//     // rjf 2025-03-06: should we actually combine these instead?
-//     let insert_way = match (
-//         way.get_highway(),
-//         entry.get(target_id).map(|w| w.get_highway()),
-//     ) {
-//         (Ok(None), _) => false,
-//         (Ok(Some(_highway)), None) => true,
-//         (Ok(Some(new_highway)), Some(Ok(Some(old_highway)))) => new_highway < old_highway,
-//         (_, Some(Ok(None))) => {
-//             return Err(OsmError::InternalError(String::from(
-//                 "existing way in the graph has no highway tag",
-//             )))
-//         }
-//         (Ok(_), Some(Err(e))) => {
-//             return Err(OsmError::InternalError(format!(
-//                 "existing way in the graph has an invalid highway tag '{}': {}",
-//                 way.highway.clone().unwrap_or_default(),
-//                 e
-//             )))
-//         }
-//         (Err(e), None) => return Err(OsmError::InvalidOsmData(format!("{e}"))),
-//         (Err(e), Some(_)) => return Err(OsmError::InvalidOsmData(format!("{e}"))),
-//     };
-
-//     if insert_way {
-//         let _ = entry.insert(*target_id, way.clone());
-//     }
-
-//     Ok(())
-// }
-
-pub fn build_rev_adjacency_list(fwd: &AdjacencyListDeprecated) -> AdjacencyListDeprecated {
-    let mut rev: AdjacencyListDeprecated = HashMap::new();
-    let segments_iter = tqdm!(
-        fwd.iter(),
-        desc = "create reverse adjacency list",
-        total = fwd.len()
-    );
-    for (src, edges) in segments_iter {
-        for (dst, edge) in edges.iter() {
-            match rev.get_mut(dst) {
-                Some(rev_edges) => {
-                    rev_edges.insert(*src, edge.clone());
-                }
-                None => {
-                    rev.insert(*dst, HashMap::from([(*src, edge.clone())]));
-                }
-            }
-        }
-    }
-    rev
 }
 
 /// Raw OSM collection containing extracted nodes and ways, supporting always-on

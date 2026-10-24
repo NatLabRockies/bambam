@@ -18,9 +18,8 @@ pub enum OsmSource {
         truncate_by_edge: bool,
         ignore_errors: bool,
         simplify: bool,
-        consolidate: bool,
-        consolidation_threshold: uom::si::f64::Length,
-        parallelize: bool,
+        #[serde(default)]
+        infrastructure_match_distance_meters: Option<f64>,
     },
 }
 
@@ -35,9 +34,7 @@ impl OsmSource {
                 truncate_by_edge,
                 ignore_errors,
                 simplify,
-                consolidate: _,
-                consolidation_threshold,
-                parallelize: _,
+                infrastructure_match_distance_meters,
             } => {
                 let net_ftr = network_filter.clone().unwrap_or_default();
                 let extent_opt = extent_filter_filepath
@@ -45,11 +42,6 @@ impl OsmSource {
                     .map(read_extent_wkt)
                     .transpose()?;
                 let cc_ftr = component_filter.clone().unwrap_or_default();
-                let match_distance = Some(
-                    consolidation_threshold
-                        .get::<uom::si::length::meter>()
-                        .max(bambam_network::DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS),
-                );
 
                 log::info!("Reading PBF source and extracting topological Connectors & Segments");
                 let (nodes_map, ways_map) =
@@ -65,7 +57,7 @@ impl OsmSource {
                     *truncate_by_edge,
                     *simplify,
                     *ignore_errors,
-                    match_distance,
+                    *infrastructure_match_distance_meters,
                 )?;
 
                 log::info!(

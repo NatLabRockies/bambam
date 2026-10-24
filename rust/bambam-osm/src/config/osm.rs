@@ -7,15 +7,24 @@ use serde::{Deserialize, Serialize};
 /// defines behaviors for an OSM network import
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OsmImportConfiguration {
+    #[serde(default)]
     pub component_filter: ComponentFilter,
+    #[serde(default)]
     pub element_filter: ElementFilter,
-    consolidation_threshold: Option<uom::si::f64::Length>,
+    #[serde(default)]
     pub ignore_osm_parsing_errors: bool,
+    #[serde(default = "default_true")]
     pub truncate_by_edge: bool,
+    #[serde(default = "default_true")]
     pub simplify: bool,
-    pub consolidate: bool,
-    pub parallelize: bool,
+    #[serde(default)]
     pub overwrite: bool,
+    #[serde(default)]
+    pub infrastructure_match_distance_meters: Option<f64>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for OsmImportConfiguration {
@@ -23,25 +32,12 @@ impl Default for OsmImportConfiguration {
         Self {
             component_filter: Default::default(),
             element_filter: Default::default(),
-            consolidation_threshold: Some(Self::default_consolidation_threshold()),
             ignore_osm_parsing_errors: false,
             truncate_by_edge: true,
             simplify: true,
-            consolidate: true,
-            parallelize: true,
             overwrite: false,
+            infrastructure_match_distance_meters: None,
         }
-    }
-}
-
-impl OsmImportConfiguration {
-    fn default_consolidation_threshold() -> uom::si::f64::Length {
-        uom::si::f64::Length::new::<uom::si::length::meter>(15.0)
-    }
-
-    pub fn get_consolidation_threshold(&self) -> uom::si::f64::Length {
-        self.consolidation_threshold
-            .unwrap_or_else(Self::default_consolidation_threshold)
     }
 }
 

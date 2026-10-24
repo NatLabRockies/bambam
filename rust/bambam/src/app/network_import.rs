@@ -1,3 +1,25 @@
+//! Unified road network import pipeline for RouteE Compass and BAMBAM.
+//!
+//! This module provides a single high-level entry point ([`import_network`] /
+//! [`NetworkImportRequest`]) on top of both the Overture Maps Foundation (`bambam-omf`)
+//! and OpenStreetMap (`bambam-osm`) ETL pipelines, backed by the shared split-based
+//! graph construction and serialization core in `bambam-network`.
+//!
+//! ## Guarantees across both OMF and OSM imports
+//! 1. **Split-Based Topological Graph Construction**: Both OMF and OSM represent networks as
+//!    Connectors (intersection/control vertices) + Segments + Linear-Referenced Splits
+//!    ([`bambam_network::SegmentSplit`]), avoiding destructive in-place graph simplification.
+//! 2. **Spatial Infrastructure Attachment (`rstar`)**: Traffic control and pedestrian comfort
+//!    features (`traffic_signals`, `stop`, `give_way`, `crossing`) are spatially matched to
+//!    their nearest connector vertex within a configurable Haversine distance (default `15.0`m)
+//!    and written to both `vertices-complete.csv.gz` and `vertices-*-enumerated.txt.gz`.
+//! 3. **Always-On Raw Data Retention**: Raw source records are always persisted as Snappy-compressed
+//!    Parquet files under `<output_directory>/raw/` (`segments.parquet`, `connectors.parquet`,
+//!    `infrastructure.parquet` for OMF; `nodes.parquet`, `ways.parquet` for OSM).
+//! 4. **Always-On Bidirectional ID Mappings**: Source-to-Compass vertex and edge mappings are
+//!    always written to `vertices-mapping.csv.gz` (`vertex_id,source_id`) and
+//!    `<mode>/edges-mapping.csv.gz` (`edge_id,source_id,start_lr,end_lr,heading`).
+
 use std::path::Path;
 
 use bambam_network::{ComponentsAlgorithmType, IslandDetectionAlgorithm};
@@ -197,9 +219,7 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
                 &edge_lists,
                 out_dir,
                 local_path,
-                false,
                 Some(island_alg),
-                false,
                 Some(extent_geom),
                 request.infrastructure_match_distance_meters,
             )
@@ -210,12 +230,16 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
             simplify,
             truncate_by_edge,
         } => {
-            let filter = ElementFilter::default_for_modes(request.modes.as_deref());
+            let modes: Vec<String> = match request.modes.as_ref().filter(|m| !m.is_empty()) {
+                Some(m) => m.clone(),
+                None => vec!["walk".to_string(), "bike".to_string(), "drive".to_string()],
+            };
+            let filter = ElementFilter::default_for_modes(Some(&modes));
             let extent_opt = Some(extent_geom);
             let (nodes_map, ways_map) = import_ops::read_pbf(pbf_path, filter, &extent_opt)
                 .map_err(|e| e.to_string())?;
 
-            let graph = OsmGraphVectorized::from_osm_maps(
+            let graph = OsmGraphVectorized::from_osm_maps_with_modes(
                 pbf_path.clone(),
                 nodes_map,
                 ways_map,
@@ -226,6 +250,7 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
                 simplify.unwrap_or(true),
                 true,
                 request.infrastructure_match_distance_meters,
+                Some(&modes),
             )
             .map_err(|e| e.to_string())?;
 
@@ -392,6 +417,62 @@ mod tests {
         assert!(osm_out_dir.join("edges-mapping.csv.gz").exists());
         assert!(osm_out_dir.join("vertices-complete.csv.gz").exists());
         assert!(osm_out_dir.join("edges-complete.csv.gz").exists());
+        assert!(osm_out_dir
+            .join("drive")
+            .join("edges-compass.csv.gz")
+            .exists());
+        assert!(osm_out_dir
+            .join("drive")
+            .join("edges-mapping.csv.gz")
+            .exists());
+        assert!(osm_out_dir
+            .join("walk")
+            .join("edges-compass.csv.gz")
+            .exists());
+        assert!(osm_out_dir
+            .join("walk")
+            .join("edges-mapping.csv.gz")
+            .exists());
+
+        // Verify both OMF and OSM outputs share the exact same core Compass + mapping + infrastructure files
+        for out_dir in [&omf_out_dir, &osm_out_dir] {
+            for root_file in [
+                "vertices-compass.csv.gz",
+                "vertices-complete.csv.gz",
+                "vertices-mapping.csv.gz",
+                "vertices-traffic-signals-enumerated.txt.gz",
+                "vertices-stop-enumerated.txt.gz",
+                "vertices-give-way-enumerated.txt.gz",
+                "vertices-crossing-enumerated.txt.gz",
+            ] {
+                assert!(
+                    out_dir.join(root_file).exists(),
+                    "missing {} in {}",
+                    root_file,
+                    out_dir.display()
+                );
+            }
+            for mode in ["walk", "drive"] {
+                let mode_dir = out_dir.join(mode);
+                for mode_file in [
+                    "edges-compass.csv.gz",
+                    "edges-mapping.csv.gz",
+                    "edges-geometries-enumerated.txt.gz",
+                    "edges-speeds-mph-enumerated.txt.gz",
+                    "edges-classes-enumerated.txt.gz",
+                    "edges-classes-speed-mapping.csv.gz",
+                    "edges-bearings-enumerated.txt.gz",
+                ] {
+                    assert!(
+                        mode_dir.join(mode_file).exists(),
+                        "missing {}/{} in {}",
+                        mode,
+                        mode_file,
+                        out_dir.display()
+                    );
+                }
+            }
+        }
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }

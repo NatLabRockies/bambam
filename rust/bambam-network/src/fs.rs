@@ -144,7 +144,6 @@ pub fn write_compass_dataset<C, F>(
     class_to_str: F,
     output_directory: &Path,
     overwrite: bool,
-    export_legacy_omf_ids: bool,
 ) -> Result<(), NetworkImportError>
 where
     F: Fn(&C) -> String,
@@ -203,21 +202,6 @@ where
         overwrite,
         "write vertex crossings",
     )?;
-
-    if export_legacy_omf_ids {
-        let connectors_omf_ids = vertex_mappings
-            .iter()
-            .map(|m| m.source_id.clone())
-            .collect::<Vec<String>>();
-
-        serialize_into_enumerated_txt(
-            &connectors_omf_ids,
-            OMF_CONNECTOR_IDS_FILENAME,
-            output_directory,
-            overwrite,
-            "write connector OMF ids",
-        )?;
-    }
 
     let edge_list_iter = tqdm!(
         edge_lists.iter().zip(mode_names.iter()),
@@ -292,16 +276,6 @@ where
             overwrite,
             "write bearings",
         )?;
-
-        if export_legacy_omf_ids {
-            serialize_into_csv(
-                &edge_list.omf_segment_ids,
-                OMF_SEGMENT_IDS_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write omf ids",
-            )?;
-        }
     }
     eprintln!();
 

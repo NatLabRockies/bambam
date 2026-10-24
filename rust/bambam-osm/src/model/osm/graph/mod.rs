@@ -1,38 +1,25 @@
-mod adjacency_direction;
 mod compass_writer;
-mod example;
-pub mod fill_value_lookup;
 pub mod osm_element_filter;
-pub mod osm_graph;
 mod osm_graph_vectorized;
 pub mod osm_node_data;
 mod osm_node_data_serializable;
 mod osm_node_id;
-pub mod osm_segment;
 pub mod osm_way_data;
 mod osm_way_data_serializable;
 mod osm_way_id;
 pub mod osm_way_ops;
-mod vertex_serializable;
-mod way_overwrite_policy;
 
-use crate::model::osm::OsmError;
-pub use adjacency_direction::AdjacencyDirection;
+pub use bambam_network::VertexSerializable;
 pub use compass_writer::CompassWriter;
-use itertools::Itertools;
-pub use osm_graph::OsmGraph;
 pub use osm_graph_vectorized::OsmGraphVectorized;
-pub use osm_node_data::OsmNodeData;
+pub use osm_node_data::{OsmConnectorRecord, OsmNodeData};
 pub use osm_node_data_serializable::OsmNodeDataSerializable;
 pub use osm_node_id::OsmNodeId;
-use osm_segment::OsmSegment;
 pub use osm_way_data::OsmWayData;
 pub use osm_way_data_serializable::OsmWayDataSerializable;
 pub use osm_way_id::OsmWayId;
 use routee_compass_core::model::network::Vertex;
-use std::collections::{HashMap, HashSet};
-pub use vertex_serializable::VertexSerializable;
-pub use way_overwrite_policy::WayOverwritePolicy;
+use std::collections::HashMap;
 
 // type aliases for transitioning between OSM and internal (dense) representation
 pub type Osmid = i64;
@@ -44,12 +31,4 @@ pub type OsmWays = HashMap<OsmWayId, OsmWayData>;
 pub type OsmNodesSerializable = Vec<OsmNodeDataSerializable>;
 pub type OsmWaysSerializable = Vec<OsmWayDataSerializable>;
 pub type VertexLookup = HashMap<OsmNodeId, (CompassIndex, Vertex)>;
-
 pub type PathSegment = Vec<OsmNodeId>;
-pub type AdjacencyListDeprecated = HashMap<OsmNodeId, HashMap<OsmNodeId, OsmSegment>>;
-pub type AdjacencyList =
-    HashMap<(OsmNodeId, AdjacencyDirection), HashMap<OsmNodeId, Vec<OsmSegment>>>;
-
-pub type OsmWaysByOd = HashMap<(OsmNodeId, OsmNodeId), Vec<OsmWayData>>;
-pub type AdjacencyList3 = HashMap<(OsmNodeId, AdjacencyDirection), HashSet<OsmNodeId>>;
-pub type Path3 = Vec<OsmNodeId>;

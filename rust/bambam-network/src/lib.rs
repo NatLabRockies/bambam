@@ -1,3 +1,11 @@
+//! Shared split-based road network ETL, island detection, spatial infrastructure attachment,
+//! and RouteE Compass serialization core.
+//!
+//! Designed with zero BAMBAM/census coupling so it can be upstreamed directly into
+//! `routee-compass`. Both `bambam-omf` (Overture Maps Foundation) and `bambam-osm`
+//! (OpenStreetMap) implement [`ImportConnector`], [`ImportInfrastructure`], and
+//! [`ImportSegment`] to share this pipeline.
+
 pub mod consts;
 pub mod error;
 pub mod fs;

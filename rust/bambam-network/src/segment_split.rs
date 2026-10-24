@@ -175,19 +175,6 @@ impl SegmentSplit {
         Ok(segment.get_distance_at_meters(end)? - segment.get_distance_at_meters(start)?)
     }
 
-    pub fn get_omf_segment_id_and_linear_ref<S, C>(
-        &self,
-        segments: &[&S],
-        segment_lookup: &HashMap<String, usize>,
-    ) -> Result<(String, f64), NetworkImportError>
-    where
-        C: Clone + Eq + Hash + Send + Sync,
-        S: ImportSegment<C>,
-    {
-        let segment = self.get_segment(segments, segment_lookup)?;
-        Ok((segment.segment_id().to_string(), self.src.linear_reference.0))
-    }
-
     pub fn get_edge_mapping<S, C>(
         &self,
         edge_id: usize,

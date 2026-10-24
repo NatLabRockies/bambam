@@ -136,9 +136,8 @@ impl OmfGraphVectorized {
             let global_speed =
                 ops::get_global_average_speed(&speeds, &segments, &segment_lookup, &splits)?;
 
-            // omf ids and standardized edge mappings
-            log::info!("Computing omf_ids and edge mappings");
-            let omf_segment_ids = ops::get_segment_omf_ids(&segments, &segment_lookup, &splits)?;
+            // standardized edge mappings
+            log::info!("Computing edge mappings");
             let edge_mappings = ops::get_edge_mappings(&segments, &segment_lookup, &splits)?;
 
             // match speeds according to classes
@@ -172,7 +171,6 @@ impl OmfGraphVectorized {
                 speeds,
                 speed_lookup,
                 bearings,
-                omf_segment_ids,
                 edge_mappings,
             };
             edge_lists.push(edge_list);
@@ -284,7 +282,6 @@ impl OmfGraphVectorized {
         summary: &OmfGraphSummary,
         output_directory: &Path,
         overwrite: bool,
-        export_omf_ids: bool,
     ) -> Result<(), OvertureMapsCollectionError> {
         kdam::term::init(false);
         kdam::term::hide_cursor().map_err(|e| {
@@ -315,7 +312,6 @@ impl OmfGraphVectorized {
             |class: &SegmentFullType| class.as_str(),
             output_directory,
             overwrite,
-            export_omf_ids,
         )?;
 
         kdam::term::show_cursor().map_err(|e| {

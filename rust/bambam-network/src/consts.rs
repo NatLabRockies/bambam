@@ -18,7 +18,5 @@ pub const GEOMETRIES_FILENAME: &str = "edges-geometries-enumerated.txt.gz";
 pub const SPEEDS_FILENAME: &str = "edges-speeds-mph-enumerated.txt.gz";
 pub const CLASSES_FILENAME: &str = "edges-classes-enumerated.txt.gz";
 pub const SPEED_MAPPING_FILENAME: &str = "edges-classes-speed-mapping.csv.gz";
-pub const OMF_SEGMENT_IDS_FILENAME: &str = "edges-omf-segment-ids.csv.gz";
-pub const OMF_CONNECTOR_IDS_FILENAME: &str = "vertices-omf-connector-ids.txt.gz";
 pub const BEARINGS_FILENAME: &str = "edges-bearings-enumerated.txt.gz";
 pub const GLOBAL_AVG_SPEED_KEY: &str = "_global_";

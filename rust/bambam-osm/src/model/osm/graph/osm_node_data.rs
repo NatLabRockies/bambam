@@ -1,5 +1,4 @@
-use crate::model::osm::OsmError;
-use geo::{Centroid, Coord, Geometry, Intersects, MultiPoint, Point};
+use geo::{Geometry, Intersects, Point};
 use itertools::Itertools;
 use routee_compass_core::model::network::Vertex;
 use serde::{Deserialize, Serialize};
@@ -78,55 +77,6 @@ impl OsmNodeData {
             || self.has_crossing()
             || self.junction.is_some()
             || self.railway.is_some()
-    }
-
-    pub fn consolidate(
-        new_node_id: &OsmNodeId,
-        nodes: &[&OsmNodeData],
-    ) -> Result<OsmNodeData, OsmError> {
-        if nodes.is_empty() {
-            return Err(OsmError::InternalError(String::from(
-                "cannot merge empty vector of nodes",
-            )));
-        }
-
-        // create a new location from the centroid of the collection of nodes
-        let coords = nodes
-            .iter()
-            .map(|n| Point(Coord::from((n.x, n.y))))
-            .collect_vec();
-        let mp = MultiPoint::from(coords);
-        let centroid = mp.centroid().ok_or_else(|| {
-            OsmError::InternalError(String::from("non-empty vector of nodes has no centroid"))
-        })?;
-
-        let node_ids = nodes
-            .iter()
-            .flat_map(|n| {
-                let mut ids = n.consolidated_ids.clone();
-                ids.push(n.osmid);
-                ids
-            })
-            .collect_vec();
-
-        let highway: Option<String> = collect_attribute(nodes, |n| n.highway.clone());
-        let ele: Option<String> = collect_attribute(nodes, |n| n.ele.clone());
-        let junction: Option<String> = collect_attribute(nodes, |n| n.junction.clone());
-        let railway: Option<String> = collect_attribute(nodes, |n| n.railway.clone());
-        let _ref: Option<String> = collect_attribute(nodes, |n| n._ref.clone());
-
-        let result = OsmNodeData {
-            osmid: *new_node_id,
-            x: centroid.x(),
-            y: centroid.y(),
-            highway,
-            ele,
-            junction,
-            railway,
-            _ref,
-            consolidated_ids: node_ids,
-        };
-        Ok(result)
     }
 }
 
@@ -253,37 +203,9 @@ impl From<&osmpbf::dense::DenseNode<'_>> for OsmNodeData {
     }
 }
 
-/// helper function that parses ele values. these should be in meters and contain
-/// only numeric strings according to the documentation, and we follow that logic
-/// optimistically here by supressing parse failures.
 fn parse_ele(ele: &str) -> Option<f64> {
     ele.parse::<i64>()
         .map(|i| i as f64)
         .or_else(|_| ele.parse::<f64>())
-        // .map_err(|e| {
-        //     format!(
-        //         "unable to parse 'ele' value as integer or decimal number: {}",
-        //         e
-        //     )
-        // })
         .ok()
-}
-
-/// helper to combine all unique values for a key and concatenate them
-/// with whitespace
-fn collect_attribute(
-    nodes: &[&OsmNodeData],
-    op: impl FnMut(&&OsmNodeData) -> Option<String>,
-) -> Option<String> {
-    let s = nodes
-        .iter()
-        .flat_map(op)
-        .dedup()
-        .sorted()
-        .join(OsmNodeData::VALUE_DELIMITER);
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
 }

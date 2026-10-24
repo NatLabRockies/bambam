@@ -44,22 +44,11 @@ pub struct OmfNetworkArgs {
     #[arg(short, long)]
     pub output_directory: Option<String>,
 
-    /// use a stored raw data export from a previous run of OmfOperation::Network
-    /// which is a JSON file containing a TransportationCollection.
+    /// use a stored raw data export (`raw/` Parquet directory) from a previous run.
     #[arg(short, long)]
     pub local_source: Option<String>,
 
-    /// write the raw OMF dataset as a JSON blob to the output directory.
-    #[arg(short, long)]
-    #[serde(default)]
-    pub store_raw: bool,
-
-    /// write the list of segment and connector IDs for each edge created
-    #[arg(long)]
-    #[serde(default)]
-    pub omf_ids: bool,
-
-    /// Optional WKT extent in json format. expects a json file with a single "extent" key
+    /// Optional WKT extent file path (plain WKT or JSON with an "extent" key).
     #[arg(short, long)]
     pub extent_file: Option<String>,
 
@@ -151,9 +140,7 @@ impl OmfNetworkArgs {
             &network_config,
             outdir,
             local,
-            self.store_raw,
             island_algorithm_configuration,
-            self.omf_ids,
             extent,
             match_distance,
         )

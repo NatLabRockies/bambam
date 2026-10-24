@@ -46,7 +46,6 @@ pub fn run(app: &App) -> Result<(), OsmCliError> {
                     OsmImportConfiguration::try_from(f)
                 }
             }?;
-            let consolidation_threshold = conf.get_consolidation_threshold();
             let out_path = Path::new(output_directory);
             let pbf_config = OsmSource::Pbf {
                 pbf_filepath: pbf_file.clone(),
@@ -56,9 +55,7 @@ pub fn run(app: &App) -> Result<(), OsmCliError> {
                 truncate_by_edge: conf.truncate_by_edge,
                 ignore_errors: conf.ignore_osm_parsing_errors,
                 simplify: conf.simplify,
-                consolidate: conf.consolidate,
-                consolidation_threshold,
-                parallelize: conf.parallelize,
+                infrastructure_match_distance_meters: conf.infrastructure_match_distance_meters,
             };
             let graph = pbf_config.import()?;
             match graph.write_compass(out_path, true) {
@@ -190,9 +187,7 @@ mod tests {
             truncate_by_edge: true,
             ignore_errors: true,
             simplify: true,
-            consolidate: false,
-            consolidation_threshold: uom::si::f64::Length::new::<uom::si::length::meter>(15.0),
-            parallelize: true,
+            infrastructure_match_distance_meters: Some(15.0),
         };
         let simplified_graph = simplified_source
             .import()

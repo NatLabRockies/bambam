@@ -164,10 +164,7 @@ impl TransportationCollection {
         })
     }
 
-    /// Load a `TransportationCollection` from a local source path, supporting:
-    /// - A directory containing `segments.parquet` or `raw/segments.parquet`
-    /// - A `.parquet` file inside a raw directory
-    /// - A legacy `.json` file
+    /// Load a `TransportationCollection` from a local source path (`raw/` Parquet directory or `.parquet` file).
     pub fn from_local_source(path: &Path) -> Result<Self, OvertureMapsCollectionError> {
         if path.is_dir() {
             return Self::from_parquet_dir(path);
@@ -181,31 +178,10 @@ impl TransportationCollection {
             return Self::from_parquet_dir(parent);
         }
 
-        let contents = std::fs::read(path).map_err(|e| OvertureMapsCollectionError::ReadError {
+        Err(OvertureMapsCollectionError::ReadError {
             path: path.to_owned(),
-            message: e.to_string(),
-        })?;
-        serde_json::from_slice::<TransportationCollection>(&contents).map_err(|e| {
-            OvertureMapsCollectionError::ReadError {
-                path: path.to_owned(),
-                message: format!("failed to deserialize from JSON: {e}"),
-            }
-        })
-    }
-
-    /// write this collection to disk as JSON.
-    pub fn to_json(&self, output_directory: &Path) -> Result<(), OvertureMapsCollectionError> {
-        let json = serde_json::to_string_pretty(self).map_err(|e| {
-            let msg = format!("failure while serializing OMF data as JSON: {e}");
-            OvertureMapsCollectionError::SerializationError(msg)
-        })?;
-        let filepath = output_directory.join("omf-raw.json");
-        std::fs::write(filepath, &json).map_err(|e| {
-            let msg = format!(
-                "failure while writing OMF data as JSON to disk at {}: {e}",
-                output_directory.to_str().unwrap_or_default()
-            );
-            OvertureMapsCollectionError::SerializationError(msg)
+            message: "expected a directory containing raw Parquet files or a .parquet file"
+                .to_string(),
         })
     }
 }
@@ -462,9 +438,7 @@ mod tests {
             &modes,
             &out_dir,
             Some(&tmp_dir),
-            false,
             None,
-            false,
             None,
             Some(15.0),
         )

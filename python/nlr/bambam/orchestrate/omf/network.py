@@ -47,21 +47,12 @@ class OmfNetworkArgs(BaseModel):
     local_source: Optional[Union[str, Path]] = Field(
         default=None,
         description=(
-            "use a stored raw data export from a previous run of OmfOperation::Network "
-            "which is a JSON file containing a TransportationCollection."
+            "use a stored raw Parquet data export (`raw/` directory) from a previous run."
         ),
-    )
-    store_raw: bool = Field(
-        default=False,
-        description="write the raw OMF dataset as a JSON blob to the output directory.",
-    )
-    omf_ids: bool = Field(
-        default=False,
-        description="write the list of segment and connector IDs for each edge created",
     )
     extent_file: Optional[Union[str, Path]] = Field(
         default=None,
-        description="Optional WKT extent in json format. expects a json file with a single \"extent\" key",
+        description="Optional WKT extent file path.",
     )
     infrastructure_match_distance_meters: Optional[float] = Field(
         default=None,
@@ -98,10 +89,6 @@ class OmfNetworkArgs(BaseModel):
             args.extend(["--output-directory", str(self.output_directory)])
         if self.local_source is not None:
             args.extend(["--local-source", str(self.local_source)])
-        if self.store_raw:
-            args.append("--store-raw")
-        if self.omf_ids:
-            args.append("--omf-ids")
         if self.extent_file is not None:
             args.extend(["--extent-file", str(self.extent_file)])
         if self.infrastructure_match_distance_meters is not None:
@@ -144,26 +131,14 @@ def run_omf_network(
     configuration_file: Optional[Union[str, Path]] = None,
     output_directory: Optional[Union[str, Path]] = None,
     local_source: Optional[Union[str, Path]] = None,
-    store_raw: bool = False,
-    omf_ids: bool = False,
     extent_file: Optional[Union[str, Path]] = None,
+    infrastructure_match_distance_meters: Optional[float] = None,
     **kwargs: Any,
 ) -> None:
     """Run the OMF network data import operation.
 
-    Can be invoked by passing an `OmfNetworkArgs` instance, a dictionary of arguments,
-    or keyword arguments matching the fields.
-
-    Args:
-        args: Optional pre-constructed `OmfNetworkArgs` or dictionary.
-        name: User-provided name for this import region.
-        configuration_file: Path to TOML configuration defining edge lists.
-        output_directory: Optional output directory for generated files.
-        local_source: Optional path to raw OMF dataset from a prior run.
-        store_raw: Whether to write the raw OMF dataset as JSON to disk.
-        omf_ids: Whether to export segment/connector ID mappings.
-        extent_file: Optional WKT extent JSON file.
-        **kwargs: Additional keyword arguments forwarded to `OmfNetworkArgs`.
+    Raw Parquet tables (`raw/*.parquet`) and standardized ID mappings
+    (`vertices-mapping.csv.gz` and `<mode>/edges-mapping.csv.gz`) are always written.
     """
     if args is not None:
         if isinstance(args, OmfNetworkArgs):
@@ -182,12 +157,12 @@ def run_omf_network(
             explicit_kwargs["output_directory"] = output_directory
         if local_source is not None:
             explicit_kwargs["local_source"] = local_source
-        if store_raw:
-            explicit_kwargs["store_raw"] = store_raw
-        if omf_ids:
-            explicit_kwargs["omf_ids"] = omf_ids
         if extent_file is not None:
             explicit_kwargs["extent_file"] = extent_file
+        if infrastructure_match_distance_meters is not None:
+            explicit_kwargs["infrastructure_match_distance_meters"] = (
+                infrastructure_match_distance_meters
+            )
         explicit_kwargs.update(kwargs)
         network_args = OmfNetworkArgs(**explicit_kwargs)
 

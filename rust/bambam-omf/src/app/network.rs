@@ -179,9 +179,7 @@ pub fn run(
     modes: &[NetworkEdgeListConfiguration],
     output_directory: &Path,
     local_source: Option<&Path>,
-    write_json: bool,
     island_detection_configuration: Option<IslandDetectionAlgorithm>,
-    export_omf_ids: bool,
     extent: Option<Geometry<f32>>,
     infrastructure_match_distance_meters: Option<f64>,
 ) -> Result<(), OvertureMapsCollectionError> {
@@ -191,9 +189,6 @@ pub fn run(
     }?;
 
     util::fs::create_dirs(output_directory)?;
-    if write_json {
-        collection.to_json(output_directory)?;
-    }
 
     let collection = if let Some(ext_geom) = extent {
         apply_extent_to_collection(collection, ext_geom)
@@ -227,7 +222,7 @@ pub fn run(
     let source = OmfGraphSource::new(&release, name, bbox);
     let summary = OmfGraphSummary { source, stats };
 
-    vectorized_graph.write_compass(&summary, output_directory, true, export_omf_ids)?;
+    vectorized_graph.write_compass(&summary, output_directory, true)?;
 
     Ok(())
 }

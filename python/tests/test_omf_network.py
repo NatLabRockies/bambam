@@ -38,13 +38,12 @@ def test_omf_network_args_validation() -> None:
         name="denver",
         configuration_file=Path("config.toml"),
         output_directory=Path("output"),
-        store_raw=True,
+        infrastructure_match_distance_meters=15.0,
     )
     assert args.name == "denver"
     assert args.configuration_file == "config.toml"
     assert args.output_directory == "output"
-    assert args.store_raw is True
-    assert args.omf_ids is False
+    assert args.infrastructure_match_distance_meters == 15.0
 
 
 def test_cli_args_conversion() -> None:
@@ -53,10 +52,9 @@ def test_cli_args_conversion() -> None:
         name="denver",
         configuration_file="config.toml",
         output_directory="out",
-        local_source="cache.json",
-        store_raw=True,
-        omf_ids=True,
+        local_source="raw",
         extent_file="extent.json",
+        infrastructure_match_distance_meters=15.0,
     )
     cli_args = args.to_cli_args()
     assert cli_args == [
@@ -68,11 +66,11 @@ def test_cli_args_conversion() -> None:
         "--output-directory",
         "out",
         "--local-source",
-        "cache.json",
-        "--store-raw",
-        "--omf-ids",
+        "raw",
         "--extent-file",
         "extent.json",
+        "--infrastructure-match-distance-meters",
+        "15.0",
     ]
 
 
