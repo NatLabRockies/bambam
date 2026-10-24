@@ -4,6 +4,15 @@ import pytest
 from pydantic import ValidationError
 
 from nlr.bambam.orchestrate.omf import OmfNetworkArgs, run_omf_network
+from nlr.bambam.orchestrate.network import (
+    GeographicExtentBbox,
+    GeographicExtentWkt,
+    NetworkImportRequest,
+    OpenStreetMapDataSource,
+    OvertureMapsDataSource,
+    _coerce_extent,
+    _coerce_source,
+)
 
 
 def test_schema_parity_with_rust() -> None:
@@ -74,3 +83,32 @@ def test_run_omf_network_error_propagation() -> None:
             name="test",
             configuration_file="nonexistent_config_file_for_test.toml",
         )
+
+
+def test_unified_network_import_request_coercion() -> None:
+    """Validate high-level extent and data source coercion on NetworkImportRequest."""
+    bbox_ext = _coerce_extent((-105.3, 40.0, -105.2, 40.1))
+    assert isinstance(bbox_ext, GeographicExtentBbox)
+    assert bbox_ext.xmin == -105.3
+
+    wkt_ext = _coerce_extent("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")
+    assert isinstance(wkt_ext, GeographicExtentWkt)
+
+    omf_src = _coerce_source("omf")
+    assert isinstance(omf_src, OvertureMapsDataSource)
+
+    osm_src = _coerce_source("osm", pbf_path="region.osm.pbf")
+    assert isinstance(osm_src, OpenStreetMapDataSource)
+    assert osm_src.pbf_path == "region.osm.pbf"
+
+    req = NetworkImportRequest(
+        name="boulder",
+        extent=bbox_ext,
+        source=omf_src,
+        output_directory="out_dir",
+        modes=["walk", "drive"],
+    )
+    dumped = req.to_rust_dict()
+    assert dumped["extent"]["type"] == "bbox"
+    assert dumped["source"]["type"] == "overture_maps"
+    assert dumped["modes"] == ["walk", "drive"]

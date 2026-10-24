@@ -1,4 +1,5 @@
 use bambam::app::gtfs_flex_config::CliGtfsFlexConfigApp;
+use bambam::app::network_import::{GeographicExtent, NetworkDataSource, NetworkImportRequest};
 use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
@@ -207,6 +208,39 @@ pub enum App {
         inject_filepath: Option<String>,
     },
     GtfsFlexConfigApp(CliGtfsFlexConfigApp),
+    #[command(
+        name = "import-network",
+        about = "Import a RouteE Compass road network from Overture Maps or OpenStreetMap over a geographic extent"
+    )]
+    ImportNetwork {
+        /// Study region / network name
+        #[arg(short, long, default_value = "network")]
+        name: String,
+        /// Data source: "omf" ("overture") or "osm"
+        #[arg(short, long)]
+        source: String,
+        /// Output directory for Compass network, ID mappings, and raw Parquet tables
+        #[arg(short, long)]
+        output_directory: String,
+        /// Optional WKT file path defining the study extent
+        #[arg(long)]
+        extent_file: Option<String>,
+        /// Optional inline WKT string defining the study extent
+        #[arg(long)]
+        extent_wkt: Option<String>,
+        /// Optional bounding box "xmin,ymin,xmax,ymax"
+        #[arg(long)]
+        bbox: Option<String>,
+        /// For OSM: path to .osm.pbf file; for OMF: optional local raw directory/file
+        #[arg(short, long)]
+        input_path: Option<String>,
+        /// Optional comma-separated travel modes (e.g., "walk,bike,drive")
+        #[arg(short, long)]
+        modes: Option<String>,
+        /// Optional maximum distance in meters for snapping infrastructure to vertices (default 15.0)
+        #[arg(long)]
+        infrastructure_match_distance_meters: Option<f64>,
+    },
 }
 
 impl App {
@@ -432,6 +466,86 @@ impl App {
                 .clone() // shouldn't happen, App::run should pass owned self.
                 .run()
                 .map_err(|e| format!("failure running gtfs-flex config app due to {e}")),
+            App::ImportNetwork {
+                name,
+                source,
+                output_directory,
+                extent_file,
+                extent_wkt,
+                bbox,
+                input_path,
+                modes,
+                infrastructure_match_distance_meters,
+            } => {
+                let extent = if let Some(path) = extent_file {
+                    GeographicExtent::WktFile { path: path.clone() }
+                } else if let Some(wkt) = extent_wkt {
+                    GeographicExtent::Wkt { wkt: wkt.clone() }
+                } else if let Some(bbox_str) = bbox {
+                    let parts: Vec<f32> = bbox_str
+                        .split(',')
+                        .map(|s| {
+                            s.trim()
+                                .parse::<f32>()
+                                .map_err(|e| format!("invalid bbox float '{s}': {e}"))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let [xmin, ymin, xmax, ymax] = parts.as_slice() else {
+                        return Err(
+                            "expected --bbox in 'xmin,ymin,xmax,ymax' format".to_string()
+                        );
+                    };
+                    GeographicExtent::Bbox {
+                        xmin: *xmin,
+                        ymin: *ymin,
+                        xmax: *xmax,
+                        ymax: *ymax,
+                    }
+                } else {
+                    return Err(
+                        "must provide one of --extent-file, --extent-wkt, or --bbox".to_string(),
+                    );
+                };
+
+                let data_source = match source.trim().to_ascii_lowercase().as_str() {
+                    "omf" | "overture" | "overture_maps" => NetworkDataSource::OvertureMaps {
+                        local_source: input_path.clone(),
+                    },
+                    "osm" | "openstreetmap" | "open_street_map" => {
+                        let pbf_path = input_path.clone().ok_or_else(|| {
+                            "must provide --input-path pointing to .osm.pbf file when --source is osm"
+                                .to_string()
+                        })?;
+                        NetworkDataSource::OpenStreetMap {
+                            pbf_path,
+                            simplify: Some(true),
+                            truncate_by_edge: Some(true),
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "unsupported --source '{other}'; expected 'omf' or 'osm'"
+                        ))
+                    }
+                };
+
+                let parsed_modes = modes.as_ref().map(|m| {
+                    m.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                });
+
+                let req = NetworkImportRequest {
+                    name: name.clone(),
+                    extent,
+                    source: data_source,
+                    output_directory: output_directory.clone(),
+                    modes: parsed_modes,
+                    infrastructure_match_distance_meters: *infrastructure_match_distance_meters,
+                };
+                req.run()
+            }
         }
     }
 }

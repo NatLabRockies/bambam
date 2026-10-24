@@ -63,6 +63,10 @@ class OmfNetworkArgs(BaseModel):
         default=None,
         description="Optional WKT extent in json format. expects a json file with a single \"extent\" key",
     )
+    infrastructure_match_distance_meters: Optional[float] = Field(
+        default=None,
+        description="Maximum distance in meters for matching Overture infrastructure features to connector vertices (defaults to 15.0)",
+    )
 
     @field_validator(
         "configuration_file",
@@ -100,6 +104,11 @@ class OmfNetworkArgs(BaseModel):
             args.append("--omf-ids")
         if self.extent_file is not None:
             args.extend(["--extent-file", str(self.extent_file)])
+        if self.infrastructure_match_distance_meters is not None:
+            args.extend([
+                "--infrastructure-match-distance-meters",
+                str(self.infrastructure_match_distance_meters),
+            ])
         return args
 
     @classmethod

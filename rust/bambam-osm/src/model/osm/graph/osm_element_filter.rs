@@ -27,6 +27,87 @@ impl ElementFilter {
             F::OverpassQueries { queries } => custom_overpass_queries_filter(element, queries),
         }
     }
+
+    /// Returns a built-in `ElementFilter` matching the requested travel mode names
+    /// (`"walk"`, `"bike"`, `"drive"`), or `ElementFilter::OsmnxAllPublic` if `None` or empty.
+    pub fn default_for_modes(modes: Option<&[String]>) -> Self {
+        let Some(mode_list) = modes.filter(|m| !m.is_empty()) else {
+            return Self::OsmnxAllPublic;
+        };
+
+        let mut tags = HashSet::new();
+        for mode in mode_list {
+            match mode.trim().to_ascii_lowercase().as_str() {
+                "walk" | "foot" | "pedestrian" => {
+                    tags.extend([
+                        Highway::Secondary,
+                        Highway::SecondaryLink,
+                        Highway::Tertiary,
+                        Highway::TertiaryLink,
+                        Highway::Residential,
+                        Highway::LivingStreet,
+                        Highway::Unclassified,
+                        Highway::Service,
+                        Highway::Pedestrian,
+                        Highway::Footway,
+                        Highway::Sidewalk,
+                        Highway::Steps,
+                        Highway::Path,
+                        Highway::Track,
+                        Highway::Bridleway,
+                        Highway::Corridor,
+                        Highway::Trailhead,
+                        Highway::Elevator,
+                    ]);
+                }
+                "bike" | "bicycle" | "cycling" => {
+                    tags.extend([
+                        Highway::Primary,
+                        Highway::PrimaryLink,
+                        Highway::Secondary,
+                        Highway::SecondaryLink,
+                        Highway::Tertiary,
+                        Highway::TertiaryLink,
+                        Highway::Residential,
+                        Highway::LivingStreet,
+                        Highway::Unclassified,
+                        Highway::Service,
+                        Highway::Pedestrian,
+                        Highway::Path,
+                        Highway::Track,
+                        Highway::Cycleway,
+                        Highway::Bridleway,
+                    ]);
+                }
+                "drive" | "car" | "motor_vehicle" | "auto" => {
+                    tags.extend([
+                        Highway::Motorway,
+                        Highway::MotorwayLink,
+                        Highway::Trunk,
+                        Highway::TrunkLink,
+                        Highway::Primary,
+                        Highway::PrimaryLink,
+                        Highway::Secondary,
+                        Highway::SecondaryLink,
+                        Highway::Tertiary,
+                        Highway::TertiaryLink,
+                        Highway::Residential,
+                        Highway::LivingStreet,
+                        Highway::Unclassified,
+                        Highway::Service,
+                        Highway::Road,
+                    ]);
+                }
+                _ => return Self::OsmnxAllPublic,
+            }
+        }
+
+        if tags.is_empty() {
+            Self::OsmnxAllPublic
+        } else {
+            Self::HighwayTags { tags }
+        }
+    }
 }
 
 /// filters ways that do not have a highway tag present in the tags argument.
