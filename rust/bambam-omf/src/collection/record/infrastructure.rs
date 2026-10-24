@@ -113,6 +113,32 @@ impl InfrastructureRecord {
     }
 }
 
+impl bambam_network::ImportInfrastructure for InfrastructureRecord {
+    fn infrastructure_id(&self) -> &str {
+        &self.id
+    }
+
+    fn reference_point(&self) -> Option<Point<f32>> {
+        self.get_reference_point()
+    }
+
+    fn is_traffic_signals(&self) -> bool {
+        InfrastructureRecord::is_traffic_signals(self)
+    }
+
+    fn is_stop(&self) -> bool {
+        InfrastructureRecord::is_stop(self)
+    }
+
+    fn is_give_way(&self) -> bool {
+        InfrastructureRecord::is_give_way(self)
+    }
+
+    fn is_crossing(&self) -> bool {
+        InfrastructureRecord::is_crossing(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

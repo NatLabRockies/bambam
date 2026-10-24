@@ -146,22 +146,24 @@ impl OvertureMapsCollector {
         // each take a small number of row_groups. Inside the `process_meta_obj_into_tasks`
         // function we also prune based on the bounding box
         let row_group_tasks: Vec<RowGroupTask> = runtime.block_on(async {
-            Ok(stream::iter(meta_objects)
-                .map(|meta| {
-                    process_meta_obj_into_tasks(
-                        meta,
-                        self.obj_store.clone(),
-                        Some(io_runtime.handle().clone()),
-                        opt_bbox_filter,
-                        Some(self.rg_chunk_size),
-                    )
-                })
-                .buffer_unordered(self.file_concurrency_limit)
-                .try_collect::<Vec<Vec<RowGroupTask>>>()
-                .await?
-                .into_iter()
-                .flatten()
-                .collect())
+            Ok::<Vec<RowGroupTask>, OvertureMapsCollectionError>(
+                stream::iter(meta_objects)
+                    .map(|meta| {
+                        process_meta_obj_into_tasks(
+                            meta,
+                            self.obj_store.clone(),
+                            Some(io_runtime.handle().clone()),
+                            opt_bbox_filter,
+                            Some(self.rg_chunk_size),
+                        )
+                    })
+                    .buffer_unordered(self.file_concurrency_limit)
+                    .try_collect::<Vec<Vec<RowGroupTask>>>()
+                    .await?
+                    .into_iter()
+                    .flatten()
+                    .collect(),
+            )
         })?;
 
         // Build and collect streams

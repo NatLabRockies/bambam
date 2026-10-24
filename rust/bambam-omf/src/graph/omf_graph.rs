@@ -15,36 +15,19 @@ use crate::{
         segment_ops,
         serialize_ops::{clean_omf_edge_list, compute_vertex_remapping},
         vertex_serializable::{
-            attach_infrastructure_to_vertices, EdgeMappingRecord, OmfVertexComplete,
-            VertexMappingRecord, VertexSerializable, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+            attach_infrastructure_to_vertices, OmfVertexComplete, VertexMappingRecord,
+            DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
         },
         OmfGraphSummary,
     },
 };
-use geo::{Convert, LineString};
-use geozero::ToWkt;
+pub use bambam_network::consts::*;
+use bambam_network::VectorizedEdgeList;
 use itertools::Itertools;
-use kdam::tqdm;
 use rayon::prelude::*;
-use routee_compass_core::model::network::{EdgeConfig, EdgeId, EdgeList, EdgeListId, Vertex};
+use routee_compass_core::model::network::{EdgeId, EdgeList, EdgeListId, Vertex};
 
-pub const COMPASS_VERTEX_FILENAME: &str = "vertices-compass.csv.gz";
-pub const COMPLETE_VERTEX_FILENAME: &str = "vertices-complete.csv.gz";
-pub const VERTEX_MAPPING_FILENAME: &str = "vertices-mapping.csv.gz";
-pub const VERTEX_TRAFFIC_SIGNALS_FILENAME: &str = "vertices-traffic-signals-enumerated.txt.gz";
-pub const VERTEX_STOP_FILENAME: &str = "vertices-stop-enumerated.txt.gz";
-pub const VERTEX_GIVE_WAY_FILENAME: &str = "vertices-give-way-enumerated.txt.gz";
-pub const VERTEX_CROSSING_FILENAME: &str = "vertices-crossing-enumerated.txt.gz";
-pub const COMPASS_EDGES_FILENAME: &str = "edges-compass.csv.gz";
-pub const EDGE_MAPPING_FILENAME: &str = "edges-mapping.csv.gz";
-pub const GEOMETRIES_FILENAME: &str = "edges-geometries-enumerated.txt.gz";
-pub const SPEEDS_FILENAME: &str = "edges-speeds-mph-enumerated.txt.gz";
-pub const CLASSES_FILENAME: &str = "edges-classes-enumerated.txt.gz";
-pub const SPEED_MAPPING_FILENAME: &str = "edges-classes-speed-mapping.csv.gz";
-pub const OMF_SEGMENT_IDS_FILENAME: &str = "edges-omf-segment-ids.csv.gz";
-pub const OMF_CONNECTOR_IDS_FILENAME: &str = "vertices-omf-connector-ids.txt.gz";
-pub const BEARINGS_FILENAME: &str = "edges-bearings-enumerated.txt.gz";
-pub const GLOBAL_AVG_SPEED_KEY: &str = "_global_";
+pub type OmfEdgeList = VectorizedEdgeList<SegmentFullType>;
 
 pub struct OmfGraphVectorized {
     pub vertices: Vec<Vertex>,
@@ -54,18 +37,6 @@ pub struct OmfGraphVectorized {
     pub edge_list_config: Vec<NetworkEdgeListConfiguration>,
     /// for each OMF ID, the vertex index
     pub vertex_lookup: HashMap<String, usize>,
-}
-
-pub struct OmfEdgeList {
-    pub edge_list_id: EdgeListId,
-    pub edges: EdgeList,
-    pub geometries: Vec<LineString<f32>>,
-    pub classes: Vec<SegmentFullType>,
-    pub speeds: Vec<f64>,
-    pub speed_lookup: HashMap<String, f64>,
-    pub bearings: Vec<f64>,
-    pub omf_segment_ids: Vec<(String, f64)>,
-    pub edge_mappings: Vec<EdgeMappingRecord>,
 }
 
 impl OmfGraphVectorized {
@@ -260,7 +231,7 @@ impl OmfGraphVectorized {
                         .map(|edge| !edges_to_remove.contains(&edge.edge_id))
                         .collect::<Vec<bool>>();
 
-                    clean_omf_edge_list(omf_list, mask, &vertex_remapping)
+                    clean_omf_edge_list(omf_list, mask, &vertex_remapping).map_err(Into::into)
                 })
                 .collect::<Result<Vec<OmfEdgeList>, OvertureMapsCollectionError>>()?;
         };
@@ -322,8 +293,6 @@ impl OmfGraphVectorized {
 
         // create output directory if missing
         crate::util::fs::create_dirs(output_directory)?;
-        use crate::util::fs::serialize_into_csv;
-        use crate::util::fs::serialize_into_enumerated_txt;
 
         // write the TOML summary file
         write_summary(output_directory, summary)?;
@@ -331,175 +300,23 @@ impl OmfGraphVectorized {
         // copy default configuration file into the output directory
         crate::util::fs::copy_default_config(output_directory)?;
 
-        // write compass vertices
-        serialize_into_csv(
-            self.vertices.iter().map(|v| VertexSerializable::from(*v)),
-            COMPASS_VERTEX_FILENAME,
+        let mode_names: Vec<String> = self
+            .edge_list_config
+            .iter()
+            .map(|c| c.mode.clone())
+            .collect();
+
+        bambam_network::fs::write_compass_dataset(
+            &self.vertices,
+            &self.vertices_complete,
+            &self.vertex_mappings,
+            &self.edge_lists,
+            &mode_names,
+            |class: &SegmentFullType| class.as_str(),
             output_directory,
             overwrite,
-            "write vertex dataset",
+            export_omf_ids,
         )?;
-
-        // write complete vertices with infrastructure attributes
-        serialize_into_csv(
-            self.vertices_complete.iter(),
-            COMPLETE_VERTEX_FILENAME,
-            output_directory,
-            overwrite,
-            "write complete vertex dataset",
-        )?;
-
-        // always write standardized vertex mapping CSV
-        serialize_into_csv(
-            self.vertex_mappings.iter(),
-            VERTEX_MAPPING_FILENAME,
-            output_directory,
-            overwrite,
-            "write vertex ID mappings",
-        )?;
-
-        // write enumerated vertex infrastructure files
-        serialize_into_enumerated_txt(
-            self.vertices_complete.iter().map(|v| v.traffic_signals),
-            VERTEX_TRAFFIC_SIGNALS_FILENAME,
-            output_directory,
-            overwrite,
-            "write vertex traffic signals",
-        )?;
-        serialize_into_enumerated_txt(
-            self.vertices_complete.iter().map(|v| v.stop),
-            VERTEX_STOP_FILENAME,
-            output_directory,
-            overwrite,
-            "write vertex stop signs",
-        )?;
-        serialize_into_enumerated_txt(
-            self.vertices_complete.iter().map(|v| v.give_way),
-            VERTEX_GIVE_WAY_FILENAME,
-            output_directory,
-            overwrite,
-            "write vertex give way signs",
-        )?;
-        serialize_into_enumerated_txt(
-            self.vertices_complete.iter().map(|v| v.crossing),
-            VERTEX_CROSSING_FILENAME,
-            output_directory,
-            overwrite,
-            "write vertex crossings",
-        )?;
-
-        // legacy connector OMF IDs file if requested
-        if export_omf_ids {
-            let connectors_omf_ids = self
-                .vertex_mappings
-                .iter()
-                .map(|m| m.source_id.clone())
-                .collect::<Vec<String>>();
-
-            serialize_into_enumerated_txt(
-                &connectors_omf_ids,
-                OMF_CONNECTOR_IDS_FILENAME,
-                output_directory,
-                overwrite,
-                "write connector OMF ids",
-            )?;
-        }
-
-        // write each edge list
-        let edge_list_iter = tqdm!(
-            self.edge_lists.iter().zip(self.edge_list_config.iter()),
-            desc = "edge list",
-            total = self.edge_lists.len(),
-            position = 0
-        );
-        for (edge_list, edge_list_config) in edge_list_iter {
-            let mode_str = &edge_list_config.mode;
-            let mode_dir = output_directory.join(mode_str);
-            crate::util::fs::create_dirs(&mode_dir)?;
-
-            // Write Edges
-            serialize_into_csv(
-                edge_list.edges.0.iter().map(|row| EdgeConfig {
-                    edge_id: row.edge_id,
-                    src_vertex_id: row.src_vertex_id,
-                    dst_vertex_id: row.dst_vertex_id,
-                    distance: row.distance.get::<uom::si::length::meter>(),
-                }),
-                COMPASS_EDGES_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write edges",
-            )?;
-
-            // Always write standardized edge mapping CSV
-            serialize_into_csv(
-                edge_list.edge_mappings.iter(),
-                EDGE_MAPPING_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write edge ID mappings",
-            )?;
-
-            // Write geometries
-            serialize_into_enumerated_txt(
-                edge_list.geometries.iter().map(|row| {
-                    let row_f64: LineString<f64> = row.convert();
-                    geo::Geometry::from(row_f64).to_wkt().unwrap_or_default()
-                }),
-                GEOMETRIES_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write geometries",
-            )?;
-
-            // Write speeds
-            serialize_into_enumerated_txt(
-                &edge_list.speeds,
-                SPEEDS_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write speeds",
-            )?;
-
-            // Write classes
-            serialize_into_enumerated_txt(
-                edge_list.classes.iter().map(|class| class.as_str()),
-                CLASSES_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write classes",
-            )?;
-
-            // Write speed_mapping
-            serialize_into_csv(
-                edge_list.speed_lookup.iter(),
-                SPEED_MAPPING_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write speed mapping",
-            )?;
-
-            // Write bearings
-            serialize_into_enumerated_txt(
-                &edge_list.bearings,
-                BEARINGS_FILENAME,
-                &mode_dir,
-                overwrite,
-                "write bearings",
-            )?;
-
-            // Write legacy OMF ids if requested
-            if export_omf_ids {
-                serialize_into_csv(
-                    &edge_list.omf_segment_ids,
-                    OMF_SEGMENT_IDS_FILENAME,
-                    &mode_dir,
-                    overwrite,
-                    "write omf ids",
-                )?;
-            }
-        }
-        eprintln!();
 
         kdam::term::show_cursor().map_err(|e| {
             OvertureMapsCollectionError::InternalError(format!("progress bar error: {e}"))

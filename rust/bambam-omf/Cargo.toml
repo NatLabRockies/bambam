@@ -15,10 +15,7 @@ categories = ["command-line-utilities", "science", "science::geo"]
 
 arrow = { workspace = true }
 bambam-modal-metrics = { workspace = true }
-bamcensus = { workspace = true }
-bamcensus-acs = { workspace = true }
-bamcensus-core = { workspace = true }
-bamcensus-lehd = { workspace = true }
+bambam-network = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
@@ -49,6 +46,6 @@ serde_arrow = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 toml = { workspace = true }
 uom = { workspace = true }

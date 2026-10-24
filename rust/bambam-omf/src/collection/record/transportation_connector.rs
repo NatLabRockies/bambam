@@ -62,3 +62,13 @@ impl TransportationConnectorRecord {
         Ok(Vertex::new(idx, x, y))
     }
 }
+
+impl bambam_network::ImportConnector for TransportationConnectorRecord {
+    fn connector_id(&self) -> &str {
+        &self.id
+    }
+
+    fn try_to_vertex(&self, idx: usize) -> Result<Vertex, bambam_network::NetworkImportError> {
+        TransportationConnectorRecord::try_to_vertex(self, idx).map_err(Into::into)
+    }
+}

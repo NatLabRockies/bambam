@@ -7,6 +7,7 @@ members = [
     "bambam-gtfs",
     "bambam-gtfs-flex",
     "bambam-modal-metrics",
+    "bambam-network",
     "bambam-omf",
     "bambam-osm",
     "bambam-py",
@@ -24,6 +25,7 @@ bambam-gbfs = { version = "0.3.3", path = "bambam-gbfs" }
 bambam-gtfs = { version = "0.3.3", path = "bambam-gtfs" } 
 bambam-gtfs-flex = { version = "0.3.3", path = "bambam-gtfs-flex" }
 bambam-modal-metrics = { version = "0.3.3", path = "bambam-modal-metrics" }
+bambam-network = { version = "0.3.3", path = "bambam-network" }
 bambam-omf = { version = "0.3.3", path = "bambam-omf" }
 bambam-osm = { version = "0.3.3", path = "bambam-osm" }
 bamcensus = { version = "0.1.0" }

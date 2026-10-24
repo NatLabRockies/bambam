@@ -122,7 +122,7 @@ impl OmfNetworkArgs {
                     y: y as f32,
                 });
 
-                Ok(polygon)
+                Ok::<_, OvertureMapsCollectionError>(polygon)
             })
             .transpose()?;
         let bbox = match &extent {

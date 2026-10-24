@@ -1,7 +1,7 @@
 mod connector_in_segment;
 pub mod island_detection;
 mod omf_graph;
-mod segment_split;
+pub(crate) mod segment_split;
 mod serialize_ops;
 mod summary;
 mod vertex_serializable;
