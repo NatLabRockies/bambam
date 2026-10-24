@@ -17,6 +17,7 @@ pub use omf_graph::{
 pub use segment_split::SegmentSplit;
 pub use summary::{ClassStats, EdgeListStats, OmfGraphSource, OmfGraphStats, OmfGraphSummary};
 pub use vertex_serializable::{
-    attach_infrastructure_to_vertices, EdgeMappingRecord, OmfVertexComplete, VertexMappingRecord,
-    VertexSerializable, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+    attach_infrastructure_to_vertices, EdgeMappingRecord, OmfVertexComplete, VertexCompassRecord,
+    VertexCompleteRecord, VertexMappingRecord, VertexSerializable,
+    DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
 };

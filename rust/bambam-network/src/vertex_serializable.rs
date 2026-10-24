@@ -13,14 +13,17 @@ pub const DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS: f64 = 15.0;
 /// Delimiter used when joining multiple matched infrastructure IDs on a single vertex.
 pub const INFRASTRUCTURE_ID_DELIMITER: &str = ";";
 
+/// RouteE Compass vertex coordinate record (`vertices-compass.csv.gz`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VertexSerializable {
+pub struct VertexCompassRecord {
     pub vertex_id: usize,
     pub x: f32,
     pub y: f32,
 }
 
-impl From<Vertex> for VertexSerializable {
+pub type VertexSerializable = VertexCompassRecord;
+
+impl From<Vertex> for VertexCompassRecord {
     fn from(value: Vertex) -> Self {
         Self {
             vertex_id: value.vertex_id.0,
@@ -33,7 +36,7 @@ impl From<Vertex> for VertexSerializable {
 /// Complete vertex record including source connector ID and spatially attached
 /// infrastructure attributes (`vertices-complete.csv.gz`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct OmfVertexComplete {
+pub struct VertexCompleteRecord {
     pub vertex_id: usize,
     pub connector_id: String,
     pub x: f32,
@@ -45,9 +48,10 @@ pub struct OmfVertexComplete {
     pub infrastructure_ids: Option<String>,
 }
 
-pub type NetworkVertexComplete = OmfVertexComplete;
+pub type NetworkVertexComplete = VertexCompleteRecord;
+pub type OmfVertexComplete = VertexCompleteRecord;
 
-impl VertexForModalMetric for OmfVertexComplete {
+impl VertexForModalMetric for VertexCompleteRecord {
     fn has_traffic_signals(&self) -> bool {
         self.traffic_signals
     }
@@ -97,11 +101,11 @@ pub fn attach_infrastructure_to_vertices<I: ImportInfrastructure>(
     connector_ids: &[String],
     infrastructure: &[I],
     max_distance_meters: f64,
-) -> Vec<OmfVertexComplete> {
-    let mut complete_vertices: Vec<OmfVertexComplete> = vertices
+) -> Vec<VertexCompleteRecord> {
+    let mut complete_vertices: Vec<VertexCompleteRecord> = vertices
         .iter()
         .zip(connector_ids.iter())
-        .map(|(v, conn_id)| OmfVertexComplete {
+        .map(|(v, conn_id)| VertexCompleteRecord {
             vertex_id: v.vertex_id.0,
             connector_id: conn_id.clone(),
             x: v.x(),

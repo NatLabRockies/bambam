@@ -156,7 +156,7 @@ where
         .collect::<Result<Vec<Option<f64>>, NetworkImportError>>()
 }
 
-pub fn create_segment_full_types<S, C>(
+pub fn create_classes<S, C>(
     segments: &[&S],
     segment_lookup: &HashMap<String, usize>,
     splits: &[SegmentSplit],
@@ -167,11 +167,11 @@ where
 {
     splits
         .par_iter()
-        .map(|split| split.get_split_segment_full_type(segments, segment_lookup))
+        .map(|split| split.get_split_class(segments, segment_lookup))
         .collect::<Result<Vec<C>, NetworkImportError>>()
 }
 
-pub fn create_speed_by_segment_type_lookup<'a, S, C>(
+pub fn create_speed_by_class_lookup<'a, S, C>(
     initial_speeds: &[Option<f64>],
     segments: &[&S],
     segment_lookup: &HashMap<String, usize>,
@@ -325,13 +325,13 @@ pub fn compute_vertex_remapping<C>(
         .collect())
 }
 
-pub fn clean_omf_edge_list<C: Send>(
-    omf_list: VectorizedEdgeList<C>,
+pub fn clean_edge_list<C: Send>(
+    edge_list: VectorizedEdgeList<C>,
     mask: Vec<bool>,
     vertex_remapping: &[Option<VertexId>],
 ) -> Result<VectorizedEdgeList<C>, NetworkImportError> {
     let edges = EdgeList(
-        omf_list
+        edge_list
             .edges
             .0
             .iter()
@@ -372,7 +372,7 @@ pub fn clean_omf_edge_list<C: Send>(
             .into_boxed_slice(),
     );
 
-    let geometries = omf_list
+    let geometries = edge_list
         .geometries
         .into_iter()
         .enumerate()
@@ -382,7 +382,7 @@ pub fn clean_omf_edge_list<C: Send>(
         .map(|(_, ls)| ls)
         .collect();
 
-    let classes = omf_list
+    let classes = edge_list
         .classes
         .into_iter()
         .enumerate()
@@ -392,7 +392,7 @@ pub fn clean_omf_edge_list<C: Send>(
         .map(|(_, cls)| cls)
         .collect();
 
-    let speeds = omf_list
+    let speeds = edge_list
         .speeds
         .into_iter()
         .enumerate()
@@ -402,7 +402,7 @@ pub fn clean_omf_edge_list<C: Send>(
         .map(|(_, s)| s)
         .collect();
 
-    let bearings = omf_list
+    let bearings = edge_list
         .bearings
         .into_iter()
         .enumerate()
@@ -412,7 +412,7 @@ pub fn clean_omf_edge_list<C: Send>(
         .map(|(_, b)| b)
         .collect();
 
-    let edge_mappings = omf_list
+    let edge_mappings = edge_list
         .edge_mappings
         .into_iter()
         .enumerate()
@@ -427,12 +427,12 @@ pub fn clean_omf_edge_list<C: Send>(
         .collect();
 
     Ok(VectorizedEdgeList {
-        edge_list_id: omf_list.edge_list_id,
+        edge_list_id: edge_list.edge_list_id,
         edges,
         geometries,
         classes,
         speeds,
-        speed_lookup: omf_list.speed_lookup,
+        speed_lookup: edge_list.speed_lookup,
         bearings,
         edge_mappings,
     })

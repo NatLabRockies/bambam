@@ -147,7 +147,7 @@ impl SegmentSplit {
         )
     }
 
-    pub fn get_split_segment_full_type<S, C>(
+    pub fn get_split_class<S, C>(
         &self,
         segments: &[&S],
         segment_lookup: &HashMap<String, usize>,

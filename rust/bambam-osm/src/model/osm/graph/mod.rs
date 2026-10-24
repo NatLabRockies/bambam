@@ -9,10 +9,15 @@ mod osm_way_data_serializable;
 mod osm_way_id;
 pub mod osm_way_ops;
 
-pub use bambam_network::VertexSerializable;
+pub use bambam_network::{
+    EdgeMappingRecord, VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord,
+    VertexSerializable,
+};
 pub use compass_writer::CompassWriter;
-pub use osm_graph_vectorized::OsmGraphVectorized;
-pub use osm_node_data::{OsmConnectorRecord, OsmNodeData};
+pub use osm_graph_vectorized::{OsmEdgeList, OsmGraphVectorized};
+pub use osm_node_data::{
+    OsmConnectorRecord, OsmConnectorRecord as OsmInfrastructureRecord, OsmNodeData,
+};
 pub use osm_node_data_serializable::OsmNodeDataSerializable;
 pub use osm_node_id::OsmNodeId;
 pub use osm_way_data::OsmWayData;

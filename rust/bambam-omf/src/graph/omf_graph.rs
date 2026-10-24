@@ -13,9 +13,9 @@ use crate::{
     graph::{
         island_detection::IslandDetectionAlgorithm,
         segment_ops,
-        serialize_ops::{clean_omf_edge_list, compute_vertex_remapping},
+        serialize_ops::{clean_edge_list, compute_vertex_remapping},
         vertex_serializable::{
-            attach_infrastructure_to_vertices, OmfVertexComplete, VertexMappingRecord,
+            attach_infrastructure_to_vertices, VertexCompleteRecord, VertexMappingRecord,
             DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
         },
         OmfGraphSummary,
@@ -31,7 +31,7 @@ pub type OmfEdgeList = VectorizedEdgeList<SegmentFullType>;
 
 pub struct OmfGraphVectorized {
     pub vertices: Vec<Vertex>,
-    pub vertices_complete: Vec<OmfVertexComplete>,
+    pub vertices_complete: Vec<VertexCompleteRecord>,
     pub vertex_mappings: Vec<VertexMappingRecord>,
     pub edge_lists: Vec<OmfEdgeList>,
     pub edge_list_config: Vec<NetworkEdgeListConfiguration>,
@@ -118,12 +118,12 @@ impl OmfGraphVectorized {
             log::info!("Creating bearings");
             let bearings = ops::bearing_deg_from_geometries(&geometries)?;
             log::info!("Creating classes");
-            let classes = ops::create_segment_full_types(&segments, &segment_lookup, &splits)?;
+            let classes = ops::create_classes(&segments, &segment_lookup, &splits)?;
 
             log::info!("Creating speeds");
             let speeds = ops::create_speeds(&segments, &segment_lookup, &splits)?;
             log::info!("Creating speed lookup");
-            let speed_lookup = ops::create_speed_by_segment_type_lookup(
+            let speed_lookup = ops::create_speed_by_class_lookup(
                 &speeds,
                 &segments,
                 &segment_lookup,
@@ -229,7 +229,7 @@ impl OmfGraphVectorized {
                         .map(|edge| !edges_to_remove.contains(&edge.edge_id))
                         .collect::<Vec<bool>>();
 
-                    clean_omf_edge_list(omf_list, mask, &vertex_remapping).map_err(Into::into)
+                    clean_edge_list(omf_list, mask, &vertex_remapping).map_err(Into::into)
                 })
                 .collect::<Result<Vec<OmfEdgeList>, OvertureMapsCollectionError>>()?;
         };

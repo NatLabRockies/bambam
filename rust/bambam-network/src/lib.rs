@@ -27,6 +27,6 @@ pub use serialize_ops::VectorizedEdgeList;
 pub use summary::{ClassStats, EdgeListStats};
 pub use vertex_serializable::{
     attach_infrastructure_to_vertices, EdgeMappingRecord, NetworkVertexComplete, OmfVertexComplete,
-    VertexMappingRecord, VertexSerializable, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
-    INFRASTRUCTURE_ID_DELIMITER,
+    VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord, VertexSerializable,
+    DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS, INFRASTRUCTURE_ID_DELIMITER,
 };

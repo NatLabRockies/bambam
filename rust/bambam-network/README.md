@@ -10,6 +10,19 @@ Shared split-based road network ETL, island detection, spatial infrastructure at
 - **`ImportInfrastructure`**: Represents traffic control and comfort infrastructure (`traffic_signals`, `stop`, `give_way`, `crossing`) spatially snapped to vertices via an `rstar::RTree` within a configurable Haversine tolerance (default `15.0`m).
 - **`ImportSegment<C>`**: Represents road segments split at topological connectors via linear referencing (`SegmentSplit`), eliminating destructive in-place graph simplification.
 
+## Type Alignment Across Crates
+
+| Concept | `bambam-network` (Shared Core) | `bambam-omf` (Overture Maps) | `bambam-osm` (OpenStreetMap) |
+|---|---|---|---|
+| **Raw Collection** | — | `OmfCollection` (`TransportationCollection`) | `OsmCollection` |
+| **Connector Input** | `ImportConnector` | `OmfConnectorRecord` (`TransportationConnectorRecord`) | `OsmConnectorRecord` |
+| **Segment Input** | `ImportSegment<C>` | `OmfSegmentRecord` (`TransportationSegmentRecord`) | `OsmSegmentRecord` |
+| **Infrastructure Input** | `ImportInfrastructure` | `OmfInfrastructureRecord` (`InfrastructureRecord`) | `OsmInfrastructureRecord` |
+| **Split Primitives** | `ConnectorInSegment`, `SegmentSplit`, `SegmentHeading` | Re-exported from `bambam-network` | Re-exported from `bambam-network` |
+| **Vectorized Edge List** | `VectorizedEdgeList<C>` | `OmfEdgeList` (`VectorizedEdgeList<SegmentFullType>`) | `OsmEdgeList` (`VectorizedEdgeList<Highway>`) |
+| **Vectorized Graph** | — | `OmfGraphVectorized` | `OsmGraphVectorized` |
+| **Output Records** | `VertexCompassRecord`, `VertexCompleteRecord`, `VertexMappingRecord`, `EdgeMappingRecord` | Re-exported from `bambam-network` | Re-exported from `bambam-network` + `OsmNodeDataSerializable`, `OsmWayDataSerializable` |
+
 ## Output Guarantees
 
 Every network import produces a consistent directory structure:

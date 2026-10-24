@@ -23,14 +23,16 @@ use crate::{
 };
 use bambam_network::{
     attach_infrastructure_to_vertices,
-    serialize_ops::{self as net_ops, clean_omf_edge_list, compute_vertex_remapping},
-    EdgeMappingRecord, IslandDetectionAlgorithm, OmfVertexComplete, SegmentHeading,
-    VectorizedEdgeList, VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+    serialize_ops::{self as net_ops, clean_edge_list, compute_vertex_remapping},
+    EdgeMappingRecord, IslandDetectionAlgorithm, SegmentHeading, VectorizedEdgeList,
+    VertexCompleteRecord, VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
     GLOBAL_AVG_SPEED_KEY,
 };
 use geo::Geometry;
 use rayon::prelude::*;
 use routee_compass_core::model::network::{EdgeId, EdgeList, EdgeListId, VertexId};
+
+pub type OsmEdgeList = VectorizedEdgeList<Highway>;
 
 pub struct OsmGraphVectorized {
     /// the collection of OSM nodes associated via their OSMID
@@ -40,15 +42,15 @@ pub struct OsmGraphVectorized {
     /// for each OsmNodeId, the vertex index and Vertex
     pub vertex_lookup: VertexLookup,
     /// enriched vertices with traffic_signals, stop, give_way, crossing
-    pub vertices_complete: Vec<OmfVertexComplete>,
+    pub vertices_complete: Vec<VertexCompleteRecord>,
     /// standardized vertex ID to OSM node ID mapping
     pub vertex_mappings: Vec<VertexMappingRecord>,
     /// standardized edge ID to OSM way ID + linear reference mapping
     pub edge_mappings: Vec<EdgeMappingRecord>,
     /// primary vectorized edge list from bambam-network
-    pub edge_list: Option<VectorizedEdgeList<Highway>>,
+    pub edge_list: Option<OsmEdgeList>,
     /// optional per-mode vectorized edge lists (e.g., `walk`, `bike`, `drive`)
-    pub mode_edge_lists: Vec<(String, VectorizedEdgeList<Highway>)>,
+    pub mode_edge_lists: Vec<(String, OsmEdgeList)>,
     /// raw OSM nodes and ways collection for Parquet retention
     pub raw_collection: Option<OsmCollection>,
 }
@@ -183,7 +185,7 @@ impl OsmGraphVectorized {
                 .map(|(_, item)| item)
                 .collect();
 
-            vec_edge_list = clean_omf_edge_list(single_list, mask, &vertex_remapping)?;
+            vec_edge_list = clean_edge_list(single_list, mask, &vertex_remapping)?;
         } else {
             kept_connectors = connectors;
         }
@@ -338,7 +340,7 @@ fn build_osm_edge_list_from_segments<'a>(
         &splits,
     )?;
     let bearings = net_ops::bearing_deg_from_geometries(&geometries)?;
-    let classes = net_ops::create_segment_full_types::<OsmSegmentRecord, Highway>(
+    let classes = net_ops::create_classes::<OsmSegmentRecord, Highway>(
         segment_refs,
         &segment_lookup,
         &splits,
@@ -348,7 +350,7 @@ fn build_osm_edge_list_from_segments<'a>(
         &segment_lookup,
         &splits,
     )?;
-    let speed_lookup_by_hw = net_ops::create_speed_by_segment_type_lookup::<OsmSegmentRecord, Highway>(
+    let speed_lookup_by_hw = net_ops::create_speed_by_class_lookup::<OsmSegmentRecord, Highway>(
         &initial_speeds,
         segment_refs,
         &segment_lookup,
