@@ -48,8 +48,9 @@ pub struct OmfNetworkArgs {
     #[arg(short, long)]
     pub local_source: Option<String>,
 
-    /// Optional WKT extent file path (plain WKT or JSON with an "extent" key).
-    #[arg(short, long)]
+    /// Optional WKT extent file path (plain WKT or JSON with an "extent" key). Not required
+    /// when `local_source` is provided.
+    #[arg(short, long, required_unless_present = "local_source")]
     pub extent_file: Option<String>,
 
     /// Maximum distance in meters for matching Overture infrastructure features to connector vertices (defaults to 15.0)
