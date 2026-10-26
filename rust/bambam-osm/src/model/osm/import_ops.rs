@@ -13,7 +13,9 @@ use crate::{
     },
 };
 use arrow::datatypes::FieldRef;
-use bambam_network::{ConnectorInSegment, ImportSegment, NetworkImportError, SegmentHeading, SegmentSplit};
+use bambam_network::{
+    ConnectorInSegment, ImportSegment, NetworkImportError, SegmentHeading, SegmentSplit,
+};
 use geo::{BoundingRect, Coord, Geometry, Haversine, Intersects, Length, Line, LineString};
 use itertools::Itertools;
 use kdam::{term, Bar, BarExt};
@@ -261,16 +263,8 @@ impl OsmCollection {
         let raw_dir = output_directory.join(RAW_DIRNAME);
         bambam_network::fs::create_dirs(&raw_dir)?;
 
-        write_records_to_parquet(
-            &self.nodes,
-            &raw_dir.join(RAW_NODES_PARQUET),
-            &self.source,
-        )?;
-        write_records_to_parquet(
-            &self.ways,
-            &raw_dir.join(RAW_WAYS_PARQUET),
-            &self.source,
-        )?;
+        write_records_to_parquet(&self.nodes, &raw_dir.join(RAW_NODES_PARQUET), &self.source)?;
+        write_records_to_parquet(&self.ways, &raw_dir.join(RAW_WAYS_PARQUET), &self.source)?;
         Ok(())
     }
 
@@ -288,8 +282,10 @@ impl OsmCollection {
             )));
         };
 
-        let (nodes, n_src) = read_records_from_parquet::<OsmNodeData>(&raw_dir.join(RAW_NODES_PARQUET))?;
-        let (ways, w_src) = read_records_from_parquet::<OsmWayData>(&raw_dir.join(RAW_WAYS_PARQUET))?;
+        let (nodes, n_src) =
+            read_records_from_parquet::<OsmNodeData>(&raw_dir.join(RAW_NODES_PARQUET))?;
+        let (ways, w_src) =
+            read_records_from_parquet::<OsmWayData>(&raw_dir.join(RAW_WAYS_PARQUET))?;
         let source = w_src
             .or(n_src)
             .unwrap_or_else(|| format!("file://{}", raw_dir.to_string_lossy()));
@@ -302,11 +298,7 @@ impl OsmCollection {
     }
 }
 
-fn write_records_to_parquet<T>(
-    records: &[T],
-    filepath: &Path,
-    source: &str,
-) -> Result<(), OsmError>
+fn write_records_to_parquet<T>(records: &[T], filepath: &Path, source: &str) -> Result<(), OsmError>
 where
     T: Serialize + DeserializeOwned,
 {
@@ -328,10 +320,7 @@ where
     })?;
 
     let file = File::create(filepath).map_err(|e| {
-        OsmError::GraphSerializationError(format!(
-            "failed to create '{}': {e}",
-            filepath.display()
-        ))
+        OsmError::GraphSerializationError(format!("failed to create '{}': {e}", filepath.display()))
     })?;
 
     let props = WriterProperties::builder()
@@ -453,11 +442,7 @@ impl ImportSegment<Highway> for OsmSegmentRecord {
         Ok(self.speed_mph)
     }
 
-    fn get_split_class(
-        &self,
-        _start_lr: f64,
-        _end_lr: f64,
-    ) -> Result<Highway, NetworkImportError> {
+    fn get_split_class(&self, _start_lr: f64, _end_lr: f64) -> Result<Highway, NetworkImportError> {
         Ok(self.highway.clone())
     }
 
@@ -526,10 +511,7 @@ pub fn extract_osm_connectors_and_segments(
     let mut node_degree: HashMap<OsmNodeId, usize> = HashMap::new();
     let mut endpoint_nodes: HashSet<OsmNodeId> = HashSet::new();
 
-    let sorted_ways = ways_map
-        .values()
-        .sorted_by_key(|w| w.osmid)
-        .collect_vec();
+    let sorted_ways = ways_map.values().sorted_by_key(|w| w.osmid).collect_vec();
 
     for way in &sorted_ways {
         let valid_nodes: Vec<OsmNodeId> = way
@@ -614,8 +596,7 @@ pub fn extract_osm_connectors_and_segments(
                     return true;
                 }
                 let nid = valid_nodes[idx];
-                if endpoint_nodes.contains(&nid)
-                    || node_degree.get(&nid).copied().unwrap_or(0) >= 2
+                if endpoint_nodes.contains(&nid) || node_degree.get(&nid).copied().unwrap_or(0) >= 2
                 {
                     return true;
                 }
@@ -645,9 +626,9 @@ pub fn extract_osm_connectors_and_segments(
             // Apply polygon extent filter if present
             if let Some(ext) = extent_opt {
                 let keep = if truncate_by_edge {
-                    sub_linestring
-                        .bounding_rect()
-                        .is_some_and(|bbox| ext.intersects(&bbox) && ext.intersects(&sub_linestring))
+                    sub_linestring.bounding_rect().is_some_and(|bbox| {
+                        ext.intersects(&bbox) && ext.intersects(&sub_linestring)
+                    })
                 } else {
                     sub_nodes
                         .iter()
@@ -695,9 +676,7 @@ pub fn extract_osm_connectors_and_segments(
 
     let infrastructure: Vec<OsmConnectorRecord> = nodes_map
         .values()
-        .filter(|n| {
-            n.has_traffic_signals() || n.has_stop() || n.has_give_way() || n.has_crossing()
-        })
+        .filter(|n| n.has_traffic_signals() || n.has_stop() || n.has_give_way() || n.has_crossing())
         .filter(|n| extent_opt.is_none_or(|ext| n.intersects(ext)))
         .sorted_by_key(|n| n.osmid)
         .cloned()
