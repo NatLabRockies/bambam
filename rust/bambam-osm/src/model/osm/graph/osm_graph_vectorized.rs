@@ -196,7 +196,8 @@ impl OsmGraphVectorized {
         let mut final_vertex_lookup_str: HashMap<String, usize> =
             HashMap::with_capacity(kept_connectors.len());
         let mut connector_ids: Vec<String> = Vec::with_capacity(kept_connectors.len());
-        let mut vertex_mappings: Vec<VertexMappingRecord> = Vec::with_capacity(kept_connectors.len());
+        let mut vertex_mappings: Vec<VertexMappingRecord> =
+            Vec::with_capacity(kept_connectors.len());
 
         for (vertex_id, (conn, vertex)) in kept_connectors.iter().zip(vertices.iter()).enumerate() {
             nodes.push(OsmNodeDataSerializable::from(&conn.node));
@@ -264,7 +265,8 @@ impl OsmGraphVectorized {
         let mut mode_edge_lists = Vec::new();
         if let Some(mode_list) = modes.filter(|m| !m.is_empty()) {
             for (mode_idx, mode_name) in mode_list.iter().enumerate() {
-                let mode_filter = ElementFilter::default_for_modes(Some(std::slice::from_ref(mode_name)));
+                let mode_filter =
+                    ElementFilter::default_for_modes(Some(std::slice::from_ref(mode_name)));
                 let allowed_tags: Option<HashSet<Highway>> = match mode_filter {
                     ElementFilter::HighwayTags { tags } => Some(tags),
                     _ => None,
@@ -470,7 +472,10 @@ fn find_component_filter_removed_edges(
 
     let mut kept_vertices: HashSet<VertexId> = HashSet::new();
     for comp in component_vertices {
-        if comp.first().is_some_and(|first| kept_start_ids.contains(first)) {
+        if comp
+            .first()
+            .is_some_and(|first| kept_start_ids.contains(first))
+        {
             for v in comp {
                 kept_vertices.insert(VertexId(v));
             }

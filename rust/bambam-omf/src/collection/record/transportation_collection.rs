@@ -78,7 +78,11 @@ impl TransportationCollection {
 
         let infra_filter_config = build_infrastructure_row_filter(row_filter_config);
         let infrastructure = collector
-            .collect_from_release(&uri, &OvertureRecordType::Infrastructure, infra_filter_config)?
+            .collect_from_release(
+                &uri,
+                &OvertureRecordType::Infrastructure,
+                infra_filter_config,
+            )?
             .into_iter()
             .map(|record| match record {
                 OvertureRecord::Infrastructure(infra_record) => Ok(infra_record),
@@ -139,10 +143,12 @@ impl TransportationCollection {
             });
         };
 
-        let (segments, seg_release) =
-            read_records_from_parquet::<TransportationSegmentRecord>(&raw_dir.join(RAW_SEGMENTS_PARQUET))?;
-        let (connectors, conn_release) =
-            read_records_from_parquet::<TransportationConnectorRecord>(&raw_dir.join(RAW_CONNECTORS_PARQUET))?;
+        let (segments, seg_release) = read_records_from_parquet::<TransportationSegmentRecord>(
+            &raw_dir.join(RAW_SEGMENTS_PARQUET),
+        )?;
+        let (connectors, conn_release) = read_records_from_parquet::<TransportationConnectorRecord>(
+            &raw_dir.join(RAW_CONNECTORS_PARQUET),
+        )?;
 
         let infra_path = raw_dir.join(RAW_INFRASTRUCTURE_PARQUET);
         let (infrastructure, infra_release) = if infra_path.exists() {
@@ -194,7 +200,9 @@ fn build_infrastructure_row_filter(
     };
     match base_filter {
         None => Some(class_filter),
-        Some(RowFilterConfig::HasClassIn { classes }) => Some(RowFilterConfig::HasClassIn { classes }),
+        Some(RowFilterConfig::HasClassIn { classes }) => {
+            Some(RowFilterConfig::HasClassIn { classes })
+        }
         Some(RowFilterConfig::Combined { mut filters }) => {
             let has_class_filter = filters.iter().any(|f| {
                 matches!(
@@ -343,7 +351,8 @@ mod tests {
 
     #[test]
     fn test_parquet_raw_roundtrip_and_pipeline_outputs() {
-        let tmp_dir = std::env::temp_dir().join(format!("bambam_omf_phase1_test_{}", std::process::id()));
+        let tmp_dir =
+            std::env::temp_dir().join(format!("bambam_omf_phase1_test_{}", std::process::id()));
         if tmp_dir.exists() {
             let _ = std::fs::remove_dir_all(&tmp_dir);
         }
@@ -453,7 +462,9 @@ mod tests {
         assert!(out_dir.join("vertices-compass.csv.gz").exists());
         assert!(out_dir.join("vertices-complete.csv.gz").exists());
         assert!(out_dir.join("vertices-mapping.csv.gz").exists());
-        assert!(out_dir.join("vertices-traffic-signals-enumerated.txt.gz").exists());
+        assert!(out_dir
+            .join("vertices-traffic-signals-enumerated.txt.gz")
+            .exists());
         assert!(out_dir.join("vertices-stop-enumerated.txt.gz").exists());
         assert!(out_dir.join("vertices-give-way-enumerated.txt.gz").exists());
         assert!(out_dir.join("vertices-crossing-enumerated.txt.gz").exists());

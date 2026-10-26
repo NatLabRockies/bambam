@@ -165,12 +165,15 @@ impl CompassWriter for OsmGraphVectorized {
         )?;
 
         serialize_into_csv(
-            self.ways.iter().enumerate().map(|(edge_id, row)| EdgeConfig {
-                edge_id: EdgeId(edge_id),
-                src_vertex_id: row.src_vertex_id,
-                dst_vertex_id: row.dst_vertex_id,
-                distance: row.length_meters,
-            }),
+            self.ways
+                .iter()
+                .enumerate()
+                .map(|(edge_id, row)| EdgeConfig {
+                    edge_id: EdgeId(edge_id),
+                    src_vertex_id: row.src_vertex_id,
+                    dst_vertex_id: row.dst_vertex_id,
+                    distance: row.length_meters,
+                }),
             filenames::EDGES_COMPASS,
             output_directory,
             overwrite,

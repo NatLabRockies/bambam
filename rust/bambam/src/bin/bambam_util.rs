@@ -491,9 +491,7 @@ impl App {
                         })
                         .collect::<Result<Vec<_>, _>>()?;
                     let [xmin, ymin, xmax, ymax] = parts.as_slice() else {
-                        return Err(
-                            "expected --bbox in 'xmin,ymin,xmax,ymax' format".to_string()
-                        );
+                        return Err("expected --bbox in 'xmin,ymin,xmax,ymax' format".to_string());
                     };
                     GeographicExtent::Bbox {
                         xmin: *xmin,
@@ -503,7 +501,7 @@ impl App {
                     }
                 } else {
                     return Err(
-                        "must provide one of --extent-file, --extent-wkt, or --bbox".to_string(),
+                        "must provide one of --extent-file, --extent-wkt, or --bbox".to_string()
                     );
                 };
 

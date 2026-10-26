@@ -98,7 +98,9 @@ impl GeographicExtent {
     }
 }
 
-fn parse_wkt_str_to_geometry_and_bbox(raw: &str) -> Result<(Geometry<f32>, CliBoundingBox), String> {
+fn parse_wkt_str_to_geometry_and_bbox(
+    raw: &str,
+) -> Result<(Geometry<f32>, CliBoundingBox), String> {
     let trimmed = raw.trim();
     // Support JSON with an `{"extent": "POLYGON(...)"}` wrapper as well as plain WKT
     let wkt_str: String = if trimmed.starts_with('{') {
@@ -236,8 +238,8 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
             };
             let filter = ElementFilter::default_for_modes(Some(&modes));
             let extent_opt = Some(extent_geom);
-            let (nodes_map, ways_map) = import_ops::read_pbf(pbf_path, filter, &extent_opt)
-                .map_err(|e| e.to_string())?;
+            let (nodes_map, ways_map) =
+                import_ops::read_pbf(pbf_path, filter, &extent_opt).map_err(|e| e.to_string())?;
 
             let graph = OsmGraphVectorized::from_osm_maps_with_modes(
                 pbf_path.clone(),

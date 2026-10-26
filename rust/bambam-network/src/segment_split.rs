@@ -52,13 +52,19 @@ impl SegmentSplit {
             return Err(E::InvalidSegmentConnectors(msg));
         }
 
-        let src_id = vertex_lookup
-            .get(&src.connector_id)
-            .ok_or_else(|| E::InvalidSegmentConnectors(format!("segment references unknown connector {}", src.connector_id)))?;
+        let src_id = vertex_lookup.get(&src.connector_id).ok_or_else(|| {
+            E::InvalidSegmentConnectors(format!(
+                "segment references unknown connector {}",
+                src.connector_id
+            ))
+        })?;
 
-        let dst_id = vertex_lookup
-            .get(&dst.connector_id)
-            .ok_or_else(|| E::InvalidSegmentConnectors(format!("segment references unknown connector {}", dst.connector_id)))?;
+        let dst_id = vertex_lookup.get(&dst.connector_id).ok_or_else(|| {
+            E::InvalidSegmentConnectors(format!(
+                "segment references unknown connector {}",
+                dst.connector_id
+            ))
+        })?;
 
         let (src_vertex_id, dst_vertex_id) = match heading {
             SegmentHeading::Forward => (VertexId(*src_id), VertexId(*dst_id)),
