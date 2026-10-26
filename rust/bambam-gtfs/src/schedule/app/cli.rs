@@ -1,5 +1,5 @@
 //! GTFS archive pre-processing scripts for bambam-gtfs transit modeling.
-//! see [https://github.com/MobilityData/mobility-database-catalogs] for
+//! see <https://github.com/MobilityData/mobility-database-catalogs> for
 //! information on the mobility database catalog listing.
 use crate::schedule::bundle_ops::ProcessBundlesConfig;
 use crate::schedule::distance_calculation_policy::DistanceCalculationPolicy;
@@ -276,7 +276,7 @@ fn load_vertices_and_create_spatial_index(
 }
 
 /// reads rows from a GTFS manifest in the format of Mobility Data Catalog
-/// see [https://github.com/MobilityData/mobility-database-catalogs].
+/// see <https://github.com/MobilityData/mobility-database-catalogs>.
 ///
 /// # Arguments
 ///
