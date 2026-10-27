@@ -751,8 +751,7 @@ pub fn extract_osm_connectors_and_segments_with_match_distance(
                                 dst_node_id
                             };
                             if let Some(hw_tag) = &mid_node.highway {
-                                let entry =
-                                    propagated_highway_tags.entry(target_nid).or_default();
+                                let entry = propagated_highway_tags.entry(target_nid).or_default();
                                 if !entry.contains(hw_tag) {
                                     entry.push(hw_tag.clone());
                                 }
@@ -934,15 +933,27 @@ mod tests {
         assert_eq!(segments.len(), 2);
 
         // Node 1 received the propagated traffic_signals tag and consolidated_id 2; node 10 did not
-        let conn1 = connectors.iter().find(|c| c.node.osmid == OsmNodeId(1)).unwrap();
-        let conn10 = connectors.iter().find(|c| c.node.osmid == OsmNodeId(10)).unwrap();
+        let conn1 = connectors
+            .iter()
+            .find(|c| c.node.osmid == OsmNodeId(1))
+            .unwrap();
+        let conn10 = connectors
+            .iter()
+            .find(|c| c.node.osmid == OsmNodeId(10))
+            .unwrap();
         assert!(conn1.node.has_traffic_signals());
         assert!(conn1.node.consolidated_ids.contains(&OsmNodeId(2)));
         assert!(!conn10.node.has_traffic_signals());
 
         // Check SegmentFullType mapping: `road-primary-link` and `road-footway-sidewalk`
-        let seg_road = segments.iter().find(|s| s.parent_way_id == OsmWayId(100)).unwrap();
-        let seg_sw = segments.iter().find(|s| s.parent_way_id == OsmWayId(200)).unwrap();
+        let seg_road = segments
+            .iter()
+            .find(|s| s.parent_way_id == OsmWayId(100))
+            .unwrap();
+        let seg_sw = segments
+            .iter()
+            .find(|s| s.parent_way_id == OsmWayId(200))
+            .unwrap();
         assert_eq!(seg_road.full_type.as_str(), "road-primary-link");
         assert_eq!(seg_sw.full_type.as_str(), "road-footway-sidewalk");
     }

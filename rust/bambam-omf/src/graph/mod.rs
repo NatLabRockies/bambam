@@ -5,7 +5,7 @@ mod vertex_serializable;
 
 pub mod segment_ops;
 pub use bambam_network::{
-    consts, consts::*, island_detection, serialize_ops, attach_infrastructure_to_vertices,
+    attach_infrastructure_to_vertices, consts, consts::*, island_detection, serialize_ops,
     ConnectorInSegment, EdgeMappingRecord, SegmentSplit, VertexCompassRecord, VertexCompleteRecord,
     VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
 };

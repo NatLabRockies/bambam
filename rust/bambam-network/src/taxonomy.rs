@@ -781,9 +781,12 @@ impl ModeAccessAccumulator {
                 self.state = ModeAccessState::SpecificallyDenied;
             }
             // 3. Exception Allowed (if we were blanket denied, or just explicitly allowed)
-            (SAT::Allowed | SAT::Designated, Some(true), None | Some(SH::Forward), None | Some(false))
-                if self.state != ModeAccessState::SpecificallyDenied =>
-            {
+            (
+                SAT::Allowed | SAT::Designated,
+                Some(true),
+                None | Some(SH::Forward),
+                None | Some(false),
+            ) if self.state != ModeAccessState::SpecificallyDenied => {
                 self.state = ModeAccessState::AllowedException;
             }
             // 4. Conditional Exception (e.g. Employee only) -> deny access

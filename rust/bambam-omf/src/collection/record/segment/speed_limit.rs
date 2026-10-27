@@ -4,9 +4,7 @@ use uom::si::f64::Velocity;
 
 use crate::collection::OvertureMapsCollectionError;
 
-use super::{
-    value_between::validate_between_vector, SegmentAccessRestrictionWhen,
-};
+use super::{value_between::validate_between_vector, SegmentAccessRestrictionWhen};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SegmentSpeedUnit {

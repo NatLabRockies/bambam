@@ -1,7 +1,5 @@
 use crate::model::{feature::highway::Highway, osm::overpass::FilterQuery};
-use bambam_network::{
-    MatchBehavior, NetworkEdgeListConfiguration, SegmentClass, TravelModeFilter,
-};
+use bambam_network::{MatchBehavior, NetworkEdgeListConfiguration, SegmentClass, TravelModeFilter};
 use osmpbf::{Element, Way};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, str::FromStr};

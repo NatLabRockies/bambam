@@ -557,8 +557,12 @@ where
         )?;
 
         log::info!("Computing global speed");
-        let global_speed_opt =
-            get_global_average_speed::<S, C>(&initial_speeds, &mode_segments, &segment_lookup, &splits)?;
+        let global_speed_opt = get_global_average_speed::<S, C>(
+            &initial_speeds,
+            &mode_segments,
+            &segment_lookup,
+            &splits,
+        )?;
         let fallback_speed = global_speed_opt.unwrap_or(DEFAULT_FALLBACK_SPEED_MPH);
 
         log::info!("Computing edge mappings");

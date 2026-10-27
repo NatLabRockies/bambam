@@ -142,8 +142,8 @@ mod tests {
         let net_cfg_op = OsmOperation::Network(OsmNetworkArgs {
             pbf_file: Some(pbf_file.to_string()),
             common: CommonNetworkImportArgs {
-                configuration_file:
-                    "../../configuration/bambam-network/bambam-network-config.json".to_string(),
+                configuration_file: "../../configuration/bambam-network/bambam-network-config.json"
+                    .to_string(),
                 output_directory: net_cfg_dir.to_string_lossy().to_string(),
                 local_source: None,
                 extent_file: Some(extent_file.to_string()),
@@ -164,8 +164,8 @@ mod tests {
         let local_reimport_op = OsmOperation::Network(OsmNetworkArgs {
             pbf_file: None,
             common: CommonNetworkImportArgs {
-                configuration_file:
-                    "../../configuration/bambam-network/bambam-network-config.json".to_string(),
+                configuration_file: "../../configuration/bambam-network/bambam-network-config.json"
+                    .to_string(),
                 output_directory: local_reimport_dir.to_string_lossy().to_string(),
                 local_source: Some(net_cfg_dir.to_string_lossy().to_string()),
                 extent_file: None,
@@ -189,7 +189,9 @@ mod tests {
         }
         if !disconnected.is_empty() {
             disconnected.iter().take(5).for_each(|d| println!("{d}"));
-            panic!("files were written but some edges had invalid src/dst vertex ids (first 5 in log)");
+            panic!(
+                "files were written but some edges had invalid src/dst vertex ids (first 5 in log)"
+            );
         }
     }
 }

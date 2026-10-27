@@ -195,7 +195,9 @@ pub fn read_extent_file_to_geometry_and_bbox(
     extent_path: &str,
 ) -> Result<(Geometry<f32>, CliBoundingBox), NetworkImportError> {
     let raw = fs::read_to_string(extent_path).map_err(|e| {
-        NetworkImportError::InvalidUserInput(format!("failed to load extent file {extent_path}: {e}"))
+        NetworkImportError::InvalidUserInput(format!(
+            "failed to load extent file {extent_path}: {e}"
+        ))
     })?;
     parse_wkt_str_to_geometry_and_bbox(&raw)
 }

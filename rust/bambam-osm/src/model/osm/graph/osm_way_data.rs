@@ -374,7 +374,8 @@ impl OsmWayData {
         ];
 
         if let Some(val) = self.vehicle.as_deref() {
-            if let Some(r) = build_osm_access_restriction(val, Some(all_vehicle_modes.clone()), None)
+            if let Some(r) =
+                build_osm_access_restriction(val, Some(all_vehicle_modes.clone()), None)
             {
                 restrictions.push(r);
             }
@@ -399,9 +400,11 @@ impl OsmWayData {
             }
         }
         if let Some(val) = self.hgv.as_deref() {
-            if let Some(r) =
-                build_osm_access_restriction(val, Some(vec![SegmentMode::Hgv, SegmentMode::Truck]), None)
-            {
+            if let Some(r) = build_osm_access_restriction(
+                val,
+                Some(vec![SegmentMode::Hgv, SegmentMode::Truck]),
+                None,
+            ) {
                 restrictions.push(r);
             }
         }
@@ -545,8 +548,7 @@ fn build_osm_access_restriction(
         _ => return None,
     };
 
-    let has_when =
-        modes.is_some() || heading.is_some() || using.is_some() || recognized.is_some();
+    let has_when = modes.is_some() || heading.is_some() || using.is_some() || recognized.is_some();
     let when = if has_when {
         Some(SegmentAccessRestrictionWhen {
             heading,

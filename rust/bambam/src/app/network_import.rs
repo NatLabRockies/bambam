@@ -203,31 +203,30 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
     let (extent_geom, bbox) = request.extent.to_geometry_and_bbox()?;
     let out_dir = Path::new(&request.output_directory);
 
-    let (edge_lists, island_alg, cfg_match_dist) = if let Some(ref cfg_path) =
-        request.configuration_file
-    {
-        let cfg = bambam_network::NetworkImportFilterConfig::from_file(Path::new(cfg_path))
-            .map_err(|e| e.to_string())?;
-        (
-            cfg.edge_lists,
-            cfg.island_algorithm_configuration,
-            cfg.infrastructure_match_distance_meters,
-        )
-    } else {
-        let edge_lists = match request.modes.as_ref().filter(|m| !m.is_empty()) {
-            Some(modes) => modes
-                .iter()
-                .map(|m| NetworkEdgeListConfiguration::default_for_mode(m))
-                .collect::<Result<Vec<_>, _>>()?,
-            None => NetworkEdgeListConfiguration::default_multimodal(),
+    let (edge_lists, island_alg, cfg_match_dist) =
+        if let Some(ref cfg_path) = request.configuration_file {
+            let cfg = bambam_network::NetworkImportFilterConfig::from_file(Path::new(cfg_path))
+                .map_err(|e| e.to_string())?;
+            (
+                cfg.edge_lists,
+                cfg.island_algorithm_configuration,
+                cfg.infrastructure_match_distance_meters,
+            )
+        } else {
+            let edge_lists = match request.modes.as_ref().filter(|m| !m.is_empty()) {
+                Some(modes) => modes
+                    .iter()
+                    .map(|m| NetworkEdgeListConfiguration::default_for_mode(m))
+                    .collect::<Result<Vec<_>, _>>()?,
+                None => NetworkEdgeListConfiguration::default_multimodal(),
+            };
+            let island_alg = Some(IslandDetectionAlgorithm {
+                min_distance: 2.0,
+                distance_unit: DistanceUnit::Miles,
+                algorithm_type: ComponentsAlgorithmType::Wcc,
+            });
+            (edge_lists, island_alg, None)
         };
-        let island_alg = Some(IslandDetectionAlgorithm {
-            min_distance: 2.0,
-            distance_unit: DistanceUnit::Miles,
-            algorithm_type: ComponentsAlgorithmType::Wcc,
-        });
-        (edge_lists, island_alg, None)
-    };
 
     let match_distance = request
         .infrastructure_match_distance_meters
