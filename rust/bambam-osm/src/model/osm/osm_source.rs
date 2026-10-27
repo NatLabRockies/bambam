@@ -3,6 +3,7 @@ use crate::{
     algorithm::truncation::ComponentFilter,
     model::osm::{graph::OsmGraphVectorized, import_ops},
 };
+use bambam_network::{IslandDetectionAlgorithm, NetworkEdgeListConfiguration};
 use geo::Geometry;
 use geo::MapCoords;
 use geozero::{wkt::Wkt as WktReader, ToGeo};
@@ -12,7 +13,13 @@ use serde::{Deserialize, Serialize};
 pub enum OsmSource {
     Pbf {
         pbf_filepath: String,
+        #[serde(default)]
+        study_region: Option<String>,
         network_filter: Option<ElementFilter>,
+        #[serde(default)]
+        edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
+        #[serde(default)]
+        island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
         extent_filter_filepath: Option<String>,
         component_filter: Option<ComponentFilter>,
         truncate_by_edge: bool,
@@ -28,7 +35,10 @@ impl OsmSource {
         match self {
             OsmSource::Pbf {
                 pbf_filepath,
+                study_region,
                 network_filter,
+                edge_lists,
+                island_algorithm_configuration,
                 extent_filter_filepath,
                 component_filter,
                 truncate_by_edge,
@@ -36,7 +46,16 @@ impl OsmSource {
                 simplify,
                 infrastructure_match_distance_meters,
             } => {
-                let net_ftr = network_filter.clone().unwrap_or_default();
+                let effective_edge_lists = match edge_lists.as_ref().filter(|e| !e.is_empty()) {
+                    Some(lists) => lists.clone(),
+                    None => NetworkEdgeListConfiguration::default_multimodal(),
+                };
+                let net_ftr = match network_filter {
+                    Some(ElementFilter::NoFilter) | None => {
+                        ElementFilter::from_edge_list_configs(&effective_edge_lists)
+                    }
+                    Some(other) => other.clone(),
+                };
                 let extent_opt = extent_filter_filepath
                     .as_deref()
                     .map(read_extent_wkt)
@@ -47,13 +66,15 @@ impl OsmSource {
                 let (nodes_map, ways_map) =
                     import_ops::read_pbf(pbf_filepath, net_ftr, &extent_opt)?;
 
-                let result = OsmGraphVectorized::from_osm_maps(
+                let result = OsmGraphVectorized::from_osm_maps_with_config(
                     pbf_filepath.clone(),
+                    study_region.clone(),
                     nodes_map,
                     ways_map,
                     extent_opt.as_ref(),
+                    &effective_edge_lists,
                     &cc_ftr,
-                    None,
+                    island_algorithm_configuration.as_ref(),
                     *truncate_by_edge,
                     *simplify,
                     *ignore_errors,
@@ -61,9 +82,9 @@ impl OsmSource {
                 )?;
 
                 log::info!(
-                    "Loaded PBF-sourced Compass graph with {} vertices, {} edges",
-                    result.nodes.len(),
-                    result.ways.len()
+                    "Loaded PBF-sourced Compass graph with {} vertices across {} mode edge lists",
+                    result.vertices.len(),
+                    result.edge_lists.len()
                 );
                 Ok(result)
             }

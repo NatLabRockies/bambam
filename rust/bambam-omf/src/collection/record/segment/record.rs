@@ -141,6 +141,24 @@ impl TransportationSegmentRecord {
     }
 }
 
+impl bambam_network::FilterableSegment for TransportationSegmentRecord {
+    fn segment_subtype(&self) -> Option<&SegmentSubtype> {
+        self.subtype.as_ref()
+    }
+
+    fn segment_class(&self) -> Option<&SegmentClass> {
+        self.class.as_ref()
+    }
+
+    fn segment_subclass(&self) -> Option<&SegmentSubclass> {
+        self.subclass.as_ref()
+    }
+
+    fn segment_access_restrictions(&self) -> Option<&[SegmentAccessRestriction]> {
+        self.access_restrictions.as_deref()
+    }
+}
+
 impl bambam_network::ImportSegment<SegmentFullType> for TransportationSegmentRecord {
     fn segment_id(&self) -> &str {
         &self.id

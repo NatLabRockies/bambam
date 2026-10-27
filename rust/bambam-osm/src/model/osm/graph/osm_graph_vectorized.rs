@@ -6,38 +6,41 @@ use super::{
 };
 use crate::{
     algorithm::truncation::ComponentFilter,
-    model::{
-        feature::highway::Highway,
-        osm::{
-            graph::{
-                osm_element_filter::ElementFilter, osm_node_data::OsmConnectorRecord, OsmNodeData,
-                OsmWays,
-            },
-            import_ops::{
-                extract_osm_connectors_and_segments, process_osm_segment_splits, OsmCollection,
-                OsmSegmentRecord,
-            },
-            OsmError,
+    model::osm::{
+        graph::{osm_node_data::OsmConnectorRecord, OsmNodeData, OsmWays},
+        import_ops::{
+            extract_osm_connectors_and_segments_with_match_distance, process_osm_segment_splits,
+            OsmCollection, OsmSegmentRecord,
         },
+        OsmError,
     },
 };
 use bambam_network::{
     attach_infrastructure_to_vertices,
     serialize_ops::{self as net_ops, clean_edge_list, compute_vertex_remapping},
-    EdgeMappingRecord, IslandDetectionAlgorithm, SegmentHeading, VectorizedEdgeList,
+    CliBoundingBox, EdgeListStats, EdgeMappingRecord, IslandDetectionAlgorithm,
+    NetworkEdgeListConfiguration, NetworkGraphSource, NetworkGraphStats, NetworkGraphSummary,
+    SegmentAccessRestrictionWhen, SegmentFullType, SegmentHeading, VectorizedEdgeList,
     VertexCompleteRecord, VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
     GLOBAL_AVG_SPEED_KEY,
 };
-use geo::Geometry;
+use geo::{BoundingRect, Geometry};
+use indexmap::IndexMap;
 use rayon::prelude::*;
 use routee_compass_core::model::network::{EdgeId, EdgeList, EdgeListId, VertexId};
 
-pub type OsmEdgeList = VectorizedEdgeList<Highway>;
+pub type OsmEdgeList = VectorizedEdgeList<SegmentFullType>;
 
 pub struct OsmGraphVectorized {
+    /// study region / dataset name for `summary.toml`
+    pub study_region: String,
+    /// bounding box of the extent (if provided) for `summary.toml`
+    pub bbox: Option<CliBoundingBox>,
+    /// RouteE Compass vertices in final `VertexId` order
+    pub vertices: Vec<Vertex>,
     /// the collection of OSM nodes associated via their OSMID
     pub nodes: OsmNodesSerializable,
-    /// list of OSM ways in vectorized EdgeId order
+    /// list of OSM ways in vectorized EdgeId order (populated from the first edge list for legacy tests)
     pub ways: OsmWaysSerializable,
     /// for each OsmNodeId, the vertex index and Vertex
     pub vertex_lookup: VertexLookup,
@@ -45,11 +48,15 @@ pub struct OsmGraphVectorized {
     pub vertices_complete: Vec<VertexCompleteRecord>,
     /// standardized vertex ID to OSM node ID mapping
     pub vertex_mappings: Vec<VertexMappingRecord>,
-    /// standardized edge ID to OSM way ID + linear reference mapping
+    /// standardized edge ID to OSM way ID + linear reference mapping (first edge list)
     pub edge_mappings: Vec<EdgeMappingRecord>,
-    /// primary vectorized edge list from bambam-network
+    /// primary vectorized edge list (first edge list)
     pub edge_list: Option<OsmEdgeList>,
-    /// optional per-mode vectorized edge lists (e.g., `walk`, `bike`, `drive`)
+    /// mode-specific vectorized edge lists matching `bambam-omf` (`edge_lists` + `edge_list_config`)
+    pub edge_lists: Vec<OsmEdgeList>,
+    /// mode configurations corresponding to `edge_lists`
+    pub edge_list_config: Vec<NetworkEdgeListConfiguration>,
+    /// optional per-mode `(mode_name, OsmEdgeList)` pairs
     pub mode_edge_lists: Vec<(String, OsmEdgeList)>,
     /// raw OSM nodes and ways collection for Parquet retention
     pub raw_collection: Option<OsmCollection>,
@@ -57,7 +64,8 @@ pub struct OsmGraphVectorized {
 
 impl OsmGraphVectorized {
     /// Builds an [`OsmGraphVectorized`] using the OMF-style Connector + Segment + Split
-    /// workflow from `bambam-network`.
+    /// workflow from `bambam-network` with default multimodal (`walk`, `bike`, `drive`)
+    /// configurations.
     #[allow(clippy::too_many_arguments)]
     pub fn from_osm_maps(
         source_label: impl Into<String>,
@@ -71,18 +79,20 @@ impl OsmGraphVectorized {
         ignore_errors: bool,
         infrastructure_match_distance_meters: Option<f64>,
     ) -> Result<OsmGraphVectorized, OsmError> {
-        Self::from_osm_maps_with_modes(
+        let configs = NetworkEdgeListConfiguration::default_multimodal();
+        Self::from_osm_maps_with_config(
             source_label,
+            None,
             nodes_map,
             ways_map,
             extent_opt,
+            &configs,
             component_filter,
             island_detection_opt,
             truncate_by_edge,
             simplify,
             ignore_errors,
             infrastructure_match_distance_meters,
-            None,
         )
     }
 
@@ -103,16 +113,75 @@ impl OsmGraphVectorized {
         infrastructure_match_distance_meters: Option<f64>,
         modes: Option<&[String]>,
     ) -> Result<OsmGraphVectorized, OsmError> {
-        let raw_collection = OsmCollection::from_maps(source_label, &nodes_map, &ways_map);
-
-        let (connectors, infrastructure, segments) = extract_osm_connectors_and_segments(
-            &nodes_map,
-            &ways_map,
+        let configs = match modes.filter(|m| !m.is_empty()) {
+            Some(mode_names) => mode_names
+                .iter()
+                .map(|m| {
+                    NetworkEdgeListConfiguration::default_for_mode(m)
+                        .map_err(OsmError::ConfigurationError)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            None => NetworkEdgeListConfiguration::default_multimodal(),
+        };
+        Self::from_osm_maps_with_config(
+            source_label,
+            None,
+            nodes_map,
+            ways_map,
             extent_opt,
+            &configs,
+            component_filter,
+            island_detection_opt,
             truncate_by_edge,
             simplify,
             ignore_errors,
-        )?;
+            infrastructure_match_distance_meters,
+        )
+    }
+
+    /// Builds an [`OsmGraphVectorized`] using explicit [`NetworkEdgeListConfiguration`]s
+    /// (such as from `travel-mode-filter.json`) and multi-mode island detection, mirroring
+    /// `OmfGraphVectorized::new_with_match_distance`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_osm_maps_with_config(
+        source_label: impl Into<String>,
+        study_region_opt: Option<String>,
+        nodes_map: HashMap<OsmNodeId, OsmNodeData>,
+        ways_map: OsmWays,
+        extent_opt: Option<&Geometry<f32>>,
+        configuration: &[NetworkEdgeListConfiguration],
+        component_filter: &ComponentFilter,
+        island_detection_opt: Option<&IslandDetectionAlgorithm>,
+        truncate_by_edge: bool,
+        simplify: bool,
+        ignore_errors: bool,
+        infrastructure_match_distance_meters: Option<f64>,
+    ) -> Result<OsmGraphVectorized, OsmError> {
+        let source_str = source_label.into();
+        let study_region = study_region_opt.unwrap_or_else(|| {
+            std::path::Path::new(&source_str)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("osm_network")
+                .to_string()
+        });
+
+        let bbox = extent_opt
+            .and_then(|g| g.bounding_rect())
+            .and_then(|rect| CliBoundingBox::from_coords(&rect.min(), &rect.max()).ok());
+
+        let raw_collection = OsmCollection::from_maps(source_str, &nodes_map, &ways_map);
+
+        let (connectors, infrastructure, segments) =
+            extract_osm_connectors_and_segments_with_match_distance(
+                &nodes_map,
+                &ways_map,
+                extent_opt,
+                truncate_by_edge,
+                simplify,
+                ignore_errors,
+                infrastructure_match_distance_meters,
+            )?;
 
         if connectors.is_empty() {
             return Err(OsmError::NoNodesFound);
@@ -121,46 +190,83 @@ impl OsmGraphVectorized {
             return Err(OsmError::NoWaysFound);
         }
 
-        let (mut vertices, vertex_lookup_str) =
+        let effective_configs: Vec<NetworkEdgeListConfiguration> = if configuration.is_empty() {
+            NetworkEdgeListConfiguration::default_multimodal()
+        } else {
+            configuration.to_vec()
+        };
+
+        log::info!("Creating vertex lookup");
+        let (mut vertices, mut vertex_lookup_str) =
             net_ops::create_vertices_and_lookup(&connectors, None)?;
 
-        let all_segment_refs: Vec<&OsmSegmentRecord> = segments.iter().collect();
-        let (mut vec_edge_list, mut split_way_meta) = build_osm_edge_list_from_segments(
-            &all_segment_refs,
-            &vertices,
-            &vertex_lookup_str,
-            EdgeListId(0),
-        )?;
+        log::info!("Processing edge lists");
+        let mut edge_lists: Vec<OsmEdgeList> = Vec::with_capacity(effective_configs.len());
+        let mut per_list_way_meta: Vec<Vec<(&OsmSegmentRecord, SegmentHeading)>> =
+            Vec::with_capacity(effective_configs.len());
 
-        // Determine edges to remove from ComponentFilter and/or IslandDetectionAlgorithm
+        for (index, edge_list_config) in effective_configs.iter().enumerate() {
+            let edge_list_id = EdgeListId(index);
+
+            let mut filter = edge_list_config.filter.clone();
+            filter.sort();
+
+            log::info!(
+                "Filtering edge list {edge_list_id} (mode '{}')",
+                edge_list_config.mode
+            );
+            let mode_segments: Vec<&OsmSegmentRecord> = segments
+                .par_iter()
+                .filter(|r| filter.iter().all(|f| f.matches_filter(*r)))
+                .collect();
+
+            let (vec_edge_list, split_way_meta) = build_osm_edge_list_from_segments(
+                &mode_segments,
+                &vertices,
+                &vertex_lookup_str,
+                edge_list_id,
+                Some(edge_list_config),
+            )?;
+            edge_lists.push(vec_edge_list);
+            per_list_way_meta.push(split_way_meta);
+        }
+
+        // Determine edges to remove from IslandDetectionAlgorithm and/or ComponentFilter across all mode edge lists
+        log::info!("Computing islands across mode edge lists");
         let mut island_edges: Vec<(EdgeListId, EdgeId)> = Vec::new();
-        island_edges.extend(find_component_filter_removed_edges(
-            &vec_edge_list.edges,
-            vertices.len(),
-            component_filter,
-        ));
+        for el in &edge_lists {
+            island_edges.extend(find_component_filter_removed_edges(
+                &el.edges,
+                vertices.len(),
+                component_filter,
+            ));
+        }
         if let Some(island_alg) = island_detection_opt {
-            let alg_removed = island_alg.run(&[&vec_edge_list.edges], &vertices)?;
+            let ref_edge_lists: Vec<&EdgeList> =
+                edge_lists.iter().map(|e| &e.edges).collect();
+            let alg_removed = island_alg.run(&ref_edge_lists, &vertices)?;
             island_edges.extend(alg_removed);
+        } else {
+            // Also check per-mode island_algorithm_config if set on individual NetworkEdgeListConfiguration
+            for (el, cfg) in edge_lists.iter().zip(effective_configs.iter()) {
+                if let Some(ref mode_island_alg) = cfg.island_algorithm_config {
+                    let alg_removed = mode_island_alg.run(&[&el.edges], &vertices)?;
+                    island_edges.extend(alg_removed);
+                }
+            }
         }
 
         let connector_by_old_vertex: Vec<&OsmConnectorRecord> = connectors.iter().collect();
         let kept_connectors: Vec<OsmConnectorRecord>;
 
         if !island_edges.is_empty() {
-            let edges_to_remove: HashSet<EdgeId> =
-                island_edges.iter().map(|(_, eid)| *eid).collect();
-            let mask: Vec<bool> = vec_edge_list
-                .edges
-                .0
-                .iter()
-                .map(|e| !edges_to_remove.contains(&e.edge_id))
-                .collect();
+            let mut edges_lookup: HashMap<EdgeListId, HashSet<EdgeId>> = HashMap::new();
+            for (el_id, eid) in &island_edges {
+                edges_lookup.entry(*el_id).or_default().insert(*eid);
+            }
 
-            let edge_lists_slice = [vec_edge_list];
             let vertex_remapping =
-                compute_vertex_remapping(&vertices, &edge_lists_slice, &island_edges)?;
-            let [single_list] = edge_lists_slice;
+                compute_vertex_remapping(&vertices, &edge_lists, &island_edges)?;
 
             vertices = vertices
                 .into_iter()
@@ -172,20 +278,48 @@ impl OsmGraphVectorized {
                 })
                 .collect();
 
+            vertex_lookup_str.retain(|_, v| vertex_remapping[*v].is_some());
+            for v in vertex_lookup_str.values_mut() {
+                *v = vertex_remapping[*v]
+                    .ok_or_else(|| {
+                        OsmError::InternalError(format!(
+                            "vertex index {v} expected after island computation but was flagged for deletion"
+                        ))
+                    })?
+                    .0;
+            }
+
             kept_connectors = connector_by_old_vertex
                 .into_iter()
                 .enumerate()
                 .filter_map(|(old_vid, conn)| vertex_remapping[old_vid].map(|_| conn.clone()))
                 .collect();
 
-            split_way_meta = split_way_meta
-                .into_iter()
-                .enumerate()
-                .filter(|(idx, _)| mask[*idx])
-                .map(|(_, item)| item)
-                .collect();
+            let mut cleaned_lists = Vec::with_capacity(edge_lists.len());
+            let mut cleaned_meta = Vec::with_capacity(per_list_way_meta.len());
 
-            vec_edge_list = clean_edge_list(single_list, mask, &vertex_remapping)?;
+            for (el, meta) in edge_lists.into_iter().zip(per_list_way_meta.into_iter()) {
+                let to_remove = edges_lookup.get(&el.edge_list_id);
+                let mask: Vec<bool> = el
+                    .edges
+                    .0
+                    .iter()
+                    .map(|e| !to_remove.is_some_and(|set| set.contains(&e.edge_id)))
+                    .collect();
+
+                let filtered_meta = meta
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(idx, _)| mask[*idx])
+                    .map(|(_, item)| item)
+                    .collect();
+                let cleaned_el = clean_edge_list(el, mask, &vertex_remapping)?;
+                cleaned_lists.push(cleaned_el);
+                cleaned_meta.push(filtered_meta);
+            }
+
+            edge_lists = cleaned_lists;
+            per_list_way_meta = cleaned_meta;
         } else {
             kept_connectors = connectors;
         }
@@ -193,8 +327,6 @@ impl OsmGraphVectorized {
         // Build final node/vertex tables and lookup
         let mut nodes: OsmNodesSerializable = Vec::with_capacity(kept_connectors.len());
         let mut vertex_lookup: VertexLookup = HashMap::with_capacity(kept_connectors.len());
-        let mut final_vertex_lookup_str: HashMap<String, usize> =
-            HashMap::with_capacity(kept_connectors.len());
         let mut connector_ids: Vec<String> = Vec::with_capacity(kept_connectors.len());
         let mut vertex_mappings: Vec<VertexMappingRecord> =
             Vec::with_capacity(kept_connectors.len());
@@ -202,7 +334,6 @@ impl OsmGraphVectorized {
         for (vertex_id, (conn, vertex)) in kept_connectors.iter().zip(vertices.iter()).enumerate() {
             nodes.push(OsmNodeDataSerializable::from(&conn.node));
             vertex_lookup.insert(conn.node.osmid, (vertex_id, *vertex));
-            final_vertex_lookup_str.insert(conn.id_str.clone(), vertex_id);
             connector_ids.push(conn.id_str.clone());
             vertex_mappings.push(VertexMappingRecord {
                 vertex_id,
@@ -218,7 +349,7 @@ impl OsmGraphVectorized {
             &infrastructure,
             match_dist,
         );
-        // Ensure direct OSM node tags on the connector vertex itself are also reflected
+        // Reflect direct or topologically propagated OSM node control tags on the connector vertex itself
         for (vc, conn) in vertices_complete.iter_mut().zip(kept_connectors.iter()) {
             if conn.node.has_traffic_signals() {
                 vc.traffic_signals = true;
@@ -232,84 +363,116 @@ impl OsmGraphVectorized {
             if conn.node.has_crossing() {
                 vc.crossing = true;
             }
-        }
-
-        // Build OsmWayDataSerializable rows matching vec_edge_list
-        let mut ways: OsmWaysSerializable = Vec::with_capacity(vec_edge_list.edges.len());
-        for ((edge, geom), (seg, heading)) in vec_edge_list
-            .edges
-            .0
-            .iter()
-            .zip(vec_edge_list.geometries.iter())
-            .zip(split_way_meta.iter())
-        {
-            let mut node_seq = seg.node_sequence.clone();
-            if *heading == SegmentHeading::Backward {
-                node_seq.reverse();
-            }
-            let length_meters = edge.distance.get::<uom::si::length::meter>();
-            let way_ser = OsmWayDataSerializable::from_split_way(
-                &seg.way,
-                &node_seq,
-                edge.src_vertex_id,
-                edge.dst_vertex_id,
-                geom.clone(),
-                length_meters,
-            )?;
-            ways.push(way_ser);
-        }
-
-        let edge_mappings = vec_edge_list.edge_mappings.clone();
-
-        // Build optional per-mode edge lists sharing the final vertex space
-        let mut mode_edge_lists = Vec::new();
-        if let Some(mode_list) = modes.filter(|m| !m.is_empty()) {
-            for (mode_idx, mode_name) in mode_list.iter().enumerate() {
-                let mode_filter =
-                    ElementFilter::default_for_modes(Some(std::slice::from_ref(mode_name)));
-                let allowed_tags: Option<HashSet<Highway>> = match mode_filter {
-                    ElementFilter::HighwayTags { tags } => Some(tags),
-                    _ => None,
-                };
-                let mode_segments: Vec<&OsmSegmentRecord> = segments
-                    .iter()
-                    .filter(|s| {
-                        final_vertex_lookup_str.contains_key(&s.src_node_id.to_string())
-                            && final_vertex_lookup_str.contains_key(&s.dst_node_id.to_string())
-                            && allowed_tags
-                                .as_ref()
-                                .is_none_or(|tags| tags.contains(&s.highway))
+            if !conn.node.consolidated_ids.is_empty() {
+                let mut ids: Vec<String> = vc
+                    .infrastructure_ids
+                    .as_deref()
+                    .map(|s| {
+                        s.split(bambam_network::INFRASTRUCTURE_ID_DELIMITER)
+                            .map(String::from)
+                            .collect()
                     })
-                    .collect();
-
-                if !mode_segments.is_empty() {
-                    let (mode_vec_list, _) = build_osm_edge_list_from_segments(
-                        &mode_segments,
-                        &vertices,
-                        &final_vertex_lookup_str,
-                        EdgeListId(mode_idx),
-                    )?;
-                    mode_edge_lists.push((mode_name.clone(), mode_vec_list));
+                    .unwrap_or_default();
+                for cid in &conn.node.consolidated_ids {
+                    let s = cid.to_string();
+                    if !ids.contains(&s) {
+                        ids.push(s);
+                    }
+                }
+                if !ids.is_empty() {
+                    vc.infrastructure_ids =
+                        Some(ids.join(bambam_network::INFRASTRUCTURE_ID_DELIMITER));
                 }
             }
         }
 
+        // Populate legacy `ways` and `edge_mappings` from the first non-empty edge list (or first list)
+        let primary_idx = edge_lists
+            .iter()
+            .position(|el| !el.edges.is_empty())
+            .unwrap_or(0);
+        let mut ways: OsmWaysSerializable = Vec::new();
+        let mut edge_mappings: Vec<EdgeMappingRecord> = Vec::new();
+        let mut primary_edge_list: Option<OsmEdgeList> = None;
+
+        if let (Some(first_el), Some(first_meta)) = (
+            edge_lists.get(primary_idx),
+            per_list_way_meta.get(primary_idx),
+        ) {
+            ways.reserve(first_el.edges.len());
+            for ((edge, geom), (seg, heading)) in first_el
+                .edges
+                .0
+                .iter()
+                .zip(first_el.geometries.iter())
+                .zip(first_meta.iter())
+            {
+                let mut node_seq = seg.node_sequence.clone();
+                if *heading == SegmentHeading::Backward {
+                    node_seq.reverse();
+                }
+                let length_meters = edge.distance.get::<uom::si::length::meter>();
+                let way_ser = OsmWayDataSerializable::from_split_way(
+                    &seg.way,
+                    &node_seq,
+                    edge.src_vertex_id,
+                    edge.dst_vertex_id,
+                    geom.clone(),
+                    length_meters,
+                )?;
+                ways.push(way_ser);
+            }
+            edge_mappings = first_el.edge_mappings.clone();
+            primary_edge_list = Some(first_el.clone());
+        }
+
+        let mode_edge_lists: Vec<(String, OsmEdgeList)> = effective_configs
+            .iter()
+            .zip(edge_lists.iter())
+            .map(|(cfg, el)| (cfg.mode.clone(), el.clone()))
+            .collect();
+
         Ok(OsmGraphVectorized {
+            study_region,
+            bbox,
+            vertices,
             nodes,
             ways,
             vertex_lookup,
             vertices_complete,
             vertex_mappings,
             edge_mappings,
-            edge_list: Some(vec_edge_list),
+            edge_list: primary_edge_list,
+            edge_lists,
+            edge_list_config: effective_configs,
             mode_edge_lists,
             raw_collection: Some(raw_collection),
         })
     }
+
+    /// Builds a [`NetworkGraphSummary`] (`summary.toml`) matching the OMF summary structure.
+    pub fn to_summary(&self) -> NetworkGraphSummary {
+        let release = self
+            .raw_collection
+            .as_ref()
+            .map(|c| format!("file://{}", c.source))
+            .unwrap_or_else(|| "osm".to_string());
+        let source = NetworkGraphSource::new(&release, &self.study_region, self.bbox.as_ref());
+        let mut edge_list = IndexMap::new();
+        for (cfg, el) in self.edge_list_config.iter().zip(self.edge_lists.iter()) {
+            let stats = EdgeListStats::from_edge_list(el, |cls| cls.as_str());
+            edge_list.insert(cfg.mode.clone(), stats);
+        }
+        let stats = NetworkGraphStats {
+            vertices: self.vertices.len(),
+            edge_list,
+        };
+        NetworkGraphSummary { source, stats }
+    }
 }
 
 type BuiltOsmEdgeList<'a> = (
-    VectorizedEdgeList<Highway>,
+    VectorizedEdgeList<SegmentFullType>,
     Vec<(&'a OsmSegmentRecord, SegmentHeading)>,
 );
 
@@ -318,17 +481,42 @@ fn build_osm_edge_list_from_segments<'a>(
     vertices: &[Vertex],
     vertex_lookup_str: &HashMap<String, usize>,
     edge_list_id: EdgeListId,
+    edge_list_config: Option<&NetworkEdgeListConfiguration>,
 ) -> Result<BuiltOsmEdgeList<'a>, OsmError> {
-    let segment_lookup = net_ops::create_segment_lookup::<OsmSegmentRecord, Highway>(segment_refs);
+    if segment_refs.is_empty() {
+        let mut speed_lookup = HashMap::new();
+        speed_lookup.insert(GLOBAL_AVG_SPEED_KEY.to_string(), 25.0);
+        return Ok((
+            VectorizedEdgeList {
+                edge_list_id,
+                edges: EdgeList(Box::new([])),
+                geometries: Vec::new(),
+                classes: Vec::new(),
+                speeds: Vec::new(),
+                speed_lookup,
+                bearings: Vec::new(),
+                edge_mappings: Vec::new(),
+            },
+            Vec::new(),
+        ));
+    }
+
+    let segment_lookup =
+        net_ops::create_segment_lookup::<OsmSegmentRecord, SegmentFullType>(segment_refs);
 
     let mut splits = Vec::new();
     for heading in [SegmentHeading::Forward, SegmentHeading::Backward] {
+        let mut when: SegmentAccessRestrictionWhen = edge_list_config
+            .map(SegmentAccessRestrictionWhen::from)
+            .unwrap_or_default();
+        when.heading = Some(heading);
+
         let directed_splits =
-            net_ops::find_splits(segment_refs, Some(&heading), process_osm_segment_splits)?;
+            net_ops::find_splits(segment_refs, Some(&when), process_osm_segment_splits)?;
         splits.extend(directed_splits);
     }
 
-    let edges = net_ops::create_edges::<OsmSegmentRecord, Highway>(
+    let edges = net_ops::create_edges::<OsmSegmentRecord, SegmentFullType>(
         segment_refs,
         &segment_lookup,
         &splits,
@@ -336,31 +524,32 @@ fn build_osm_edge_list_from_segments<'a>(
         vertex_lookup_str,
         edge_list_id,
     )?;
-    let geometries = net_ops::create_geometries::<OsmSegmentRecord, Highway>(
+    let geometries = net_ops::create_geometries::<OsmSegmentRecord, SegmentFullType>(
         segment_refs,
         &segment_lookup,
         &splits,
     )?;
     let bearings = net_ops::bearing_deg_from_geometries(&geometries)?;
-    let classes = net_ops::create_classes::<OsmSegmentRecord, Highway>(
+    let classes = net_ops::create_classes::<OsmSegmentRecord, SegmentFullType>(
         segment_refs,
         &segment_lookup,
         &splits,
     )?;
-    let initial_speeds = net_ops::create_speeds::<OsmSegmentRecord, Highway>(
+    let initial_speeds = net_ops::create_speeds::<OsmSegmentRecord, SegmentFullType>(
         segment_refs,
         &segment_lookup,
         &splits,
     )?;
-    let speed_lookup_by_hw = net_ops::create_speed_by_class_lookup::<OsmSegmentRecord, Highway>(
-        &initial_speeds,
-        segment_refs,
-        &segment_lookup,
-        &splits,
-        &classes,
-    )?;
+    let speed_lookup_by_cls =
+        net_ops::create_speed_by_class_lookup::<OsmSegmentRecord, SegmentFullType>(
+            &initial_speeds,
+            segment_refs,
+            &segment_lookup,
+            &splits,
+            &classes,
+        )?;
 
-    let global_speed = net_ops::get_global_average_speed::<OsmSegmentRecord, Highway>(
+    let global_speed = net_ops::get_global_average_speed::<OsmSegmentRecord, SegmentFullType>(
         &initial_speeds,
         segment_refs,
         &segment_lookup,
@@ -371,16 +560,16 @@ fn build_osm_edge_list_from_segments<'a>(
     let speeds: Vec<f64> = initial_speeds
         .into_par_iter()
         .zip(&classes)
-        .map(|(opt_speed, hw)| {
+        .map(|(opt_speed, cls)| {
             opt_speed
-                .or_else(|| speed_lookup_by_hw.get(hw).copied())
+                .or_else(|| speed_lookup_by_cls.get(cls).copied())
                 .unwrap_or(global_speed)
         })
         .collect();
 
-    let mut speed_lookup: HashMap<String, f64> = speed_lookup_by_hw
+    let mut speed_lookup: HashMap<String, f64> = speed_lookup_by_cls
         .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
+        .map(|(k, v)| (k.as_str(), v))
         .collect();
     speed_lookup.insert(GLOBAL_AVG_SPEED_KEY.to_string(), global_speed);
 

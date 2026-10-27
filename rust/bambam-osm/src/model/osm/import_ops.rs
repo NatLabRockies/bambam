@@ -14,7 +14,10 @@ use crate::{
 };
 use arrow::datatypes::FieldRef;
 use bambam_network::{
-    ConnectorInSegment, ImportSegment, NetworkImportError, SegmentHeading, SegmentSplit,
+    evaluate_segment_headings, ConnectorInSegment, FilterableSegment, ImportSegment,
+    NetworkImportError, SegmentAccessRestriction, SegmentAccessRestrictionWhen, SegmentClass,
+    SegmentFullType, SegmentHeading, SegmentSplit, SegmentSubclass, SegmentSubtype,
+    DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
 };
 use geo::{BoundingRect, Coord, Geometry, Haversine, Intersects, Length, Line, LineString};
 use itertools::Itertools;
@@ -408,7 +411,8 @@ where
 }
 
 /// Topological road segment between two OSM connector nodes, implementing
-/// `bambam_network::ImportSegment<Highway>` for split-based graph construction.
+/// `bambam_network::ImportSegment<SegmentFullType>` and `bambam_network::FilterableSegment`
+/// for split-based graph construction.
 #[derive(Debug, Clone)]
 pub struct OsmSegmentRecord {
     pub segment_key: String,
@@ -421,10 +425,34 @@ pub struct OsmSegmentRecord {
     pub way: OsmWayData,
     pub linestring: LineString<f32>,
     pub highway: Highway,
+    pub full_type: SegmentFullType,
+    pub access_restrictions: Vec<SegmentAccessRestriction>,
     pub speed_mph: Option<f64>,
 }
 
-impl ImportSegment<Highway> for OsmSegmentRecord {
+impl FilterableSegment for OsmSegmentRecord {
+    fn segment_subtype(&self) -> Option<&SegmentSubtype> {
+        Some(&self.full_type.0)
+    }
+
+    fn segment_class(&self) -> Option<&SegmentClass> {
+        Some(&self.full_type.1)
+    }
+
+    fn segment_subclass(&self) -> Option<&SegmentSubclass> {
+        self.full_type.2.as_ref()
+    }
+
+    fn segment_access_restrictions(&self) -> Option<&[SegmentAccessRestriction]> {
+        if self.access_restrictions.is_empty() {
+            None
+        } else {
+            Some(&self.access_restrictions)
+        }
+    }
+}
+
+impl ImportSegment<SegmentFullType> for OsmSegmentRecord {
     fn segment_id(&self) -> &str {
         &self.segment_key
     }
@@ -442,31 +470,31 @@ impl ImportSegment<Highway> for OsmSegmentRecord {
         Ok(self.speed_mph)
     }
 
-    fn get_split_class(&self, _start_lr: f64, _end_lr: f64) -> Result<Highway, NetworkImportError> {
-        Ok(self.highway.clone())
+    fn get_split_class(
+        &self,
+        _start_lr: f64,
+        _end_lr: f64,
+    ) -> Result<SegmentFullType, NetworkImportError> {
+        Ok(self.full_type.clone())
     }
 
-    fn class_to_string(class: &Highway) -> String {
-        class.to_string()
+    fn class_to_string(class: &SegmentFullType) -> String {
+        class.as_str()
     }
 }
 
-/// Produces directed `SegmentSplit`s for an `OsmSegmentRecord`, respecting OSM `oneway`
-/// and reverse-direction (`oneway=-1` / `reverse`) semantics.
+/// Produces directed `SegmentSplit`s for an `OsmSegmentRecord`, evaluating mode-aware
+/// directional access restrictions via `bambam_network::evaluate_segment_headings`.
 pub fn process_osm_segment_splits(
     segment: &OsmSegmentRecord,
-    heading_filter: Option<&SegmentHeading>,
+    when: Option<&SegmentAccessRestrictionWhen>,
 ) -> Result<Vec<SegmentSplit>, OsmError> {
-    let oneway = segment.way.is_one_way();
-    let reverse = segment.way.is_reverse();
-
-    let supported_headings = if oneway && reverse {
-        vec![SegmentHeading::Backward]
-    } else if oneway {
-        vec![SegmentHeading::Forward]
+    let restrictions = if segment.access_restrictions.is_empty() {
+        None
     } else {
-        vec![SegmentHeading::Forward, SegmentHeading::Backward]
+        Some(segment.access_restrictions.as_slice())
     };
+    let supported_headings = evaluate_segment_headings(restrictions, when);
 
     let src = ConnectorInSegment::new(
         segment.segment_key.clone(),
@@ -481,7 +509,6 @@ pub fn process_osm_segment_splits(
 
     let splits = supported_headings
         .into_iter()
-        .filter(|h| heading_filter.is_none_or(|filter_h| filter_h == h))
         .map(|heading| SegmentSplit::new(src.clone(), dst.clone(), heading))
         .collect();
 
@@ -496,9 +523,15 @@ pub type OsmExtractedNetwork = (
 
 /// Extracts topological connectors, infrastructure control points, and `OsmSegmentRecord`s
 /// from raw OSM nodes and ways using the OMF-style Connector + Segment workflow:
-/// - When `simplify == true`, intermediate degree-2 shape nodes are kept purely as geometry
-///   coordinates on `OsmSegmentRecord.linestring` rather than becoming graph vertices.
-/// - When `simplify == false`, every way node becomes a connector vertex.
+/// - When `simplify == true`, ways are split strictly at topological intersections (`node_degree >= 2`)
+///   and way endpoints. Intermediate degree-1 shape nodes are kept purely as geometry coordinates on
+///   `OsmSegmentRecord.linestring`.
+/// - Any intermediate control nodes (`traffic_signals`, `stop`, `give_way`, `crossing`) on a way segment
+///   within `DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS` along the way are propagated directly to the
+///   nearer endpoint connector of that exact way segment, ensuring traffic controls never jump onto
+///   adjacent sidewalks or alleys.
+/// - Only detached (`node_degree == 0`) control nodes are returned in the `infrastructure` vector for
+///   spatial `rstar` attachment.
 pub fn extract_osm_connectors_and_segments(
     nodes_map: &OsmNodes,
     ways_map: &OsmWays,
@@ -507,6 +540,31 @@ pub fn extract_osm_connectors_and_segments(
     simplify: bool,
     ignore_errors: bool,
 ) -> Result<OsmExtractedNetwork, OsmError> {
+    extract_osm_connectors_and_segments_with_match_distance(
+        nodes_map,
+        ways_map,
+        extent_opt,
+        truncate_by_edge,
+        simplify,
+        ignore_errors,
+        None,
+    )
+}
+
+/// Extracts topological connectors, infrastructure control points, and `OsmSegmentRecord`s
+/// with a configurable along-way matching distance for in-way traffic controls.
+pub fn extract_osm_connectors_and_segments_with_match_distance(
+    nodes_map: &OsmNodes,
+    ways_map: &OsmWays,
+    extent_opt: Option<&Geometry<f32>>,
+    truncate_by_edge: bool,
+    simplify: bool,
+    ignore_errors: bool,
+    infrastructure_match_distance_meters: Option<f64>,
+) -> Result<OsmExtractedNetwork, OsmError> {
+    let match_dist_m = infrastructure_match_distance_meters
+        .unwrap_or(DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS) as f32;
+
     // 1. Count node occurrences across all accepted ways and identify way endpoints
     let mut node_degree: HashMap<OsmNodeId, usize> = HashMap::new();
     let mut endpoint_nodes: HashSet<OsmNodeId> = HashSet::new();
@@ -534,9 +592,12 @@ pub fn extract_osm_connectors_and_segments(
         }
     }
 
-    // 2. Slice each way at its topological connector nodes
+    // 2. Slice each way at its topological connector nodes and propagate in-way controls
     let mut segments: Vec<OsmSegmentRecord> = Vec::new();
     let mut referenced_connector_ids: HashSet<OsmNodeId> = HashSet::new();
+    // Propagated control attributes & source node IDs keyed by connector OsmNodeId
+    let mut propagated_highway_tags: HashMap<OsmNodeId, Vec<String>> = HashMap::new();
+    let mut propagated_control_ids: HashMap<OsmNodeId, Vec<OsmNodeId>> = HashMap::new();
 
     for way in sorted_ways {
         let valid_nodes: Vec<OsmNodeId> = way
@@ -562,6 +623,9 @@ pub fn extract_osm_connectors_and_segments(
             },
             None => Highway::Unclassified,
         };
+
+        let full_type = way.to_segment_full_type(&highway);
+        let access_restrictions = way.to_access_restrictions();
 
         let speed_mph = way
             .maxspeed
@@ -590,19 +654,14 @@ pub fn extract_osm_connectors_and_segments(
         }
 
         // Determine which indices in `valid_nodes` are topological connectors
+        // (strictly way endpoints or topological intersections where node_degree >= 2)
         let connector_indices: Vec<usize> = (0..valid_nodes.len())
             .filter(|&idx| {
                 if idx == 0 || idx + 1 == valid_nodes.len() || !simplify {
                     return true;
                 }
                 let nid = valid_nodes[idx];
-                if endpoint_nodes.contains(&nid) || node_degree.get(&nid).copied().unwrap_or(0) >= 2
-                {
-                    return true;
-                }
-                nodes_map
-                    .get(&nid)
-                    .is_some_and(|n| n.has_control_or_intersection_tag())
+                endpoint_nodes.contains(&nid) || node_degree.get(&nid).copied().unwrap_or(0) >= 2
             })
             .collect();
 
@@ -644,6 +703,42 @@ pub fn extract_osm_connectors_and_segments(
             let start_lr = (cum_dists[idx_a] / total_way_dist) as f64;
             let end_lr = (cum_dists[idx_b] / total_way_dist) as f64;
 
+            // Propagate any intermediate control nodes (idx_a < k < idx_b) along this way
+            // to the nearer topological endpoint connector (src_node_id or dst_node_id)
+            // within `match_dist_m`.
+            for k in (idx_a + 1)..idx_b {
+                let mid_nid = valid_nodes[k];
+                if let Some(mid_node) = nodes_map.get(&mid_nid) {
+                    if mid_node.has_traffic_signals()
+                        || mid_node.has_stop()
+                        || mid_node.has_give_way()
+                        || mid_node.has_crossing()
+                    {
+                        let d_src = cum_dists[k] - cum_dists[idx_a];
+                        let d_dst = cum_dists[idx_b] - cum_dists[k];
+                        let min_d = d_src.min(d_dst);
+                        if min_d <= match_dist_m {
+                            let target_nid = if d_src <= d_dst {
+                                src_node_id
+                            } else {
+                                dst_node_id
+                            };
+                            if let Some(hw_tag) = &mid_node.highway {
+                                let entry =
+                                    propagated_highway_tags.entry(target_nid).or_default();
+                                if !entry.contains(hw_tag) {
+                                    entry.push(hw_tag.clone());
+                                }
+                            }
+                            let id_entry = propagated_control_ids.entry(target_nid).or_default();
+                            if !id_entry.contains(&mid_nid) {
+                                id_entry.push(mid_nid);
+                            }
+                        }
+                    }
+                }
+            }
+
             referenced_connector_ids.insert(src_node_id);
             referenced_connector_ids.insert(dst_node_id);
 
@@ -663,6 +758,8 @@ pub fn extract_osm_connectors_and_segments(
                 way: sub_way,
                 linestring: sub_linestring,
                 highway: highway.clone(),
+                full_type: full_type.clone(),
+                access_restrictions: access_restrictions.clone(),
                 speed_mph,
             });
         }
@@ -671,11 +768,36 @@ pub fn extract_osm_connectors_and_segments(
     let connectors: Vec<OsmConnectorRecord> = referenced_connector_ids
         .iter()
         .sorted()
-        .filter_map(|nid| nodes_map.get(nid).cloned().map(OsmConnectorRecord::new))
+        .filter_map(|nid| {
+            let mut node = nodes_map.get(nid)?.clone();
+            if let Some(extra_tags) = propagated_highway_tags.get(nid) {
+                let mut combined: Vec<String> = node
+                    .highway
+                    .iter()
+                    .cloned()
+                    .chain(extra_tags.iter().cloned())
+                    .unique()
+                    .collect();
+                if !combined.is_empty() {
+                    node.highway = Some(combined.drain(..).join(OsmNodeData::VALUE_DELIMITER));
+                }
+            }
+            if let Some(extra_ids) = propagated_control_ids.get(nid) {
+                for id in extra_ids {
+                    if !node.consolidated_ids.contains(id) {
+                        node.consolidated_ids.push(*id);
+                    }
+                }
+            }
+            Some(OsmConnectorRecord::new(node))
+        })
         .collect();
 
+    // Only detached (`node_degree == 0`) control nodes use spatial R-tree snapping;
+    // in-way control nodes were already topologically propagated along their way.
     let infrastructure: Vec<OsmConnectorRecord> = nodes_map
         .values()
+        .filter(|n| node_degree.get(&n.osmid).copied().unwrap_or(0) == 0)
         .filter(|n| n.has_traffic_signals() || n.has_stop() || n.has_give_way() || n.has_crossing())
         .filter(|n| extent_opt.is_none_or(|ext| n.intersects(ext)))
         .sorted_by_key(|n| n.osmid)
@@ -686,22 +808,115 @@ pub fn extract_osm_connectors_and_segments(
     Ok((connectors, infrastructure, segments))
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::reverse_segments;
-//     use crate::model::osm::graph::{osm_segment::OsmSegment, AdjacencyList};
-//     use std::collections::HashMap;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::osm::graph::{OsmNodeData, OsmNodeId, OsmWayData, OsmWayId};
 
-//     #[test]
-//     fn test_rev() {
-//         let fwd: AdjacencyList = HashMap::from([
-//             (0, HashMap::from([(1, OsmSegment::new(100, None, false))])),
-//             (1, HashMap::from([(0, OsmSegment::new(101, None, false))])),
-//         ]);
-//         let rev = reverse_segments(&fwd);
-//         assert_eq!(
-//             fwd.get(&0).map(|edges| edges.get(&1).cloned()),
-//             rev.get(&1).map(|edges| edges.get(&0).cloned())
-//         )
-//     }
-// }
+    #[test]
+    fn test_osm_along_way_signal_propagation_and_taxonomy() {
+        // Way with 3 nodes: u (0,0) -> mid (0.0001, 0) (~11m east, tagged traffic_signals) -> v (0.001, 0) (~111m east)
+        // Plus a nearby sidewalk node s (0.0001, 0.00003) (~3m north of mid) on a separate sidewalk way.
+        // Because mid is an in-way degree-1 node on the road way within 15m of u, its traffic_signals
+        // tag must propagate along the road way to u (and NOT split the road way, nor snap to the sidewalk!).
+        let mut nodes_map = HashMap::new();
+        nodes_map.insert(
+            OsmNodeId(1),
+            OsmNodeData {
+                osmid: OsmNodeId(1),
+                x: -105.0000,
+                y: 39.7500,
+                ..Default::default()
+            },
+        );
+        nodes_map.insert(
+            OsmNodeId(2),
+            OsmNodeData {
+                osmid: OsmNodeId(2),
+                x: -104.9999,
+                y: 39.7500,
+                highway: Some("traffic_signals".to_string()),
+                ..Default::default()
+            },
+        );
+        nodes_map.insert(
+            OsmNodeId(3),
+            OsmNodeData {
+                osmid: OsmNodeId(3),
+                x: -104.9980,
+                y: 39.7500,
+                ..Default::default()
+            },
+        );
+        nodes_map.insert(
+            OsmNodeId(10),
+            OsmNodeData {
+                osmid: OsmNodeId(10),
+                x: -104.9999,
+                y: 39.75003,
+                ..Default::default()
+            },
+        );
+        nodes_map.insert(
+            OsmNodeId(11),
+            OsmNodeData {
+                osmid: OsmNodeId(11),
+                x: -104.9980,
+                y: 39.75003,
+                ..Default::default()
+            },
+        );
+
+        let mut ways_map = HashMap::new();
+        ways_map.insert(
+            OsmWayId(100),
+            OsmWayData {
+                osmid: OsmWayId(100),
+                nodes: vec![OsmNodeId(1), OsmNodeId(2), OsmNodeId(3)],
+                highway: Some("primary_link".to_string()),
+                oneway: Some("yes".to_string()),
+                ..Default::default()
+            },
+        );
+        ways_map.insert(
+            OsmWayId(200),
+            OsmWayData {
+                osmid: OsmWayId(200),
+                nodes: vec![OsmNodeId(10), OsmNodeId(11)],
+                highway: Some("footway".to_string()),
+                footway: Some("sidewalk".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let (connectors, infrastructure, segments) =
+            extract_osm_connectors_and_segments_with_match_distance(
+                &nodes_map,
+                &ways_map,
+                None,
+                true,
+                true,
+                true,
+                Some(15.0),
+            )
+            .unwrap();
+
+        // Only the 4 way endpoints (1, 3, 10, 11) should be connectors; node 2 is NOT a split point
+        assert_eq!(connectors.len(), 4);
+        assert!(infrastructure.is_empty());
+        assert_eq!(segments.len(), 2);
+
+        // Node 1 received the propagated traffic_signals tag and consolidated_id 2; node 10 did not
+        let conn1 = connectors.iter().find(|c| c.node.osmid == OsmNodeId(1)).unwrap();
+        let conn10 = connectors.iter().find(|c| c.node.osmid == OsmNodeId(10)).unwrap();
+        assert!(conn1.node.has_traffic_signals());
+        assert!(conn1.node.consolidated_ids.contains(&OsmNodeId(2)));
+        assert!(!conn10.node.has_traffic_signals());
+
+        // Check SegmentFullType mapping: `road-primary-link` and `road-footway-sidewalk`
+        let seg_road = segments.iter().find(|s| s.parent_way_id == OsmWayId(100)).unwrap();
+        let seg_sw = segments.iter().find(|s| s.parent_way_id == OsmWayId(200)).unwrap();
+        assert_eq!(seg_road.full_type.as_str(), "road-primary-link");
+        assert_eq!(seg_sw.full_type.as_str(), "road-footway-sidewalk");
+    }
+}

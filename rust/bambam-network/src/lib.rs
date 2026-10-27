@@ -14,6 +14,7 @@ pub mod model;
 pub mod segment_split;
 pub mod serialize_ops;
 pub mod summary;
+pub mod taxonomy;
 pub mod vertex_serializable;
 
 pub use consts::*;
@@ -24,7 +25,18 @@ pub use model::{
 };
 pub use segment_split::SegmentSplit;
 pub use serialize_ops::VectorizedEdgeList;
-pub use summary::{ClassStats, EdgeListStats};
+pub use summary::{
+    write_summary, ClassStats, EdgeListStats, NetworkGraphSource, NetworkGraphStats,
+    NetworkGraphSummary,
+};
+pub use taxonomy::{
+    evaluate_segment_headings, CliBoundingBox, DuringExpression, FilterableSegment, MatchBehavior,
+    NetworkEdgeListConfiguration, SegmentAccessRestriction, SegmentAccessRestrictionWhen,
+    SegmentAccessRestrictionWhenVehicle, SegmentAccessType, SegmentClass, SegmentFullType,
+    SegmentImperialWeightUnit, SegmentLengthUnit, SegmentMetricWeightUnit, SegmentMode,
+    SegmentRecognized, SegmentSubclass, SegmentSubtype, SegmentUnit, SegmentUsing,
+    SegmentVehicleComparator, SegmentVehicleDimension, SegmentWeightUnit, TravelModeFilter,
+};
 pub use vertex_serializable::{
     attach_infrastructure_to_vertices, EdgeMappingRecord, NetworkVertexComplete, OmfVertexComplete,
     VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord, VertexSerializable,

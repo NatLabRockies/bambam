@@ -19,14 +19,15 @@ Shared split-based road network ETL, island detection, spatial infrastructure at
 | **Segment Input** | `ImportSegment<C>` | `OmfSegmentRecord` (`TransportationSegmentRecord`) | `OsmSegmentRecord` |
 | **Infrastructure Input** | `ImportInfrastructure` | `OmfInfrastructureRecord` (`InfrastructureRecord`) | `OsmInfrastructureRecord` |
 | **Split Primitives** | `ConnectorInSegment`, `SegmentSplit`, `SegmentHeading` | Re-exported from `bambam-network` | Re-exported from `bambam-network` |
-| **Vectorized Edge List** | `VectorizedEdgeList<C>` | `OmfEdgeList` (`VectorizedEdgeList<SegmentFullType>`) | `OsmEdgeList` (`VectorizedEdgeList<Highway>`) |
+| **Vectorized Edge List** | `VectorizedEdgeList<C>` | `OmfEdgeList` (`VectorizedEdgeList<SegmentFullType>`) | `OsmEdgeList` (`VectorizedEdgeList<SegmentFullType>`) |
 | **Vectorized Graph** | — | `OmfGraphVectorized` | `OsmGraphVectorized` |
-| **Output Records** | `VertexCompassRecord`, `VertexCompleteRecord`, `VertexMappingRecord`, `EdgeMappingRecord` | Re-exported from `bambam-network` | Re-exported from `bambam-network` + `OsmNodeDataSerializable`, `OsmWayDataSerializable` |
+| **Output Records** | `VertexCompassRecord`, `VertexCompleteRecord`, `VertexMappingRecord`, `EdgeMappingRecord`, `NetworkGraphSummary` | Re-exported from `bambam-network` | Re-exported from `bambam-network` |
 
 ## Output Guarantees
 
 Every network import produces a consistent directory structure:
 - `raw/`: Always-on Snappy-compressed Parquet snapshots of the source records (`segments.parquet`, `connectors.parquet`, `infrastructure.parquet` for OMF; `nodes.parquet`, `ways.parquet` for OSM).
+- `summary.toml`: Summary metadata (`release`, `study_region`, `created`, `bbox`) and per-mode edge count, mileage, and `road-<class>[-<subclass>]` statistics.
 - `vertices-compass.csv.gz`: RouteE Compass vertex coordinates (`vertex_id,x,y`).
 - `vertices-complete.csv.gz`: Enriched vertex records with `traffic_signals`, `stop`, `give_way`, `crossing`, and matched `infrastructure_ids`.
 - `vertices-mapping.csv.gz`: Bidirectional mapping between `vertex_id` and source Connector/Node ID (`vertex_id,source_id`).

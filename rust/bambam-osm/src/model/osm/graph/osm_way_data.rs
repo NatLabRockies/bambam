@@ -3,6 +3,11 @@ use crate::model::{
     feature::highway::Highway,
     osm::{graph::osm_way_ops, OsmError},
 };
+use bambam_network::{
+    SegmentAccessRestriction, SegmentAccessRestrictionWhen, SegmentAccessType, SegmentClass,
+    SegmentFullType, SegmentHeading, SegmentMode, SegmentRecognized, SegmentSubclass,
+    SegmentSubtype, SegmentUsing,
+};
 use geo::{Coord, LineString};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -20,6 +25,26 @@ pub struct OsmWayData {
     pub sidewalk: Option<String>,
     pub cycleway: Option<String>,
     pub footway: Option<String>,
+    #[serde(default)]
+    pub foot: Option<String>,
+    #[serde(default)]
+    pub bicycle: Option<String>,
+    #[serde(default)]
+    pub motor_vehicle: Option<String>,
+    #[serde(default)]
+    pub motorcar: Option<String>,
+    #[serde(default)]
+    pub motorcycle: Option<String>,
+    #[serde(default)]
+    pub vehicle: Option<String>,
+    #[serde(default)]
+    pub hgv: Option<String>,
+    #[serde(default)]
+    pub bus: Option<String>,
+    #[serde(default)]
+    pub oneway_bicycle: Option<String>,
+    #[serde(default)]
+    pub oneway_foot: Option<String>,
     pub junction: Option<String>,
     pub landuse: Option<String>,
     pub lanes: Option<String>,
@@ -65,6 +90,16 @@ impl OsmWayData {
                 "sidewalk" => out.sidewalk = Some(String::from(v.trim())),
                 "cycleway" => out.cycleway = Some(String::from(v.trim())),
                 "footway" => out.footway = Some(String::from(v.trim())),
+                "foot" => out.foot = Some(String::from(v.trim())),
+                "bicycle" => out.bicycle = Some(String::from(v.trim())),
+                "motor_vehicle" => out.motor_vehicle = Some(String::from(v.trim())),
+                "motorcar" => out.motorcar = Some(String::from(v.trim())),
+                "motorcycle" => out.motorcycle = Some(String::from(v.trim())),
+                "vehicle" => out.vehicle = Some(String::from(v.trim())),
+                "hgv" => out.hgv = Some(String::from(v.trim())),
+                "bus" => out.bus = Some(String::from(v.trim())),
+                "oneway:bicycle" => out.oneway_bicycle = Some(String::from(v.trim())),
+                "oneway:foot" => out.oneway_foot = Some(String::from(v.trim())),
                 "junction" => out.junction = Some(String::from(v.trim())),
                 "landuse" => out.landuse = Some(String::from(v.trim())),
                 "lanes" => out.lanes = Some(String::from(v.trim())),
@@ -241,6 +276,294 @@ impl OsmWayData {
             OsmError::InvalidOsmData(format!("way data for way {} has no nodes", self.osmid))
         })
     }
+
+    /// Maps this OSM way's `highway`, `service`, `footway`, and `cycleway` tags into the shared
+    /// Overture Maps [`SegmentFullType`] (`SegmentSubtype`, `SegmentClass`, `Option<SegmentSubclass>`).
+    pub fn to_segment_full_type(&self, highway: &Highway) -> SegmentFullType {
+        let (class, hw_subclass) = match highway {
+            Highway::Motorway => (SegmentClass::Motorway, None),
+            Highway::MotorwayLink => (SegmentClass::Motorway, Some(SegmentSubclass::Link)),
+            Highway::Trunk => (SegmentClass::Trunk, None),
+            Highway::TrunkLink => (SegmentClass::Trunk, Some(SegmentSubclass::Link)),
+            Highway::Primary => (SegmentClass::Primary, None),
+            Highway::PrimaryLink => (SegmentClass::Primary, Some(SegmentSubclass::Link)),
+            Highway::Secondary => (SegmentClass::Secondary, None),
+            Highway::SecondaryLink => (SegmentClass::Secondary, Some(SegmentSubclass::Link)),
+            Highway::Tertiary => (SegmentClass::Tertiary, None),
+            Highway::TertiaryLink => (SegmentClass::Tertiary, Some(SegmentSubclass::Link)),
+            Highway::Residential => (SegmentClass::Residential, None),
+            Highway::LivingStreet => (SegmentClass::LivingStreet, None),
+            Highway::Unclassified => (SegmentClass::Unclassified, None),
+            Highway::Service => {
+                let sc = match self.service.as_deref().map(str::trim) {
+                    Some("alley") => Some(SegmentSubclass::Alley),
+                    Some("driveway") => Some(SegmentSubclass::Driveway),
+                    Some("parking_aisle") => Some(SegmentSubclass::ParkingAisle),
+                    _ => None,
+                };
+                (SegmentClass::Service, sc)
+            }
+            Highway::Pedestrian => (SegmentClass::Pedestrian, None),
+            Highway::Footway => {
+                let sc = match self.footway.as_deref().map(str::trim) {
+                    Some("sidewalk") => Some(SegmentSubclass::Sidewalk),
+                    Some("crossing") => Some(SegmentSubclass::Crosswalk),
+                    _ => None,
+                };
+                (SegmentClass::Footway, sc)
+            }
+            Highway::Sidewalk => (SegmentClass::Footway, Some(SegmentSubclass::Sidewalk)),
+            Highway::Crossing => (SegmentClass::Footway, Some(SegmentSubclass::Crosswalk)),
+            Highway::Steps => (SegmentClass::Steps, None),
+            Highway::Path => (SegmentClass::Path, None),
+            Highway::Track => (SegmentClass::Track, None),
+            Highway::Cycleway => {
+                let sc = match self.cycleway.as_deref().map(str::trim) {
+                    Some("crossing") => Some(SegmentSubclass::CycleCrossing),
+                    _ => None,
+                };
+                (SegmentClass::Cycleway, sc)
+            }
+            Highway::Bridleway => (SegmentClass::Bridleway, None),
+            Highway::Road => (SegmentClass::Unknown, None),
+            other => (SegmentClass::Custom(other.to_string()), None),
+        };
+        SegmentFullType(SegmentSubtype::Road, class, hw_subclass)
+    }
+
+    /// Synthesizes Overture-compatible [`SegmentAccessRestriction`] records from this OSM way's
+    /// `access`, `service`, `oneway`, `junction`, and mode-specific tags (`foot`, `bicycle`,
+    /// `motor_vehicle`, `motorcar`, `motorcycle`, `vehicle`, `hgv`, `bus`, `oneway:bicycle`, `oneway:foot`).
+    pub fn to_access_restrictions(&self) -> Vec<SegmentAccessRestriction> {
+        let mut restrictions = Vec::new();
+
+        // 1. General `access=*` or `service=private`
+        if let Some(acc) = self.access.as_deref() {
+            if let Some(r) = build_osm_access_restriction(acc, None, None) {
+                restrictions.push(r);
+            }
+        }
+        if matches!(self.service.as_deref(), Some("private")) {
+            restrictions.push(SegmentAccessRestriction {
+                access_type: SegmentAccessType::Denied,
+                when: None,
+                vehicle: None,
+            });
+        }
+
+        // 2. Mode-specific access tags
+        let all_vehicle_modes = vec![
+            SegmentMode::Vehicle,
+            SegmentMode::Bicycle,
+            SegmentMode::MotorVehicle,
+            SegmentMode::Car,
+            SegmentMode::Truck,
+            SegmentMode::Motorcycle,
+            SegmentMode::Bus,
+            SegmentMode::Hgv,
+            SegmentMode::Hov,
+        ];
+        let motor_vehicle_modes = vec![
+            SegmentMode::MotorVehicle,
+            SegmentMode::Car,
+            SegmentMode::Truck,
+            SegmentMode::Motorcycle,
+            SegmentMode::Bus,
+            SegmentMode::Hgv,
+            SegmentMode::Hov,
+        ];
+
+        if let Some(val) = self.vehicle.as_deref() {
+            if let Some(r) = build_osm_access_restriction(val, Some(all_vehicle_modes.clone()), None)
+            {
+                restrictions.push(r);
+            }
+        }
+        if let Some(val) = self.motor_vehicle.as_deref() {
+            if let Some(r) =
+                build_osm_access_restriction(val, Some(motor_vehicle_modes.clone()), None)
+            {
+                restrictions.push(r);
+            }
+        }
+        if let Some(val) = self.motorcar.as_deref() {
+            if let Some(r) = build_osm_access_restriction(val, Some(vec![SegmentMode::Car]), None) {
+                restrictions.push(r);
+            }
+        }
+        if let Some(val) = self.motorcycle.as_deref() {
+            if let Some(r) =
+                build_osm_access_restriction(val, Some(vec![SegmentMode::Motorcycle]), None)
+            {
+                restrictions.push(r);
+            }
+        }
+        if let Some(val) = self.hgv.as_deref() {
+            if let Some(r) =
+                build_osm_access_restriction(val, Some(vec![SegmentMode::Hgv, SegmentMode::Truck]), None)
+            {
+                restrictions.push(r);
+            }
+        }
+        if let Some(val) = self.bus.as_deref() {
+            if let Some(r) = build_osm_access_restriction(val, Some(vec![SegmentMode::Bus]), None) {
+                restrictions.push(r);
+            }
+        }
+        if let Some(val) = self.bicycle.as_deref() {
+            if let Some(r) =
+                build_osm_access_restriction(val, Some(vec![SegmentMode::Bicycle]), None)
+            {
+                restrictions.push(r);
+            }
+        }
+        if let Some(val) = self.foot.as_deref() {
+            if let Some(r) = build_osm_access_restriction(val, Some(vec![SegmentMode::Foot]), None)
+            {
+                restrictions.push(r);
+            }
+        }
+
+        // 3. Directional (`oneway`) restrictions
+        // In OSM (and OMF), `oneway` applies to vehicles, NOT pedestrians (`foot`), unless
+        // `highway=footway|steps|pedestrian|path|corridor` or `oneway:foot` is explicitly set.
+        if self.is_one_way() {
+            let denied_heading = if self.is_reverse() {
+                SegmentHeading::Forward
+            } else {
+                SegmentHeading::Backward
+            };
+
+            let is_pedestrian_way = matches!(
+                self.highway.as_deref(),
+                Some("footway" | "steps" | "pedestrian" | "corridor")
+            );
+            let oneway_modes = if is_pedestrian_way {
+                None
+            } else {
+                Some(all_vehicle_modes)
+            };
+
+            restrictions.push(SegmentAccessRestriction {
+                access_type: SegmentAccessType::Denied,
+                when: Some(SegmentAccessRestrictionWhen {
+                    heading: Some(denied_heading.clone()),
+                    mode: oneway_modes,
+                    ..Default::default()
+                }),
+                vehicle: None,
+            });
+
+            // `oneway:bicycle=no` or `cycleway=opposite*` allows counter-flow cycling
+            let contraflow_bike = matches!(
+                self.oneway_bicycle.as_deref().map(str::trim),
+                Some("no" | "false" | "0")
+            ) || matches!(
+                self.cycleway.as_deref().map(str::trim),
+                Some("opposite" | "opposite_lane" | "opposite_track" | "opposite_share_busway")
+            );
+            if contraflow_bike {
+                restrictions.push(SegmentAccessRestriction {
+                    access_type: SegmentAccessType::Allowed,
+                    when: Some(SegmentAccessRestrictionWhen {
+                        heading: Some(denied_heading),
+                        mode: Some(vec![SegmentMode::Bicycle]),
+                        ..Default::default()
+                    }),
+                    vehicle: None,
+                });
+            }
+        }
+
+        if let Some(ow_foot) = self.oneway_foot.as_deref().map(str::trim) {
+            if matches!(ow_foot, "yes" | "true" | "1") {
+                restrictions.push(SegmentAccessRestriction {
+                    access_type: SegmentAccessType::Denied,
+                    when: Some(SegmentAccessRestrictionWhen {
+                        heading: Some(SegmentHeading::Backward),
+                        mode: Some(vec![SegmentMode::Foot]),
+                        ..Default::default()
+                    }),
+                    vehicle: None,
+                });
+            } else if matches!(ow_foot, "-1" | "reverse") {
+                restrictions.push(SegmentAccessRestriction {
+                    access_type: SegmentAccessType::Denied,
+                    when: Some(SegmentAccessRestrictionWhen {
+                        heading: Some(SegmentHeading::Forward),
+                        mode: Some(vec![SegmentMode::Foot]),
+                        ..Default::default()
+                    }),
+                    vehicle: None,
+                });
+            }
+        }
+
+        restrictions
+    }
+}
+
+fn build_osm_access_restriction(
+    raw_val: &str,
+    modes: Option<Vec<SegmentMode>>,
+    heading: Option<SegmentHeading>,
+) -> Option<SegmentAccessRestriction> {
+    let val = raw_val.trim().to_ascii_lowercase();
+    let (access_type, using, recognized) = match val.as_str() {
+        "no" | "private" | " agricultural" | "forestry" | "emergency" | "military" | "razed" => {
+            (SegmentAccessType::Denied, None, None)
+        }
+        "yes" | "permissive" | "public" | "use_sidepath" => {
+            (SegmentAccessType::Allowed, None, None)
+        }
+        "designated" | "official" => (SegmentAccessType::Designated, None, None),
+        "destination" | "delivery" | "customers" => (
+            SegmentAccessType::Allowed,
+            Some(vec![SegmentUsing::AtDestination]),
+            None,
+        ),
+        "permit" => (
+            SegmentAccessType::Allowed,
+            None,
+            Some(vec![SegmentRecognized::AsPermitted]),
+        ),
+        "employees" => (
+            SegmentAccessType::Allowed,
+            None,
+            Some(vec![SegmentRecognized::AsEmployee]),
+        ),
+        "students" => (
+            SegmentAccessType::Allowed,
+            None,
+            Some(vec![SegmentRecognized::AsStudent]),
+        ),
+        "disabled" => (
+            SegmentAccessType::Allowed,
+            None,
+            Some(vec![SegmentRecognized::AsDisabled]),
+        ),
+        _ => return None,
+    };
+
+    let has_when =
+        modes.is_some() || heading.is_some() || using.is_some() || recognized.is_some();
+    let when = if has_when {
+        Some(SegmentAccessRestrictionWhen {
+            heading,
+            mode: modes,
+            using,
+            recognized,
+            ..Default::default()
+        })
+    } else {
+        None
+    };
+
+    Some(SegmentAccessRestriction {
+        access_type,
+        when,
+        vehicle: None,
+    })
 }
 
 impl<'a> From<&'a osmpbf::elements::Way<'a>> for OsmWayData {

@@ -21,9 +21,14 @@ pub enum App {
     Pbf {
         #[arg(long, help = "path to .pbf file for import")]
         pbf_file: String,
+        #[arg(long, help = "optional study region name for summary.toml")]
+        name: Option<String>,
         #[arg(long, help = "path to file containing WKT used to filter the PBF data")]
         extent_file: Option<String>,
-        #[arg(long, help = "path to file with bambam-osm import parameters")]
+        #[arg(
+            long,
+            help = "path to file with bambam-osm / travel-mode-filter configuration (.json or .toml)"
+        )]
         configuration_file: Option<String>,
         #[arg(long, help = "output path for network dataset")]
         output_directory: String,
@@ -31,12 +36,13 @@ pub enum App {
 }
 
 pub fn run(app: &App) -> Result<(), OsmCliError> {
-    env_logger::init();
+    let _ = env_logger::try_init();
     match app {
         App::Pbf {
             pbf_file,
+            name,
             extent_file,
-            configuration_file, // network_filter,
+            configuration_file,
             output_directory,
         } => {
             let conf = match configuration_file {
@@ -47,10 +53,16 @@ pub fn run(app: &App) -> Result<(), OsmCliError> {
                 }
             }?;
             let out_path = Path::new(output_directory);
+            let edge_lists = conf.resolved_edge_lists();
+            let island_alg = conf.resolved_island_detection();
+            let element_filter = conf.resolved_element_filter();
             let pbf_config = OsmSource::Pbf {
                 pbf_filepath: pbf_file.clone(),
+                study_region: name.clone(),
                 extent_filter_filepath: extent_file.clone(),
-                network_filter: Some(conf.element_filter),
+                network_filter: Some(element_filter),
+                edge_lists: Some(edge_lists),
+                island_algorithm_configuration: island_alg,
                 component_filter: Some(conf.component_filter),
                 truncate_by_edge: conf.truncate_by_edge,
                 ignore_errors: conf.ignore_osm_parsing_errors,
@@ -58,7 +70,7 @@ pub fn run(app: &App) -> Result<(), OsmCliError> {
                 infrastructure_match_distance_meters: conf.infrastructure_match_distance_meters,
             };
             let graph = pbf_config.import()?;
-            match graph.write_compass(out_path, true) {
+            match graph.write_compass(out_path, conf.overwrite) {
                 Ok(_) => {
                     eprintln!("finished.");
                     Ok(())
@@ -92,19 +104,16 @@ fn main() {
 mod tests {
     use std::path::Path;
 
-    use bambam_network::{EdgeMappingRecord, VertexMappingRecord};
+    use bambam_network::{EdgeMappingRecord, VertexCompleteRecord, VertexMappingRecord};
     use bambam_osm::{
         algorithm::truncation::ComponentFilter,
         model::osm::{
-            graph::{
-                osm_element_filter::ElementFilter, CompassWriter, OsmNodeDataSerializable,
-                OsmWayDataSerializable,
-            },
+            graph::{osm_element_filter::ElementFilter, CompassWriter},
             import_ops::OsmCollection,
             OsmSource,
         },
     };
-    use routee_compass_core::util::fs::read_utils;
+    use routee_compass_core::{model::network::EdgeConfig, util::fs::read_utils};
 
     #[test]
     fn test_e2e_liechtenstein() {
@@ -121,6 +130,7 @@ mod tests {
         let config_file = "src/test/test_osm_import.toml";
         let conf = crate::App::Pbf {
             pbf_file: pbf_file.to_string(),
+            name: Some("schaan_liechtenstein".to_string()),
             extent_file: Some(extent_file.to_string()),
             configuration_file: Some(config_file.to_string()),
             output_directory: temp_directory.to_string(),
@@ -136,42 +146,48 @@ mod tests {
         assert!(!raw_loaded.nodes.is_empty());
         assert!(!raw_loaded.ways.is_empty());
 
-        // Verify standardized ID mappings
+        // Verify summary.toml exists
+        assert!(Path::new(temp_directory).join("summary.toml").exists());
+
+        // Verify standardized ID mappings and VertexCompleteRecord schema
         let v_mappings: Box<[VertexMappingRecord]> =
             read_utils::from_csv(&"src/test/tmp/vertices-mapping.csv.gz", true, None, None)
                 .expect("failed to read vertices-mapping.csv.gz");
-        let e_mappings: Box<[EdgeMappingRecord]> =
-            read_utils::from_csv(&"src/test/tmp/edges-mapping.csv.gz", true, None, None)
-                .expect("failed to read edges-mapping.csv.gz");
+        let nodes: Box<[VertexCompleteRecord]> =
+            read_utils::from_csv(&"src/test/tmp/vertices-complete.csv.gz", true, None, None)
+                .expect("failed to read vertices-complete.csv.gz");
+        assert_eq!(v_mappings.len(), nodes.len());
 
-        // test graph connectivity
+        // test graph connectivity across walk, bike, and drive mode subdirectories
         let mut disconnected: Vec<String> = vec![];
-        let ways_result: Result<Box<[OsmWayDataSerializable]>, _> =
-            read_utils::from_csv(&"src/test/tmp/edges-complete.csv.gz", true, None, None);
-        let nodes_result: Result<Box<[OsmNodeDataSerializable]>, _> =
-            read_utils::from_csv(&"src/test/tmp/vertices-complete.csv.gz", true, None, None);
-        let invariant_error_msg = match (&ways_result, &nodes_result) {
-            (Ok(_), Ok(_)) => None,
-            (Ok(_), Err(e)) => Some(format!("failed to read nodes file: {e}")),
-            (Err(e), Ok(_)) => Some(format!("failed to read ways file: {e}")),
-            (Err(e1), Err(e2)) => Some(format!(
-                "failed to read both nodes and ways files: {e1} {e2}"
-            )),
-        };
-        if let (Ok(ways), Ok(nodes)) = (ways_result, nodes_result) {
-            assert_eq!(v_mappings.len(), nodes.len());
-            assert_eq!(e_mappings.len(), ways.len());
-            for way in ways.iter() {
-                let src_id = way.src_vertex_id.0;
-                let way_id = way.osmid.0;
-                let dst_id = way.dst_vertex_id.0;
-                let way_img = format!("({src_id})-[{way_id}]->({dst_id})");
+        for mode in ["walk", "bike", "drive"] {
+            let e_mappings: Box<[EdgeMappingRecord]> = read_utils::from_csv(
+                &format!("src/test/tmp/{mode}/edges-mapping.csv.gz"),
+                true,
+                None,
+                None,
+            )
+            .expect("failed to read mode edges-mapping.csv.gz");
+            let edges: Box<[EdgeConfig]> = read_utils::from_csv(
+                &format!("src/test/tmp/{mode}/edges-compass.csv.gz"),
+                true,
+                None,
+                None,
+            )
+            .expect("failed to read mode edges-compass.csv.gz");
+
+            assert_eq!(e_mappings.len(), edges.len());
+            for edge in edges.iter() {
+                let src_id = edge.src_vertex_id.0;
+                let edge_id = edge.edge_id.0;
+                let dst_id = edge.dst_vertex_id.0;
+                let edge_img = format!("{mode}:({src_id})-[{edge_id}]->({dst_id})");
                 let src = nodes.get(src_id);
                 let dst = nodes.get(dst_id);
                 match (src, dst) {
-                    (None, Some(_)) => disconnected.push(format!("src missing from {way_img}")),
-                    (Some(_), None) => disconnected.push(format!("dst missing from {way_img}")),
-                    (None, None) => disconnected.push(format!("src/dst missing from {way_img}")),
+                    (None, Some(_)) => disconnected.push(format!("src missing from {edge_img}")),
+                    (Some(_), None) => disconnected.push(format!("dst missing from {edge_img}")),
+                    (None, None) => disconnected.push(format!("src/dst missing from {edge_img}")),
                     (Some(_), Some(_)) => {}
                 }
             }
@@ -181,7 +197,10 @@ mod tests {
         let simplified_dir = Path::new("src/test/tmp_simplified");
         let simplified_source = OsmSource::Pbf {
             pbf_filepath: pbf_file.to_string(),
+            study_region: Some("schaan_simplified".to_string()),
             network_filter: Some(ElementFilter::OsmnxAllPublic),
+            edge_lists: None,
+            island_algorithm_configuration: None,
             extent_filter_filepath: Some(extent_file.to_string()),
             component_filter: Some(ComponentFilter::Largest),
             truncate_by_edge: true,
@@ -195,11 +214,32 @@ mod tests {
         simplified_graph
             .write_compass(simplified_dir, true)
             .expect("writing simplified OSM compass files failed");
-        assert!(!simplified_graph.nodes.is_empty());
-        assert!(!simplified_graph.ways.is_empty());
-        for way in &simplified_graph.ways {
-            assert!(way.src_vertex_id.0 < simplified_graph.nodes.len());
-            assert!(way.dst_vertex_id.0 < simplified_graph.nodes.len());
+        assert!(!simplified_graph.vertices.is_empty());
+        assert!(!simplified_graph.edge_lists.is_empty());
+        for el in &simplified_graph.edge_lists {
+            for edge in el.edges.edges() {
+                assert!(edge.src_vertex_id.0 < simplified_graph.vertices.len());
+                assert!(edge.dst_vertex_id.0 < simplified_graph.vertices.len());
+            }
+        }
+
+        // Also verify consuming configuration/bambam-omf/travel-mode-filter.json directly
+        let omf_filter_dir = Path::new("src/test/tmp_travel_mode_filter");
+        let omf_filter_conf = crate::App::Pbf {
+            pbf_file: pbf_file.to_string(),
+            name: Some("schaan_travel_mode_filter".to_string()),
+            extent_file: Some(extent_file.to_string()),
+            configuration_file: Some(
+                "../../configuration/bambam-omf/travel-mode-filter.json".to_string(),
+            ),
+            output_directory: omf_filter_dir.to_string_lossy().to_string(),
+        };
+        crate::run(&omf_filter_conf)
+            .expect("bambam-osm failed with travel-mode-filter.json");
+        assert!(omf_filter_dir.join("summary.toml").exists());
+        for mode in ["walk", "bike", "drive"] {
+            assert!(omf_filter_dir.join(mode).join("edges-compass.csv.gz").exists());
+            assert!(omf_filter_dir.join(mode).join("edges-mapping.csv.gz").exists());
         }
 
         // cleanup before exits, order is important.
@@ -207,15 +247,12 @@ mod tests {
             std::fs::remove_dir_all(temp_directory).expect("failed to remove tmp directory");
             std::fs::remove_dir_all(simplified_dir)
                 .expect("failed to remove tmp_simplified directory");
+            std::fs::remove_dir_all(omf_filter_dir)
+                .expect("failed to remove tmp_travel_mode_filter directory");
         }
-        // error if we couldn't read the output files or if the graph connectivity was invalid.
-        match invariant_error_msg {
-            None if !disconnected.is_empty() => {
-                disconnected.iter().take(5).for_each(|d| println!("{d}"));
-                panic!("files were written but some ways had invalid src/dst vertex ids (first 5 in log)")
-            }
-            Some(msg) => panic!("{msg}"),
-            _ => {}
+        if !disconnected.is_empty() {
+            disconnected.iter().take(5).for_each(|d| println!("{d}"));
+            panic!("files were written but some edges had invalid src/dst vertex ids (first 5 in log)");
         }
     }
 }

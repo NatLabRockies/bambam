@@ -205,8 +205,7 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
                 Some(modes) => modes
                     .iter()
                     .map(|m| NetworkEdgeListConfiguration::default_for_mode(m))
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(|e| e.to_string())?,
+                    .collect::<Result<Vec<_>, _>>()?,
                 None => NetworkEdgeListConfiguration::default_multimodal(),
             };
             let island_alg = IslandDetectionAlgorithm {
@@ -232,27 +231,36 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
             simplify,
             truncate_by_edge,
         } => {
-            let modes: Vec<String> = match request.modes.as_ref().filter(|m| !m.is_empty()) {
-                Some(m) => m.clone(),
-                None => vec!["walk".to_string(), "bike".to_string(), "drive".to_string()],
+            let edge_lists = match request.modes.as_ref().filter(|m| !m.is_empty()) {
+                Some(modes) => modes
+                    .iter()
+                    .map(|m| NetworkEdgeListConfiguration::default_for_mode(m))
+                    .collect::<Result<Vec<_>, _>>()?,
+                None => NetworkEdgeListConfiguration::default_multimodal(),
             };
-            let filter = ElementFilter::default_for_modes(Some(&modes));
+            let island_alg = IslandDetectionAlgorithm {
+                min_distance: 2.0,
+                distance_unit: DistanceUnit::Miles,
+                algorithm_type: ComponentsAlgorithmType::Wcc,
+            };
+            let filter = ElementFilter::from_edge_list_configs(&edge_lists);
             let extent_opt = Some(extent_geom);
             let (nodes_map, ways_map) =
                 import_ops::read_pbf(pbf_path, filter, &extent_opt).map_err(|e| e.to_string())?;
 
-            let graph = OsmGraphVectorized::from_osm_maps_with_modes(
+            let graph = OsmGraphVectorized::from_osm_maps_with_config(
                 pbf_path.clone(),
+                Some(request.name.clone()),
                 nodes_map,
                 ways_map,
                 extent_opt.as_ref(),
-                &ComponentFilter::Largest,
-                None,
+                &edge_lists,
+                &ComponentFilter::KeepAll,
+                Some(&island_alg),
                 truncate_by_edge.unwrap_or(true),
                 simplify.unwrap_or(true),
                 true,
                 request.infrastructure_match_distance_meters,
-                Some(&modes),
             )
             .map_err(|e| e.to_string())?;
 
@@ -415,10 +423,9 @@ mod tests {
 
         assert!(osm_out_dir.join("raw").join("nodes.parquet").exists());
         assert!(osm_out_dir.join("raw").join("ways.parquet").exists());
+        assert!(osm_out_dir.join("summary.toml").exists());
         assert!(osm_out_dir.join("vertices-mapping.csv.gz").exists());
-        assert!(osm_out_dir.join("edges-mapping.csv.gz").exists());
         assert!(osm_out_dir.join("vertices-complete.csv.gz").exists());
-        assert!(osm_out_dir.join("edges-complete.csv.gz").exists());
         assert!(osm_out_dir
             .join("drive")
             .join("edges-compass.csv.gz")
@@ -439,6 +446,7 @@ mod tests {
         // Verify both OMF and OSM outputs share the exact same core Compass + mapping + infrastructure files
         for out_dir in [&omf_out_dir, &osm_out_dir] {
             for root_file in [
+                "summary.toml",
                 "vertices-compass.csv.gz",
                 "vertices-complete.csv.gz",
                 "vertices-mapping.csv.gz",

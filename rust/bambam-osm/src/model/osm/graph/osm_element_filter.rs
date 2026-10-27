@@ -1,4 +1,7 @@
 use crate::model::{feature::highway::Highway, osm::overpass::FilterQuery};
+use bambam_network::{
+    MatchBehavior, NetworkEdgeListConfiguration, SegmentClass, TravelModeFilter,
+};
 use osmpbf::{Element, Way};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, str::FromStr};
@@ -28,6 +31,51 @@ impl ElementFilter {
         }
     }
 
+    /// Derives an [`ElementFilter`] from a list of [`NetworkEdgeListConfiguration`]s by taking
+    /// the union of all included [`SegmentClass`] values across the configured travel modes.
+    pub fn from_edge_list_configs(configs: &[NetworkEdgeListConfiguration]) -> Self {
+        if configs.is_empty() {
+            return Self::OsmnxAllPublic;
+        }
+        let mut tags = HashSet::new();
+        for cfg in configs {
+            let mut mode_has_include = false;
+            for f in &cfg.filter {
+                match f {
+                    TravelModeFilter::MatchesClasses {
+                        classes,
+                        behavior: MatchBehavior::Include,
+                        ..
+                    } => {
+                        mode_has_include = true;
+                        for cls in classes {
+                            tags.extend(segment_class_to_highways(cls));
+                        }
+                    }
+                    TravelModeFilter::MatchesClassesWithSubclasses {
+                        classes,
+                        behavior: MatchBehavior::Include,
+                        ..
+                    } => {
+                        mode_has_include = true;
+                        for cls in classes.keys() {
+                            tags.extend(segment_class_to_highways(cls));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if !mode_has_include {
+                return Self::OsmnxAllPublic;
+            }
+        }
+        if tags.is_empty() {
+            Self::OsmnxAllPublic
+        } else {
+            Self::HighwayTags { tags }
+        }
+    }
+
     /// Returns a built-in `ElementFilter` matching the requested travel mode names
     /// (`"walk"`, `"bike"`, `"drive"`), or `ElementFilter::OsmnxAllPublic` if `None` or empty.
     pub fn default_for_modes(modes: Option<&[String]>) -> Self {
@@ -35,82 +83,42 @@ impl ElementFilter {
             return Self::OsmnxAllPublic;
         };
 
-        let mut tags = HashSet::new();
+        let mut configs = Vec::new();
         for mode in mode_list {
-            match mode.trim().to_ascii_lowercase().as_str() {
-                "walk" | "foot" | "pedestrian" => {
-                    tags.extend([
-                        Highway::Secondary,
-                        Highway::SecondaryLink,
-                        Highway::Tertiary,
-                        Highway::TertiaryLink,
-                        Highway::Residential,
-                        Highway::LivingStreet,
-                        Highway::Unclassified,
-                        Highway::Service,
-                        Highway::Pedestrian,
-                        Highway::Footway,
-                        Highway::Sidewalk,
-                        Highway::Steps,
-                        Highway::Path,
-                        Highway::Track,
-                        Highway::Bridleway,
-                        Highway::Corridor,
-                        Highway::Trailhead,
-                        Highway::Elevator,
-                    ]);
-                }
-                "bike" | "bicycle" | "cycling" => {
-                    tags.extend([
-                        Highway::Primary,
-                        Highway::PrimaryLink,
-                        Highway::Secondary,
-                        Highway::SecondaryLink,
-                        Highway::Tertiary,
-                        Highway::TertiaryLink,
-                        Highway::Residential,
-                        Highway::LivingStreet,
-                        Highway::Unclassified,
-                        Highway::Service,
-                        Highway::Pedestrian,
-                        Highway::Path,
-                        Highway::Track,
-                        Highway::Cycleway,
-                        Highway::Bridleway,
-                    ]);
-                }
-                "drive" | "car" | "motor_vehicle" | "auto" => {
-                    tags.extend([
-                        Highway::Motorway,
-                        Highway::MotorwayLink,
-                        Highway::Trunk,
-                        Highway::TrunkLink,
-                        Highway::Primary,
-                        Highway::PrimaryLink,
-                        Highway::Secondary,
-                        Highway::SecondaryLink,
-                        Highway::Tertiary,
-                        Highway::TertiaryLink,
-                        Highway::Residential,
-                        Highway::LivingStreet,
-                        Highway::Unclassified,
-                        Highway::Service,
-                        Highway::Road,
-                    ]);
-                }
-                _ => return Self::OsmnxAllPublic,
+            match NetworkEdgeListConfiguration::default_for_mode(mode) {
+                Ok(cfg) => configs.push(cfg),
+                Err(_) => return Self::OsmnxAllPublic,
             }
         }
-
-        if tags.is_empty() {
-            Self::OsmnxAllPublic
-        } else {
-            Self::HighwayTags { tags }
-        }
+        Self::from_edge_list_configs(&configs)
     }
 }
 
-/// filters ways that do not have a highway tag present in the tags argument.
+fn segment_class_to_highways(cls: &SegmentClass) -> Vec<Highway> {
+    match cls {
+        SegmentClass::Motorway => vec![Highway::Motorway, Highway::MotorwayLink],
+        SegmentClass::Trunk => vec![Highway::Trunk, Highway::TrunkLink],
+        SegmentClass::Primary => vec![Highway::Primary, Highway::PrimaryLink],
+        SegmentClass::Secondary => vec![Highway::Secondary, Highway::SecondaryLink],
+        SegmentClass::Tertiary => vec![Highway::Tertiary, Highway::TertiaryLink],
+        SegmentClass::Residential => vec![Highway::Residential],
+        SegmentClass::LivingStreet => vec![Highway::LivingStreet],
+        SegmentClass::Unclassified => vec![Highway::Unclassified],
+        SegmentClass::Service => vec![Highway::Service],
+        SegmentClass::Pedestrian => vec![Highway::Pedestrian],
+        SegmentClass::Footway => vec![Highway::Footway, Highway::Sidewalk, Highway::Crossing],
+        SegmentClass::Steps => vec![Highway::Steps],
+        SegmentClass::Path => vec![Highway::Path],
+        SegmentClass::Track => vec![Highway::Track],
+        SegmentClass::Cycleway => vec![Highway::Cycleway],
+        SegmentClass::Bridleway => vec![Highway::Bridleway],
+        SegmentClass::Unknown => vec![Highway::Road],
+        SegmentClass::Custom(s) => Highway::from_str(s).into_iter().collect(),
+    }
+}
+
+/// filters ways that do not have a highway tag present in the tags argument,
+/// or that fail public-road checks (`area=yes`, `access=private`, `service=private`).
 /// has no effect on Relation/Node/DenseNode Elements.
 ///
 /// # Arguments
@@ -123,10 +131,16 @@ impl ElementFilter {
 /// true if the [`Element`] is a [`Way`] with a valid [`Highway`] tag, or is not a [`Way`]
 fn custom_highway_tag_filter(element: &Element, tags: &HashSet<Highway>) -> bool {
     match element {
-        Element::Way(way) => match get_highway_tag(way) {
-            Some(highway) => tags.contains(&highway),
-            None => false, // throw out Ways without Highway tags
-        },
+        Element::Way(way) => {
+            if !osmnx_all_public_filter(element) {
+                return false;
+            }
+            match get_highway_tag(way) {
+                Some(highway) => tags.contains(&highway),
+                None => false, // throw out Ways without Highway tags
+            }
+        }
+        Element::Relation(_) => false,
         _ => true,
     }
 }

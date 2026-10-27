@@ -23,6 +23,7 @@ flate2 = { workspace = true }
 geo = { workspace = true }
 geo-buffer = { workspace = true }
 geozero = { workspace = true }
+indexmap = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }

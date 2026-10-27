@@ -1,17 +1,14 @@
 use std::{collections::HashSet, path::Path, sync::Arc};
 
+pub use bambam_network::NetworkEdgeListConfiguration;
 use geo::{BoundingRect, Geometry, Intersects};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     app::CliBoundingBox,
     collection::{
-        filter::{MatchBehavior, TravelModeFilter},
-        record::SegmentMode,
         ObjectStoreSource, OvertureMapsCollectionError, OvertureMapsCollectorConfig,
-        ReleaseVersion, SegmentAccessRestrictionWhen, SegmentClass, SegmentSubtype,
-        TransportationCollection,
+        ReleaseVersion, TransportationCollection,
     },
     graph::{
         island_detection::IslandDetectionAlgorithm, OmfGraphSource, OmfGraphStats, OmfGraphSummary,
@@ -19,157 +16,6 @@ use crate::{
     },
     util,
 };
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct NetworkEdgeListConfiguration {
-    pub mode: String,
-    pub filter: Vec<TravelModeFilter>,
-    pub island_algorithm_config: Option<IslandDetectionAlgorithm>,
-}
-
-impl NetworkEdgeListConfiguration {
-    /// Default Overture Maps walk-mode edge list configuration.
-    pub fn default_walk() -> Self {
-        Self {
-            mode: "walk".to_string(),
-            filter: vec![
-                TravelModeFilter::MatchesSubtype {
-                    subtype: SegmentSubtype::Road,
-                },
-                TravelModeFilter::MatchesClasses {
-                    classes: HashSet::from([
-                        SegmentClass::Secondary,
-                        SegmentClass::Tertiary,
-                        SegmentClass::Residential,
-                        SegmentClass::LivingStreet,
-                        SegmentClass::Unclassified,
-                        SegmentClass::Service,
-                        SegmentClass::Pedestrian,
-                        SegmentClass::Footway,
-                        SegmentClass::Steps,
-                        SegmentClass::Path,
-                        SegmentClass::Track,
-                        SegmentClass::Bridleway,
-                        SegmentClass::Unknown,
-                    ]),
-                    behavior: MatchBehavior::Include,
-                    allow_unset: true,
-                },
-                TravelModeFilter::MatchesModeAccess {
-                    modes: vec![SegmentMode::Foot],
-                },
-            ],
-            island_algorithm_config: None,
-        }
-    }
-
-    /// Default Overture Maps bike-mode edge list configuration.
-    pub fn default_bike() -> Self {
-        Self {
-            mode: "bike".to_string(),
-            filter: vec![
-                TravelModeFilter::MatchesSubtype {
-                    subtype: SegmentSubtype::Road,
-                },
-                TravelModeFilter::MatchesClasses {
-                    classes: HashSet::from([
-                        SegmentClass::Primary,
-                        SegmentClass::Secondary,
-                        SegmentClass::Tertiary,
-                        SegmentClass::Residential,
-                        SegmentClass::LivingStreet,
-                        SegmentClass::Unclassified,
-                        SegmentClass::Service,
-                        SegmentClass::Pedestrian,
-                        SegmentClass::Path,
-                        SegmentClass::Track,
-                        SegmentClass::Cycleway,
-                        SegmentClass::Bridleway,
-                        SegmentClass::Unknown,
-                    ]),
-                    behavior: MatchBehavior::Include,
-                    allow_unset: true,
-                },
-                TravelModeFilter::MatchesModeAccess {
-                    modes: vec![SegmentMode::Bicycle],
-                },
-            ],
-            island_algorithm_config: None,
-        }
-    }
-
-    /// Default Overture Maps drive-mode edge list configuration.
-    pub fn default_drive() -> Self {
-        Self {
-            mode: "drive".to_string(),
-            filter: vec![
-                TravelModeFilter::MatchesSubtype {
-                    subtype: SegmentSubtype::Road,
-                },
-                TravelModeFilter::MatchesClasses {
-                    classes: HashSet::from([
-                        SegmentClass::Motorway,
-                        SegmentClass::Trunk,
-                        SegmentClass::Primary,
-                        SegmentClass::Secondary,
-                        SegmentClass::Tertiary,
-                        SegmentClass::Residential,
-                        SegmentClass::LivingStreet,
-                        SegmentClass::Unclassified,
-                        SegmentClass::Service,
-                        SegmentClass::Unknown,
-                    ]),
-                    behavior: MatchBehavior::Include,
-                    allow_unset: true,
-                },
-                TravelModeFilter::MatchesModeAccess {
-                    modes: vec![
-                        SegmentMode::MotorVehicle,
-                        SegmentMode::Car,
-                        SegmentMode::Truck,
-                        SegmentMode::Motorcycle,
-                    ],
-                },
-            ],
-            island_algorithm_config: None,
-        }
-    }
-
-    /// Built-in preset configuration for `"walk"`, `"bike"`, or `"drive"`.
-    pub fn default_for_mode(mode: &str) -> Result<Self, OvertureMapsCollectionError> {
-        match mode.trim().to_ascii_lowercase().as_str() {
-            "walk" | "foot" | "pedestrian" => Ok(Self::default_walk()),
-            "bike" | "bicycle" | "cycling" => Ok(Self::default_bike()),
-            "drive" | "car" | "motor_vehicle" | "auto" => Ok(Self::default_drive()),
-            other => Err(OvertureMapsCollectionError::InvalidUserInput(format!(
-                "unsupported travel mode preset '{other}'; expected one of: walk, bike, drive"
-            ))),
-        }
-    }
-
-    /// Default multimodal (`["walk", "bike", "drive"]`) edge list configurations.
-    pub fn default_multimodal() -> Vec<Self> {
-        vec![
-            Self::default_walk(),
-            Self::default_bike(),
-            Self::default_drive(),
-        ]
-    }
-}
-
-impl From<&NetworkEdgeListConfiguration> for SegmentAccessRestrictionWhen {
-    fn from(value: &NetworkEdgeListConfiguration) -> Self {
-        let user_modes_opt = value.filter.iter().find_map(|f| match f {
-            TravelModeFilter::MatchesModeAccess { modes } => Some(modes.clone()),
-            _ => None,
-        });
-        let mut result = SegmentAccessRestrictionWhen::default();
-        if let Some(modes) = user_modes_opt {
-            result.mode = Some(modes);
-        }
-        result
-    }
-}
 
 /// runs an OMF network import using the provided configuration.
 #[allow(clippy::too_many_arguments)]

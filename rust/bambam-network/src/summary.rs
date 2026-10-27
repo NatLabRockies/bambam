@@ -1,9 +1,72 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use crate::{consts::GLOBAL_AVG_SPEED_KEY, serialize_ops::VectorizedEdgeList};
+use crate::{
+    consts::GLOBAL_AVG_SPEED_KEY, error::NetworkImportError, serialize_ops::VectorizedEdgeList,
+    taxonomy::CliBoundingBox,
+};
+
+/// Summarizes an imported road network (`summary.toml`).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct NetworkGraphSummary {
+    /// Information describing how this dataset was generated.
+    pub source: NetworkGraphSource,
+    /// Statistics gathered on the graph dataset.
+    pub stats: NetworkGraphStats,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct NetworkGraphSource {
+    /// Location or release of the imported dataset.
+    pub release: String,
+    /// User-provided name for the network / study region.
+    pub study_region: String,
+    /// Date and time this network was created (RFC 3339).
+    pub created: String,
+    /// Bounding box query used when run.
+    pub bbox: Option<CliBoundingBox>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct NetworkGraphStats {
+    /// Number of vertices in the network.
+    pub vertices: usize,
+    /// Details for each mode-specific edge list.
+    pub edge_list: IndexMap<String, EdgeListStats>,
+}
+
+impl NetworkGraphSource {
+    pub fn new(release: &str, study_region: &str, bbox: Option<&CliBoundingBox>) -> Self {
+        let created = chrono::Utc::now().to_rfc3339();
+        Self {
+            release: release.to_string(),
+            study_region: study_region.to_string(),
+            created,
+            bbox: bbox.cloned(),
+        }
+    }
+}
+
+/// Writes `summary.toml` into `output_directory`.
+pub fn write_summary(
+    output_directory: &Path,
+    summary: &NetworkGraphSummary,
+) -> Result<(), NetworkImportError> {
+    let summary_toml = toml::to_string_pretty(summary).map_err(|e| {
+        NetworkImportError::InternalError(format!("failure serializing summary TOML: {e}"))
+    })?;
+    let summary_path = output_directory.join("summary.toml");
+    std::fs::write(&summary_path, &summary_toml).map_err(|e| {
+        NetworkImportError::CsvWriteError(format!(
+            "failed to write '{}': {e}",
+            summary_path.display()
+        ))
+    })
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
