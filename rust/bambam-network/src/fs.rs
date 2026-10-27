@@ -1,4 +1,7 @@
-use std::{fs::File, path::Path};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
@@ -14,6 +17,23 @@ use crate::{
     serialize_ops::VectorizedEdgeList,
     vertex_serializable::{VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord},
 };
+
+/// Copies the shared default `bambam.toml` configuration file from `bambam-network`
+/// into `output_directory/bambam.toml`.
+pub fn copy_default_config(output_directory: &Path) -> Result<(), NetworkImportError> {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("bambam.toml");
+    let dst = output_directory.join("bambam.toml");
+    std::fs::copy(&src, &dst).map_err(|e| NetworkImportError::WriteError {
+        path: dst,
+        message: format!(
+            "unable to copy default TOML from '{}': {e}",
+            src.to_str().unwrap_or("?")
+        ),
+    })?;
+    Ok(())
+}
 
 /// helper function to "mkdir -p path" - make all directories along a path
 pub fn create_dirs<P>(path: P) -> Result<(), NetworkImportError>
@@ -149,6 +169,7 @@ where
     F: Fn(&C) -> String,
 {
     create_dirs(output_directory)?;
+    copy_default_config(output_directory)?;
 
     serialize_into_csv(
         vertices.iter().map(|v| VertexCompassRecord::from(*v)),

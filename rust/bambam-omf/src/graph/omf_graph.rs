@@ -85,9 +85,6 @@ impl OmfGraphVectorized {
         // write the TOML summary file
         write_summary(output_directory, summary)?;
 
-        // copy default configuration file into the output directory
-        crate::util::fs::copy_default_config(output_directory)?;
-
         let mode_names: Vec<String> = self
             .edge_list_config
             .iter()

@@ -3,6 +3,7 @@ name = "bambam-network"
 version.workspace = true
 edition = "2021"
 license = "BSD-3-Clause"
+include = ["Cargo.toml", "README.md", "src/**/*.rs", "src/bambam.toml"]
 repository = "https://github.com/NatLabRockies/bambam"
 description = "Shared split-based road network ETL, island detection, and RouteE Compass serialization core"
 keywords = ["nlr", "routing", "network", "osm", "overture-maps"]

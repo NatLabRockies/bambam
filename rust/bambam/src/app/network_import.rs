@@ -468,6 +468,7 @@ mod tests {
         // Verify both OMF and OSM outputs share the exact same core Compass + mapping + infrastructure files
         for out_dir in [&omf_out_dir, &osm_out_dir] {
             for root_file in [
+                "bambam.toml",
                 "summary.toml",
                 "vertices-compass.csv.gz",
                 "vertices-complete.csv.gz",

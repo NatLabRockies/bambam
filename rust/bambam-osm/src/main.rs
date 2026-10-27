@@ -59,8 +59,9 @@ mod tests {
         assert!(!raw_loaded.nodes.is_empty());
         assert!(!raw_loaded.ways.is_empty());
 
-        // Verify summary.toml exists
+        // Verify summary.toml and bambam.toml exist
         assert!(Path::new(temp_directory).join("summary.toml").exists());
+        assert!(Path::new(temp_directory).join("bambam.toml").exists());
 
         // Verify standardized ID mappings and VertexCompleteRecord schema
         let v_mappings: Box<[VertexMappingRecord]> =
