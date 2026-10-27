@@ -7,15 +7,12 @@ use crate::collection::{
 };
 
 use super::{
-    access_restriction::SegmentAccessRestriction,
-    class::SegmentClass,
     destination::{SegmentDestination, SegmentProhibitedTransitions},
     flags::{SegmentRailFlags, SegmentRoadFlags, SegmentRoadSurfaceType},
     route::{ConnectorReference, SegmentRoute},
     speed_limit::SegmentSpeedLimit,
-    subclass::SegmentSubclass,
-    subtype::{SegmentFullType, SegmentSubtype},
     value_between::SegmentValueBetween,
+    SegmentAccessRestriction, SegmentClass, SegmentFullType, SegmentSubclass, SegmentSubtype,
 };
 
 /// Represents a transportation segment record in the Overture Maps schema.

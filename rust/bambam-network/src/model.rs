@@ -63,6 +63,10 @@ pub trait ImportConnector: Sync {
     fn has_crossing(&self) -> bool {
         false
     }
+    /// Optional list of consolidated infrastructure IDs propagated onto this connector.
+    fn consolidated_infrastructure_ids(&self) -> Option<Vec<String>> {
+        None
+    }
 }
 
 /// Trait implemented by point/polygon infrastructure records (e.g., OMF Infrastructure or

@@ -68,6 +68,82 @@ pub fn write_summary(
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indexmap::IndexMap;
+
+    #[test]
+    fn test_summary_toml_unknown_speed_serialization_and_roundtrip() {
+        let mut road_class_stats = IndexMap::new();
+        road_class_stats.insert(
+            "road-footway-sidewalk".to_string(),
+            ClassStats {
+                count: 10,
+                distance_miles: 1.5,
+                avg_speed_mph: None,
+            },
+        );
+        let mut edge_list = IndexMap::new();
+        edge_list.insert(
+            "walk".to_string(),
+            EdgeListStats {
+                edges: 10,
+                miles: 1.5,
+                avg_speed_mph: None,
+                road_class_stats,
+            },
+        );
+        let summary = NetworkGraphSummary {
+            source: NetworkGraphSource::new("test-release", "test-region", None),
+            stats: NetworkGraphStats {
+                vertices: 5,
+                edge_list,
+            },
+        };
+
+        let toml_str = toml::to_string_pretty(&summary).unwrap();
+        assert!(toml_str.contains(r#"avg_speed_mph = "unknown""#));
+
+        let roundtrip: NetworkGraphSummary = toml::from_str(&toml_str).unwrap();
+        assert_eq!(roundtrip.stats.edge_list["walk"].avg_speed_mph, None);
+        assert_eq!(
+            roundtrip.stats.edge_list["walk"].road_class_stats["road-footway-sidewalk"]
+                .avg_speed_mph,
+            None
+        );
+    }
+}
+
+pub const UNKNOWN_SPEED_STR: &str = "unknown";
+
+fn serialize_optional_speed<S>(value: &Option<f64>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        Some(v) => serializer.serialize_f64(*v),
+        None => serializer.serialize_str(UNKNOWN_SPEED_STR),
+    }
+}
+
+fn deserialize_optional_speed<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum SpeedOrStr {
+        Num(f64),
+        #[allow(dead_code)]
+        Str(String),
+    }
+    match Option::<SpeedOrStr>::deserialize(deserializer)? {
+        Some(SpeedOrStr::Num(v)) => Ok(Some(v)),
+        Some(SpeedOrStr::Str(_)) | None => Ok(None),
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct EdgeListStats {
@@ -75,7 +151,12 @@ pub struct EdgeListStats {
     pub edges: usize,
     /// sum of all miles of roadways
     pub miles: f64,
-    /// average speed of all segments in this edge list
+    /// average speed of all segments in this edge list (`"unknown"` when no speeds are observed)
+    #[serde(
+        default,
+        serialize_with = "serialize_optional_speed",
+        deserialize_with = "deserialize_optional_speed"
+    )]
     pub avg_speed_mph: Option<f64>,
     /// count and mileage of roadways by road class
     pub road_class_stats: IndexMap<String, ClassStats>,
@@ -88,7 +169,12 @@ pub struct ClassStats {
     pub count: usize,
     /// total miles of counted segments
     pub distance_miles: f64,
-    /// average speed observed over the counted segments
+    /// average speed observed over the counted segments (`"unknown"` when no speeds are observed)
+    #[serde(
+        default,
+        serialize_with = "serialize_optional_speed",
+        deserialize_with = "deserialize_optional_speed"
+    )]
     pub avg_speed_mph: Option<f64>,
 }
 

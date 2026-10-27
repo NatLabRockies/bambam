@@ -127,6 +127,20 @@ impl bambam_network::ImportConnector for OsmConnectorRecord {
     fn has_crossing(&self) -> bool {
         self.node.has_crossing()
     }
+
+    fn consolidated_infrastructure_ids(&self) -> Option<Vec<String>> {
+        if self.node.consolidated_ids.is_empty() {
+            None
+        } else {
+            Some(
+                self.node
+                    .consolidated_ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect(),
+            )
+        }
+    }
 }
 
 impl bambam_network::ImportInfrastructure for OsmConnectorRecord {

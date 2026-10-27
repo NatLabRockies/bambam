@@ -1,4 +1,3 @@
-use bambam_modal_metrics::network_traits::vertex_for_modal_metric::VertexForModalMetric;
 use geo::{Distance, Haversine, Point};
 use routee_compass_core::model::network::Vertex;
 use rstar::{RTree, RTreeObject, AABB};
@@ -20,8 +19,6 @@ pub struct VertexCompassRecord {
     pub x: f32,
     pub y: f32,
 }
-
-pub type VertexSerializable = VertexCompassRecord;
 
 impl From<Vertex> for VertexCompassRecord {
     fn from(value: Vertex) -> Self {
@@ -46,19 +43,6 @@ pub struct VertexCompleteRecord {
     pub give_way: bool,
     pub crossing: bool,
     pub infrastructure_ids: Option<String>,
-}
-
-pub type NetworkVertexComplete = VertexCompleteRecord;
-pub type OmfVertexComplete = VertexCompleteRecord;
-
-impl VertexForModalMetric for VertexCompleteRecord {
-    fn has_traffic_signals(&self) -> bool {
-        self.traffic_signals
-    }
-
-    fn has_stop_sign(&self) -> bool {
-        self.stop
-    }
 }
 
 /// Standardized mapping between a RouteE Compass `vertex_id` and its source Connector/Node ID

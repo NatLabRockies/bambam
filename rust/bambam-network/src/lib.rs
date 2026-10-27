@@ -24,7 +24,7 @@ pub use model::{
     ConnectorInSegment, ImportConnector, ImportInfrastructure, ImportSegment, SegmentHeading,
 };
 pub use segment_split::SegmentSplit;
-pub use serialize_ops::VectorizedEdgeList;
+pub use serialize_ops::{build_vectorized_network_graph, BuiltNetworkGraph, VectorizedEdgeList};
 pub use summary::{
     write_summary, ClassStats, EdgeListStats, NetworkGraphSource, NetworkGraphStats,
     NetworkGraphSummary,
@@ -38,7 +38,7 @@ pub use taxonomy::{
     SegmentVehicleComparator, SegmentVehicleDimension, SegmentWeightUnit, TravelModeFilter,
 };
 pub use vertex_serializable::{
-    attach_infrastructure_to_vertices, EdgeMappingRecord, NetworkVertexComplete, OmfVertexComplete,
-    VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord, VertexSerializable,
-    DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS, INFRASTRUCTURE_ID_DELIMITER,
+    attach_infrastructure_to_vertices, EdgeMappingRecord, VertexCompassRecord,
+    VertexCompleteRecord, VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+    INFRASTRUCTURE_ID_DELIMITER,
 };

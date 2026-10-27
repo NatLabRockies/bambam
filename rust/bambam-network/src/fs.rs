@@ -12,7 +12,7 @@ use crate::{
     consts::*,
     error::NetworkImportError,
     serialize_ops::VectorizedEdgeList,
-    vertex_serializable::{OmfVertexComplete, VertexMappingRecord, VertexSerializable},
+    vertex_serializable::{VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord},
 };
 
 /// helper function to "mkdir -p path" - make all directories along a path
@@ -137,7 +137,7 @@ fn create_writer(
 #[allow(clippy::too_many_arguments)]
 pub fn write_compass_dataset<C, F>(
     vertices: &[Vertex],
-    vertices_complete: &[OmfVertexComplete],
+    vertices_complete: &[VertexCompleteRecord],
     vertex_mappings: &[VertexMappingRecord],
     edge_lists: &[VectorizedEdgeList<C>],
     mode_names: &[String],
@@ -151,7 +151,7 @@ where
     create_dirs(output_directory)?;
 
     serialize_into_csv(
-        vertices.iter().map(|v| VertexSerializable::from(*v)),
+        vertices.iter().map(|v| VertexCompassRecord::from(*v)),
         COMPASS_VERTEX_FILENAME,
         output_directory,
         overwrite,

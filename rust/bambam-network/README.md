@@ -14,13 +14,13 @@ Shared split-based road network ETL, island detection, spatial infrastructure at
 
 | Concept | `bambam-network` (Shared Core) | `bambam-omf` (Overture Maps) | `bambam-osm` (OpenStreetMap) |
 |---|---|---|---|
-| **Raw Collection** | — | `OmfCollection` (`TransportationCollection`) | `OsmCollection` |
-| **Connector Input** | `ImportConnector` | `OmfConnectorRecord` (`TransportationConnectorRecord`) | `OsmConnectorRecord` |
-| **Segment Input** | `ImportSegment<C>` | `OmfSegmentRecord` (`TransportationSegmentRecord`) | `OsmSegmentRecord` |
-| **Infrastructure Input** | `ImportInfrastructure` | `OmfInfrastructureRecord` (`InfrastructureRecord`) | `OsmInfrastructureRecord` |
+| **Raw Collection** | — | `TransportationCollection` | `OsmCollection` |
+| **Connector Input** | `ImportConnector` | `TransportationConnectorRecord` | `OsmConnectorRecord` |
+| **Segment Input** | `ImportSegment<C>` + `FilterableSegment` | `TransportationSegmentRecord` | `OsmSegmentRecord` |
+| **Infrastructure Input** | `ImportInfrastructure` | `InfrastructureRecord` | `OsmConnectorRecord` |
 | **Split Primitives** | `ConnectorInSegment`, `SegmentSplit`, `SegmentHeading` | Re-exported from `bambam-network` | Re-exported from `bambam-network` |
-| **Vectorized Edge List** | `VectorizedEdgeList<C>` | `OmfEdgeList` (`VectorizedEdgeList<SegmentFullType>`) | `OsmEdgeList` (`VectorizedEdgeList<SegmentFullType>`) |
-| **Vectorized Graph** | — | `OmfGraphVectorized` | `OsmGraphVectorized` |
+| **Vectorized Edge List** | `VectorizedEdgeList<SegmentFullType>` | `VectorizedEdgeList<SegmentFullType>` | `VectorizedEdgeList<SegmentFullType>` |
+| **Vectorized Graph** | `BuiltNetworkGraph<C>` (`build_vectorized_network_graph`) | `OmfGraphVectorized` | `OsmGraphVectorized` |
 | **Output Records** | `VertexCompassRecord`, `VertexCompleteRecord`, `VertexMappingRecord`, `EdgeMappingRecord`, `NetworkGraphSummary` | Re-exported from `bambam-network` | Re-exported from `bambam-network` |
 
 ## Output Guarantees

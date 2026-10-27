@@ -4,7 +4,6 @@ pub use bambam_network::vertex_serializable::*;
 mod tests {
     use super::*;
     use crate::collection::InfrastructureRecord;
-    use bambam_modal_metrics::network_traits::vertex_for_modal_metric::VertexForModalMetric;
     use geo::{Geometry, Point};
     use routee_compass_core::model::network::Vertex;
 
@@ -62,9 +61,7 @@ mod tests {
         assert_eq!(attached.len(), 2);
 
         assert!(attached[0].traffic_signals);
-        assert!(attached[0].has_traffic_signals());
         assert!(!attached[0].stop);
-        assert!(!attached[0].has_stop_sign());
         assert!(!attached[0].give_way);
         assert!(attached[0].crossing);
         assert_eq!(
@@ -74,7 +71,6 @@ mod tests {
 
         assert!(!attached[1].traffic_signals);
         assert!(attached[1].stop);
-        assert!(attached[1].has_stop_sign());
         assert!(!attached[1].give_way);
         assert!(!attached[1].crossing);
         assert_eq!(

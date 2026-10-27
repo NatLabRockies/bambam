@@ -1,12 +1,11 @@
 pub use bambam_network::summary::{
-    ClassStats, EdgeListStats, NetworkGraphSource as OmfGraphSource,
-    NetworkGraphStats as OmfGraphStats, NetworkGraphSummary as OmfGraphSummary,
+    ClassStats, EdgeListStats, NetworkGraphSource, NetworkGraphStats, NetworkGraphSummary,
 };
 use indexmap::IndexMap;
 
 use crate::{collection::OvertureMapsCollectionError, graph::OmfGraphVectorized};
 
-impl TryFrom<&OmfGraphVectorized> for OmfGraphStats {
+impl TryFrom<&OmfGraphVectorized> for NetworkGraphStats {
     type Error = OvertureMapsCollectionError;
 
     fn try_from(value: &OmfGraphVectorized) -> Result<Self, Self::Error> {
@@ -17,7 +16,7 @@ impl TryFrom<&OmfGraphVectorized> for OmfGraphStats {
             let stats = EdgeListStats::from_edge_list(e, |cls| cls.as_str());
             let _ = edge_list.insert(key, stats);
         }
-        Ok(OmfGraphStats {
+        Ok(NetworkGraphStats {
             vertices: value.vertices.len(),
             edge_list,
         })

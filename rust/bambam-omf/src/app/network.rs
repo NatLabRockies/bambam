@@ -11,8 +11,8 @@ use crate::{
         ReleaseVersion, TransportationCollection,
     },
     graph::{
-        island_detection::IslandDetectionAlgorithm, OmfGraphSource, OmfGraphStats, OmfGraphSummary,
-        OmfGraphVectorized,
+        island_detection::IslandDetectionAlgorithm, NetworkGraphSource, NetworkGraphStats,
+        NetworkGraphSummary, OmfGraphVectorized,
     },
     util,
 };
@@ -64,9 +64,9 @@ pub fn run(
         Some(local) => format!("file://{}", local.to_string_lossy()),
         None => collection.release.clone(),
     };
-    let stats = OmfGraphStats::try_from(&vectorized_graph)?;
-    let source = OmfGraphSource::new(&release, name, bbox);
-    let summary = OmfGraphSummary { source, stats };
+    let stats = NetworkGraphStats::try_from(&vectorized_graph)?;
+    let source = NetworkGraphSource::new(&release, name, bbox);
+    let summary = NetworkGraphSummary { source, stats };
 
     vectorized_graph.write_compass(&summary, output_directory, true)?;
 

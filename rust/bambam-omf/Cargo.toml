@@ -12,9 +12,7 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
-
 arrow = { workspace = true }
-bambam-modal-metrics = { workspace = true }
 bambam-network = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }

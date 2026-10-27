@@ -472,7 +472,7 @@ mod tests {
         assert!(out_dir.join("drive").join("edges-mapping.csv.gz").exists());
 
         // Read back vertices-complete.csv.gz and edges-mapping.csv.gz using routee_compass_core
-        let v_complete: Box<[crate::graph::OmfVertexComplete]> =
+        let v_complete: Box<[crate::graph::VertexCompleteRecord]> =
             routee_compass_core::util::fs::read_utils::from_csv(
                 &out_dir.join("vertices-complete.csv.gz"),
                 true,
