@@ -41,9 +41,8 @@ mod tests {
         let op = OsmOperation::Network(OsmNetworkArgs {
             pbf_file: Some(pbf_file.to_string()),
             common: CommonNetworkImportArgs {
-                name: "schaan_liechtenstein".to_string(),
                 configuration_file: config_file.to_string(),
-                output_directory: Some(temp_directory.to_string()),
+                output_directory: temp_directory.to_string(),
                 local_source: None,
                 extent_file: Some(extent_file.to_string()),
                 infrastructure_match_distance_meters: None,
@@ -142,10 +141,9 @@ mod tests {
         let net_cfg_op = OsmOperation::Network(OsmNetworkArgs {
             pbf_file: Some(pbf_file.to_string()),
             common: CommonNetworkImportArgs {
-                name: "schaan_network_config".to_string(),
                 configuration_file:
                     "../../configuration/bambam-network/bambam-network-config.json".to_string(),
-                output_directory: Some(net_cfg_dir.to_string_lossy().to_string()),
+                output_directory: net_cfg_dir.to_string_lossy().to_string(),
                 local_source: None,
                 extent_file: Some(extent_file.to_string()),
                 infrastructure_match_distance_meters: None,
@@ -165,10 +163,9 @@ mod tests {
         let local_reimport_op = OsmOperation::Network(OsmNetworkArgs {
             pbf_file: None,
             common: CommonNetworkImportArgs {
-                name: "schaan_from_local_raw".to_string(),
                 configuration_file:
                     "../../configuration/bambam-network/bambam-network-config.json".to_string(),
-                output_directory: Some(local_reimport_dir.to_string_lossy().to_string()),
+                output_directory: local_reimport_dir.to_string_lossy().to_string(),
                 local_source: Some(net_cfg_dir.to_string_lossy().to_string()),
                 extent_file: None,
                 infrastructure_match_distance_meters: None,

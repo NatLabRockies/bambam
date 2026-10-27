@@ -20,7 +20,6 @@ use crate::{
 /// runs an OMF network import using the provided configuration.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
-    name: &str,
     bbox: Option<&CliBoundingBox>,
     modes: &[NetworkEdgeListConfiguration],
     output_directory: &Path,
@@ -64,8 +63,9 @@ pub fn run(
         Some(local) => format!("file://{}", local.to_string_lossy()),
         None => collection.release.clone(),
     };
+    let study_region = output_directory.to_string_lossy();
     let stats = NetworkGraphStats::try_from(&vectorized_graph)?;
-    let source = NetworkGraphSource::new(&release, name, bbox);
+    let source = NetworkGraphSource::new(&release, &study_region, bbox);
     let summary = NetworkGraphSummary { source, stats };
 
     vectorized_graph.write_compass(&summary, output_directory, true)?;

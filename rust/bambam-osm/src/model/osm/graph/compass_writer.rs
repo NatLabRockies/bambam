@@ -21,8 +21,9 @@ impl CompassWriter for OsmGraphVectorized {
             raw.to_parquet(output_directory)?;
         }
 
-        // Write `summary.toml` matching `bambam-omf`
-        let summary = self.to_summary();
+        // Write `summary.toml` matching `bambam-omf` (echoing `output_directory` as `study_region`)
+        let mut summary = self.to_summary();
+        summary.source.study_region = output_directory.to_string_lossy().into_owned();
         write_summary(output_directory, &summary)?;
 
         let mode_names: Vec<String> = self

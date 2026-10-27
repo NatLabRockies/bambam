@@ -173,8 +173,6 @@ pub enum NetworkDataSource {
 /// (`vertices-mapping.csv.gz` and `edges-mapping.csv.gz`) are always retained.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NetworkImportRequest {
-    /// Study region / network name.
-    pub name: String,
     /// Geographic extent (bounding box, WKT string, or WKT file).
     pub extent: GeographicExtent,
     /// Network data source (`overture_maps` or `open_street_map`).
@@ -239,7 +237,6 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
         NetworkDataSource::OvertureMaps { local_source } => {
             let local_path = local_source.as_deref().map(Path::new);
             bambam_omf::app::network::run(
-                &request.name,
                 Some(&bbox),
                 &edge_lists,
                 out_dir,
@@ -274,7 +271,7 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
 
             let graph = OsmGraphVectorized::from_osm_maps_with_config(
                 src_label,
-                Some(request.name.clone()),
+                Some(request.output_directory.clone()),
                 nodes_map,
                 ways_map,
                 extent_opt.as_ref(),
@@ -380,7 +377,6 @@ mod tests {
 
         let omf_out_dir = tmp_dir.join("omf_out");
         let omf_req = NetworkImportRequest {
-            name: "boulder_test".to_string(),
             extent: GeographicExtent::Bbox {
                 xmin: -105.30,
                 ymin: 40.00,
@@ -431,7 +427,6 @@ mod tests {
 
         let osm_out_dir = tmp_dir.join("osm_out");
         let osm_req = NetworkImportRequest {
-            name: "schaan_osm".to_string(),
             extent: GeographicExtent::WktFile {
                 path: wkt_path.to_string_lossy().to_string(),
             },

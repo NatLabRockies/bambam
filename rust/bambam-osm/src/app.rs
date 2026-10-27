@@ -34,7 +34,7 @@ pub struct OsmNetworkArgs {
     #[serde(default)]
     pub pbf_file: Option<String>,
 
-    /// Shared network import arguments (`--name`, `--configuration-file`, `--output-directory`,
+    /// Shared network import arguments (`--configuration-file`, `--output-directory`,
     /// `--local-source`, `--extent-file`, `--infrastructure-match-distance-meters`).
     #[command(flatten)]
     #[serde(flatten)]
@@ -56,7 +56,7 @@ impl OsmNetworkArgs {
         let osm_source = if let Some(ref local_src) = self.common.local_source {
             OsmSource::LocalParquet {
                 local_source: local_src.clone(),
-                study_region: Some(self.common.name.clone()),
+                study_region: Some(self.common.output_directory.clone()),
                 edge_lists: Some(edge_lists),
                 island_algorithm_configuration: island_alg,
                 extent_filter_filepath: self.common.extent_file.clone(),
@@ -69,7 +69,7 @@ impl OsmNetworkArgs {
         } else if let Some(ref pbf_path) = self.pbf_file {
             OsmSource::Pbf {
                 pbf_filepath: pbf_path.clone(),
-                study_region: Some(self.common.name.clone()),
+                study_region: Some(self.common.output_directory.clone()),
                 extent_filter_filepath: self.common.extent_file.clone(),
                 network_filter: Some(element_filter),
                 edge_lists: Some(edge_lists),

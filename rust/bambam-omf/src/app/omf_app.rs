@@ -47,7 +47,6 @@ impl OmfNetworkArgs {
         let match_distance = self.common.resolved_match_distance(&filter_cfg);
 
         crate::app::network::run(
-            &self.common.name,
             bbox.as_ref(),
             &filter_cfg.edge_lists,
             outdir,

@@ -86,18 +86,14 @@ impl NetworkImportFilterConfig {
 /// Shared CLI arguments used by both `bambam-omf network` and `bambam-osm network`.
 #[derive(Debug, Clone, Serialize, Deserialize, Args, JsonSchema)]
 pub struct CommonNetworkImportArgs {
-    /// Descriptive user-provided name for this import region.
-    #[arg(short, long)]
-    pub name: String,
-
     /// Configuration file (`bambam-network-config.json`) defining how the network is imported
     /// and separated into mode-specific edge lists.
     #[arg(short, long)]
     pub configuration_file: String,
 
-    /// Location on disk to write output files. If not provided, uses the current working directory.
+    /// Location on disk to write output files.
     #[arg(short, long)]
-    pub output_directory: Option<String>,
+    pub output_directory: String,
 
     /// Use a stored raw data export (`raw/` Parquet directory) from a previous run.
     #[arg(short, long)]
@@ -119,12 +115,9 @@ impl CommonNetworkImportArgs {
         NetworkImportFilterConfig::from_file(Path::new(&self.configuration_file))
     }
 
-    /// Resolves `self.output_directory` as a `Path` (defaults to `""`).
+    /// Resolves `self.output_directory` as a `Path`.
     pub fn resolved_output_directory(&self) -> &Path {
-        match &self.output_directory {
-            Some(out) => Path::new(out),
-            None => Path::new(""),
-        }
+        Path::new(&self.output_directory)
     }
 
     /// Resolves the infrastructure match distance from the CLI flag or the configuration file.

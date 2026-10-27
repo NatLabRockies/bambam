@@ -18,7 +18,6 @@ cargo build -r --manifest-path rust/Cargo.toml
 # 2. download OMF network covering test flex dataset region, SW of Saint Paul, MN
 #    create networks for walk, bike, and drive-mode travel (using posted speeds for drive)
 rust/target/release/bambam-omf network \
-    -n minnesota-flex \
     -c configuration/bambam-network/bambam-network-config.json \
     -o "$WORKING_DIR" \
     -b -95.14435,-93.76282,44.01652,44.568947

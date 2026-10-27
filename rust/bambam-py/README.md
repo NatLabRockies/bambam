@@ -16,11 +16,8 @@ from nlr.bambam.orchestrate.omf import OmfNetworkArgs
 
 # Accepts strings or pathlib.Path objects
 args = OmfNetworkArgs(
-    name="minnesota-flex",
     configuration_file=Path("configuration/bambam-network/bambam-network-config.json"),
     output_directory=Path("output/minnesota"),
-    store_raw=True,
-    omf_ids=True,
     extent_file=Path("query/boulder_extent.json"),  # optional
 )
 
@@ -38,10 +35,8 @@ If you prefer a direct function call without instantiating the model manually:
 from nlr.bambam.orchestrate.omf import run_omf_network
 
 run_omf_network(
-    name="denver_region",
     configuration_file="configuration/bambam-network/bambam-network-config.json",
     output_directory="output/denver",
-    store_raw=False,
 )
 ```
 
@@ -49,7 +44,6 @@ You can also pass a standard dictionary (e.g., loaded from a YAML or JSON workfl
 
 ```python
 recipe = {
-    "name": "denver_region",
     "configuration_file": "configuration/bambam-network/bambam-network-config.json",
     "output_directory": "output/denver",
 }
@@ -68,10 +62,8 @@ import subprocess
 from nlr.bambam.orchestrate.omf import OmfNetworkArgs
 
 args = OmfNetworkArgs(
-    name="minnesota-flex",
     configuration_file="configuration/bambam-network/bambam-network-config.json",
     output_directory="output/minnesota",
-    store_raw=True,
 )
 
 # Generates: ['network', '--name', 'minnesota-flex', '--configuration-file', ...]

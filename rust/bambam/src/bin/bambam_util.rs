@@ -213,9 +213,6 @@ pub enum App {
         about = "Import a RouteE Compass road network from Overture Maps or OpenStreetMap over a geographic extent"
     )]
     ImportNetwork {
-        /// Study region / network name
-        #[arg(short, long, default_value = "network")]
-        name: String,
         /// Data source: "omf" ("overture") or "osm"
         #[arg(short, long)]
         source: String,
@@ -470,7 +467,6 @@ impl App {
                 .run()
                 .map_err(|e| format!("failure running gtfs-flex config app due to {e}")),
             App::ImportNetwork {
-                name,
                 source,
                 output_directory,
                 configuration_file,
@@ -540,7 +536,6 @@ impl App {
                 });
 
                 let req = NetworkImportRequest {
-                    name: name.clone(),
                     extent,
                     source: data_source,
                     output_directory: output_directory.clone(),

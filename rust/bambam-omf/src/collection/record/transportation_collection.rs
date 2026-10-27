@@ -442,7 +442,6 @@ mod tests {
             island_algorithm_config: None,
         }];
         crate::app::network::run(
-            "test_region",
             None,
             &modes,
             &out_dir,
