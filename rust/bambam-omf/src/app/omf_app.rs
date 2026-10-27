@@ -1,17 +1,11 @@
-use std::{fs, path::Path};
+use std::path::Path;
 
+use bambam_network::CommonNetworkImportArgs;
 use clap::{Args, Parser, Subcommand};
-use config::{Config, File};
-use geo::{BoundingRect, MapCoords};
-use geozero::{wkt::Wkt as WktReader, ToGeo};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    app::{network::NetworkEdgeListConfiguration, CliBoundingBox},
-    collection::OvertureMapsCollectionError,
-    graph::island_detection::IslandDetectionAlgorithm,
-};
+use crate::collection::OvertureMapsCollectionError;
 
 /// Command line tool for batch downloading and summarizing of OMF (Overture Maps Foundation) data
 #[derive(Parser)]
@@ -30,118 +24,35 @@ pub enum OmfOperation {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Args, JsonSchema)]
 pub struct OmfNetworkArgs {
-    /// descriptive user-provided name for this import region.
-    #[arg(short, long)]
-    pub name: String,
-
-    /// configuration file defining how the network is imported and separated
-    /// into mode-specific edge lists.
-    #[arg(short, long)]
-    pub configuration_file: String,
-
-    /// location on disk to write output files. if not provided,
-    /// use the current working directory.
-    #[arg(short, long)]
-    pub output_directory: Option<String>,
-
-    /// use a stored raw data export (`raw/` Parquet directory) from a previous run.
-    #[arg(short, long)]
-    pub local_source: Option<String>,
-
-    /// Optional WKT extent file path (plain WKT or JSON with an "extent" key). Not required
-    /// when `local_source` is provided.
-    #[arg(short, long, required_unless_present = "local_source")]
-    pub extent_file: Option<String>,
-
-    /// Maximum distance in meters for matching Overture infrastructure features to connector vertices (defaults to 15.0)
-    #[arg(long)]
-    #[serde(default)]
-    pub infrastructure_match_distance_meters: Option<f64>,
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub common: CommonNetworkImportArgs,
 }
 
 impl OmfNetworkArgs {
     pub fn run(&self) -> Result<(), OvertureMapsCollectionError> {
-        let filepath = Path::new(&self.configuration_file);
-        let config = Config::builder()
-            .add_source(File::from(filepath))
-            .build()
-            .map_err(|e| {
-                let msg = format!("file '{}' produced error: {e}", self.configuration_file);
-                OvertureMapsCollectionError::InvalidUserInput(msg)
-            })?;
-        let network_config = config
-            .get::<Vec<NetworkEdgeListConfiguration>>("edge_lists")
-            .map_err(|e| {
-                let msg = format!(
-                    "error reading 'edge_lists' key in '{}': {e}",
-                    self.configuration_file
-                );
-                OvertureMapsCollectionError::InvalidUserInput(msg)
-            })?;
-        let island_algorithm_configuration = config
-            .get::<Option<IslandDetectionAlgorithm>>("island_algorithm_configuration")
-            .map_err(|e| {
-                let msg = format!(
-                    "error reading 'island_algorithm_configuration' key in '{}': {e}",
-                    self.configuration_file
-                );
-                OvertureMapsCollectionError::InvalidUserInput(msg)
-            })?;
-        let outdir = match &self.output_directory {
-            Some(out) => Path::new(out),
-            None => Path::new(""),
+        if self.common.local_source.is_none() && self.common.extent_file.is_none() {
+            return Err(OvertureMapsCollectionError::InvalidUserInput(
+                "must provide --extent-file when --local-source is not set".to_string(),
+            ));
+        }
+        let filter_cfg = self.common.load_filter_config()?;
+        let outdir = self.common.resolved_output_directory();
+        let local = self.common.local_source.as_ref().map(Path::new);
+        let extent_and_bbox = self.common.load_extent_and_bbox()?;
+        let (extent, bbox) = match extent_and_bbox {
+            Some((geom, bb)) => (Some(geom), Some(bb)),
+            None => (None, None),
         };
-        let local = self.local_source.as_ref().map(Path::new);
-        let extent = self
-            .extent_file
-            .as_ref()
-            .map(|extent_path| {
-                let wkt_str = fs::read_to_string(extent_path).map_err(|e| {
-                    OvertureMapsCollectionError::InvalidUserInput(format!(
-                        "failed to load extent file {extent_path}: {e}"
-                    ))
-                })?;
-
-                let geometry_f64 = WktReader(wkt_str.trim()).to_geo().map_err(|e| {
-                    OvertureMapsCollectionError::InvalidUserInput(format!(
-                        "failed to parse string into WKT from {extent_path}: {e}"
-                    ))
-                })?;
-                let polygon = geometry_f64.map_coords(|geo::Coord { x, y }| geo::Coord {
-                    x: x as f32,
-                    y: y as f32,
-                });
-
-                Ok::<_, OvertureMapsCollectionError>(polygon)
-            })
-            .transpose()?;
-        let bbox = match &extent {
-            Some(geom) => match geom.bounding_rect() {
-                Some(rect) => CliBoundingBox::from_coords(&rect.min(), &rect.max())
-                    .map_err(OvertureMapsCollectionError::InvalidGeometry)
-                    .map(Some),
-                None => {
-                    let msg = "provided extent does not have a bbox (maybe empty?)".to_string();
-                    Err(OvertureMapsCollectionError::InvalidGeometry(msg))
-                }
-            },
-            None => Ok(None),
-        }?;
-
-        let config_match_distance = config
-            .get::<Option<f64>>("infrastructure_match_distance_meters")
-            .unwrap_or(None);
-        let match_distance = self
-            .infrastructure_match_distance_meters
-            .or(config_match_distance);
+        let match_distance = self.common.resolved_match_distance(&filter_cfg);
 
         crate::app::network::run(
-            &self.name,
+            &self.common.name,
             bbox.as_ref(),
-            &network_config,
+            &filter_cfg.edge_lists,
             outdir,
             local,
-            island_algorithm_configuration,
+            filter_cfg.island_algorithm_configuration,
             extent,
             match_distance,
         )

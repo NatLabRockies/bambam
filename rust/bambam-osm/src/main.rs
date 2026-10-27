@@ -1,112 +1,22 @@
-use bambam_osm::{
-    config::OsmImportConfiguration,
-    model::{
-        osm::{graph::CompassWriter, OsmSource},
-        OsmCliError,
-    },
-};
-use clap::{Parser, Subcommand};
-use std::path::Path;
+use bambam_osm::{app::OsmApp, model::OsmCliError};
+use clap::Parser;
 
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-#[command(propagate_version = true)]
-pub struct OsmAppArguments {
-    #[command(subcommand)]
-    app: App,
-}
-
-#[derive(Subcommand)]
-pub enum App {
-    Pbf {
-        #[arg(long, help = "path to .pbf file for import")]
-        pbf_file: String,
-        #[arg(long, help = "optional study region name for summary.toml")]
-        name: Option<String>,
-        #[arg(long, help = "path to file containing WKT used to filter the PBF data")]
-        extent_file: Option<String>,
-        #[arg(
-            long,
-            help = "path to file with bambam-osm / travel-mode-filter configuration (.json or .toml)"
-        )]
-        configuration_file: Option<String>,
-        #[arg(long, help = "output path for network dataset")]
-        output_directory: String,
-    },
-}
-
-pub fn run(app: &App) -> Result<(), OsmCliError> {
+fn main() -> Result<(), OsmCliError> {
     let _ = env_logger::try_init();
-    match app {
-        App::Pbf {
-            pbf_file,
-            name,
-            extent_file,
-            configuration_file,
-            output_directory,
-        } => {
-            let conf = match configuration_file {
-                None => Ok(OsmImportConfiguration::default()),
-                Some(f) => {
-                    log::info!("reading bambam configuration from {f}");
-                    OsmImportConfiguration::try_from(f)
-                }
-            }?;
-            let out_path = Path::new(output_directory);
-            let edge_lists = conf.resolved_edge_lists();
-            let island_alg = conf.resolved_island_detection();
-            let element_filter = conf.resolved_element_filter();
-            let pbf_config = OsmSource::Pbf {
-                pbf_filepath: pbf_file.clone(),
-                study_region: name.clone(),
-                extent_filter_filepath: extent_file.clone(),
-                network_filter: Some(element_filter),
-                edge_lists: Some(edge_lists),
-                island_algorithm_configuration: island_alg,
-                component_filter: Some(conf.component_filter),
-                truncate_by_edge: conf.truncate_by_edge,
-                ignore_errors: conf.ignore_osm_parsing_errors,
-                simplify: conf.simplify,
-                infrastructure_match_distance_meters: conf.infrastructure_match_distance_meters,
-            };
-            let graph = pbf_config.import()?;
-            match graph.write_compass(out_path, conf.overwrite) {
-                Ok(_) => {
-                    eprintln!("finished.");
-                    Ok(())
-                }
-                Err(e) => {
-                    log::error!("bambam-osm failed: {e}");
-                    Err(e)?
-                }
-            }
-        }
-    }
-}
-
-fn main() {
-    let args = OsmAppArguments::parse();
-    match run(&args.app) {
-        Ok(_) => {
-            // if !s.is_empty() {
-            //     println!("{}", s);
-            // }
-        }
-        Err(e) => {
-            println!("{e}");
-            // log::error!("app failed: {}", e);
-            panic!("{}", e.to_string())
-        }
-    }
+    let args = OsmApp::parse();
+    args.op.run()
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
-    use bambam_network::{EdgeMappingRecord, VertexCompleteRecord, VertexMappingRecord};
+    use bambam_network::{
+        CommonNetworkImportArgs, EdgeMappingRecord, VertexCompleteRecord, VertexMappingRecord,
+    };
     use bambam_osm::{
         algorithm::truncation::ComponentFilter,
+        app::{OsmNetworkArgs, OsmOperation},
         model::osm::{
             graph::{osm_element_filter::ElementFilter, CompassWriter},
             import_ops::OsmCollection,
@@ -128,15 +38,19 @@ mod tests {
         let pbf_file = "src/test/liechtenstein-250101.osm.pbf";
         let extent_file = "src/test/schaan_liechtenstein.txt";
         let config_file = "src/test/test_osm_import.toml";
-        let conf = crate::App::Pbf {
-            pbf_file: pbf_file.to_string(),
-            name: Some("schaan_liechtenstein".to_string()),
-            extent_file: Some(extent_file.to_string()),
-            configuration_file: Some(config_file.to_string()),
-            output_directory: temp_directory.to_string(),
-        };
+        let op = OsmOperation::Network(OsmNetworkArgs {
+            pbf_file: Some(pbf_file.to_string()),
+            common: CommonNetworkImportArgs {
+                name: "schaan_liechtenstein".to_string(),
+                configuration_file: config_file.to_string(),
+                output_directory: Some(temp_directory.to_string()),
+                local_source: None,
+                extent_file: Some(extent_file.to_string()),
+                infrastructure_match_distance_meters: None,
+            },
+        });
 
-        if let Err(e) = crate::run(&conf) {
+        if let Err(e) = op.run() {
             panic!("bambam-osm run failure during import: {e}");
         }
 
@@ -223,32 +137,57 @@ mod tests {
             }
         }
 
-        // Also verify consuming configuration/bambam-omf/travel-mode-filter.json directly
-        let omf_filter_dir = Path::new("src/test/tmp_travel_mode_filter");
-        let omf_filter_conf = crate::App::Pbf {
-            pbf_file: pbf_file.to_string(),
-            name: Some("schaan_travel_mode_filter".to_string()),
-            extent_file: Some(extent_file.to_string()),
-            configuration_file: Some(
-                "../../configuration/bambam-omf/travel-mode-filter.json".to_string(),
-            ),
-            output_directory: omf_filter_dir.to_string_lossy().to_string(),
-        };
-        crate::run(&omf_filter_conf)
-            .expect("bambam-osm failed with travel-mode-filter.json");
-        assert!(omf_filter_dir.join("summary.toml").exists());
+        // Also verify consuming configuration/bambam-network/bambam-network-config.json directly
+        let net_cfg_dir = Path::new("src/test/tmp_network_config");
+        let net_cfg_op = OsmOperation::Network(OsmNetworkArgs {
+            pbf_file: Some(pbf_file.to_string()),
+            common: CommonNetworkImportArgs {
+                name: "schaan_network_config".to_string(),
+                configuration_file:
+                    "../../configuration/bambam-network/bambam-network-config.json".to_string(),
+                output_directory: Some(net_cfg_dir.to_string_lossy().to_string()),
+                local_source: None,
+                extent_file: Some(extent_file.to_string()),
+                infrastructure_match_distance_meters: None,
+            },
+        });
+        net_cfg_op
+            .run()
+            .expect("bambam-osm failed with bambam-network-config.json");
+        assert!(net_cfg_dir.join("summary.toml").exists());
         for mode in ["walk", "bike", "drive"] {
-            assert!(omf_filter_dir.join(mode).join("edges-compass.csv.gz").exists());
-            assert!(omf_filter_dir.join(mode).join("edges-mapping.csv.gz").exists());
+            assert!(net_cfg_dir.join(mode).join("edges-compass.csv.gz").exists());
+            assert!(net_cfg_dir.join(mode).join("edges-mapping.csv.gz").exists());
         }
+
+        // Also verify re-importing from the retained local_source Parquet directory without pbf_file
+        let local_reimport_dir = Path::new("src/test/tmp_local_reimport");
+        let local_reimport_op = OsmOperation::Network(OsmNetworkArgs {
+            pbf_file: None,
+            common: CommonNetworkImportArgs {
+                name: "schaan_from_local_raw".to_string(),
+                configuration_file:
+                    "../../configuration/bambam-network/bambam-network-config.json".to_string(),
+                output_directory: Some(local_reimport_dir.to_string_lossy().to_string()),
+                local_source: Some(net_cfg_dir.to_string_lossy().to_string()),
+                extent_file: None,
+                infrastructure_match_distance_meters: None,
+            },
+        });
+        local_reimport_op
+            .run()
+            .expect("bambam-osm failed when re-importing from local_source Parquet");
+        assert!(local_reimport_dir.join("summary.toml").exists());
 
         // cleanup before exits, order is important.
         if cleanup_tmp_dir {
             std::fs::remove_dir_all(temp_directory).expect("failed to remove tmp directory");
             std::fs::remove_dir_all(simplified_dir)
                 .expect("failed to remove tmp_simplified directory");
-            std::fs::remove_dir_all(omf_filter_dir)
-                .expect("failed to remove tmp_travel_mode_filter directory");
+            std::fs::remove_dir_all(net_cfg_dir)
+                .expect("failed to remove tmp_network_config directory");
+            std::fs::remove_dir_all(local_reimport_dir)
+                .expect("failed to remove tmp_local_reimport directory");
         }
         if !disconnected.is_empty() {
             disconnected.iter().take(5).for_each(|d| println!("{d}"));

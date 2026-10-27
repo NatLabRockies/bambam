@@ -1,11 +1,12 @@
 use geo::{Coord, Haversine, InterpolatableLine, Length, LineString, Point};
 use ordered_float::OrderedFloat;
 use routee_compass_core::model::network::Vertex;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::NetworkImportError;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentHeading {
     Forward,

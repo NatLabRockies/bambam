@@ -9,7 +9,7 @@ use routee_compass_core::model::unit::DistanceUnit;
 use serde::{Deserialize, Serialize};
 
 /// defines behaviors for an OSM network import.
-/// Supports both legacy `bambam-osm` TOML/JSON configs and OMF-style `travel-mode-filter.json`
+/// Supports both legacy `bambam-osm` TOML/JSON configs and `bambam-network-config.json`
 /// (`edge_lists` + `island_algorithm_configuration`).
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OsmImportConfiguration {

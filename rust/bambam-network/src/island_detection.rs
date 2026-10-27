@@ -7,6 +7,7 @@ use routee_compass_core::model::{
     network::{Edge, EdgeId, EdgeList, EdgeListId, Vertex, VertexId},
     unit::DistanceUnit,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use uom::si::f64::Length as uom_length;
 
@@ -14,7 +15,7 @@ use crate::error::NetworkImportError;
 
 /// Algorithm used to identify disconnected sub-sections of the road network graph
 /// (referred to here as 'islands') and remove them.
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ComponentsAlgorithmType {
     /// Strongly Connected Components (SCC).
@@ -28,9 +29,10 @@ pub enum ComponentsAlgorithmType {
 
 /// runs a connected components algorithm to identify edges
 /// that can be removed from the graph.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 pub struct IslandDetectionAlgorithm {
     pub min_distance: f64,
+    #[schemars(with = "String")]
     pub distance_unit: DistanceUnit,
     #[serde(default)]
     pub algorithm_type: ComponentsAlgorithmType,

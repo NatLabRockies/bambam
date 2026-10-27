@@ -119,7 +119,7 @@ impl OsmGraphVectorized {
     }
 
     /// Builds an [`OsmGraphVectorized`] using explicit [`NetworkEdgeListConfiguration`]s
-    /// (such as from `travel-mode-filter.json`) and multi-mode island detection, delegating
+    /// (such as from `bambam-network-config.json`) and multi-mode island detection, delegating
     /// directly to `bambam_network::build_vectorized_network_graph`.
     #[allow(clippy::too_many_arguments)]
     pub fn from_osm_maps_with_config(

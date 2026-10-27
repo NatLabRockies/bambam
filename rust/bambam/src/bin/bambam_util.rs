@@ -222,8 +222,11 @@ pub enum App {
         /// Output directory for Compass network, ID mappings, and raw Parquet tables
         #[arg(short, long)]
         output_directory: String,
+        /// Optional configuration file (e.g., configuration/bambam-network/bambam-network-config.json)
+        #[arg(short, long)]
+        configuration_file: Option<String>,
         /// Optional WKT file path defining the study extent
-        #[arg(long)]
+        #[arg(short, long)]
         extent_file: Option<String>,
         /// Optional inline WKT string defining the study extent
         #[arg(long)]
@@ -231,10 +234,10 @@ pub enum App {
         /// Optional bounding box "xmin,ymin,xmax,ymax"
         #[arg(long)]
         bbox: Option<String>,
-        /// For OSM: path to .osm.pbf file; for OMF: optional local raw directory/file
+        /// For OSM: path to .osm.pbf file (or retained raw/ Parquet directory); for OMF: optional local raw directory/file
         #[arg(short, long)]
         input_path: Option<String>,
-        /// Optional comma-separated travel modes (e.g., "walk,bike,drive")
+        /// Optional comma-separated travel modes (e.g., "walk,bike,drive") when --configuration-file is not provided
         #[arg(short, long)]
         modes: Option<String>,
         /// Optional maximum distance in meters for snapping infrastructure to vertices (default 15.0)
@@ -470,6 +473,7 @@ impl App {
                 name,
                 source,
                 output_directory,
+                configuration_file,
                 extent_file,
                 extent_wkt,
                 bbox,
@@ -511,11 +515,12 @@ impl App {
                     },
                     "osm" | "openstreetmap" | "open_street_map" => {
                         let pbf_path = input_path.clone().ok_or_else(|| {
-                            "must provide --input-path pointing to .osm.pbf file when --source is osm"
+                            "must provide --input-path pointing to .osm.pbf file (or raw/ Parquet directory) when --source is osm"
                                 .to_string()
                         })?;
                         NetworkDataSource::OpenStreetMap {
                             pbf_path,
+                            local_source: None,
                             simplify: Some(true),
                             truncate_by_edge: Some(true),
                         }
@@ -539,6 +544,7 @@ impl App {
                     extent,
                     source: data_source,
                     output_directory: output_directory.clone(),
+                    configuration_file: configuration_file.clone(),
                     modes: parsed_modes,
                     infrastructure_match_distance_meters: *infrastructure_match_distance_meters,
                 };

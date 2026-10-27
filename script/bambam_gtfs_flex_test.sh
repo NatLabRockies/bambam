@@ -19,7 +19,7 @@ cargo build -r --manifest-path rust/Cargo.toml
 #    create networks for walk, bike, and drive-mode travel (using posted speeds for drive)
 rust/target/release/bambam-omf network \
     -n minnesota-flex \
-    -c configuration/bambam-omf/travel-mode-filter.json \
+    -c configuration/bambam-network/bambam-network-config.json \
     -o "$WORKING_DIR" \
     -b -95.14435,-93.76282,44.01652,44.568947
 

@@ -6,12 +6,13 @@ use std::{
 
 use geo::Coord;
 use opening_hours_syntax::rules::OpeningHoursExpression;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{island_detection::IslandDetectionAlgorithm, model::SegmentHeading};
 
 /// Bounding box specification in WGS84 lon/lat degrees.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CliBoundingBox {
     pub xmin: f32,
     pub xmax: f32,
@@ -106,7 +107,7 @@ fn parse_num(s: &str, min: f32, max: f32) -> Result<f32, String> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentSubtype {
     Road,
@@ -125,7 +126,7 @@ impl fmt::Display for SegmentSubtype {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
 pub enum SegmentClass {
     Motorway,
     Primary,
@@ -211,7 +212,7 @@ impl<'de> Deserialize<'de> for SegmentClass {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentSubclass {
     Link,
@@ -291,7 +292,7 @@ pub enum SegmentRecognized {
 
 /// Travel mode for a segment.
 /// See <https://docs.overturemaps.org/schema/concepts/by-theme/transportation/travel-modes/>
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SegmentMode {
     Vehicle,
@@ -690,7 +691,7 @@ impl<T: FilterableSegment + ?Sized> FilterableSegment for &T {
 }
 
 /// Configures a predicate for testing whether a segment belongs to a specific travel mode.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
 #[serde(tag = "type")]
 pub enum TravelModeFilter {
     #[serde(rename = "subtype")]
@@ -711,7 +712,7 @@ pub enum TravelModeFilter {
     MatchesModeAccess { modes: Vec<SegmentMode> },
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MatchBehavior {
     Include,
@@ -1020,7 +1021,7 @@ fn when_is_compatible(
 }
 
 /// Edge list filter and island detection configuration for a single travel mode.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
 pub struct NetworkEdgeListConfiguration {
     pub mode: String,
     pub filter: Vec<TravelModeFilter>,

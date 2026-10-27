@@ -150,10 +150,13 @@ pub enum NetworkDataSource {
         #[serde(default)]
         local_source: Option<String>,
     },
-    /// OpenStreetMap `.osm.pbf` file.
+    /// OpenStreetMap `.osm.pbf` file or retained `raw/` Parquet directory.
     OpenStreetMap {
-        /// Path to the local `.osm.pbf` file.
+        /// Path to the local `.osm.pbf` file (or retained `raw/` Parquet directory).
         pbf_path: String,
+        /// Optional path to a previously retained `raw/` Parquet directory.
+        #[serde(default)]
+        local_source: Option<String>,
         /// Whether to collapse intermediate degree-2 shape nodes into segment LineStrings (defaults to `true`).
         #[serde(default)]
         simplify: Option<bool>,
@@ -178,7 +181,10 @@ pub struct NetworkImportRequest {
     pub source: NetworkDataSource,
     /// Output directory where Compass network files, mappings, and `raw/` Parquet files are written.
     pub output_directory: String,
-    /// Optional travel modes (e.g., `["walk", "bike", "drive"]`). Defaults to `["walk", "bike", "drive"]` for OMF and all public roads for OSM.
+    /// Optional path to a network import configuration file (`bambam-network-config.json`).
+    #[serde(default)]
+    pub configuration_file: Option<String>,
+    /// Optional travel modes (e.g., `["walk", "bike", "drive"]`). Defaults to `["walk", "bike", "drive"]` when `configuration_file` is not provided.
     #[serde(default)]
     pub modes: Option<Vec<String>>,
     /// Optional maximum Haversine distance in meters for snapping infrastructure (`traffic_signals`, `stop`, `give_way`, `crossing`) to vertices (defaults to `15.0`).
@@ -199,20 +205,38 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
     let (extent_geom, bbox) = request.extent.to_geometry_and_bbox()?;
     let out_dir = Path::new(&request.output_directory);
 
+    let (edge_lists, island_alg, cfg_match_dist) = if let Some(ref cfg_path) =
+        request.configuration_file
+    {
+        let cfg = bambam_network::NetworkImportFilterConfig::from_file(Path::new(cfg_path))
+            .map_err(|e| e.to_string())?;
+        (
+            cfg.edge_lists,
+            cfg.island_algorithm_configuration,
+            cfg.infrastructure_match_distance_meters,
+        )
+    } else {
+        let edge_lists = match request.modes.as_ref().filter(|m| !m.is_empty()) {
+            Some(modes) => modes
+                .iter()
+                .map(|m| NetworkEdgeListConfiguration::default_for_mode(m))
+                .collect::<Result<Vec<_>, _>>()?,
+            None => NetworkEdgeListConfiguration::default_multimodal(),
+        };
+        let island_alg = Some(IslandDetectionAlgorithm {
+            min_distance: 2.0,
+            distance_unit: DistanceUnit::Miles,
+            algorithm_type: ComponentsAlgorithmType::Wcc,
+        });
+        (edge_lists, island_alg, None)
+    };
+
+    let match_distance = request
+        .infrastructure_match_distance_meters
+        .or(cfg_match_dist);
+
     match &request.source {
         NetworkDataSource::OvertureMaps { local_source } => {
-            let edge_lists = match request.modes.as_ref().filter(|m| !m.is_empty()) {
-                Some(modes) => modes
-                    .iter()
-                    .map(|m| NetworkEdgeListConfiguration::default_for_mode(m))
-                    .collect::<Result<Vec<_>, _>>()?,
-                None => NetworkEdgeListConfiguration::default_multimodal(),
-            };
-            let island_alg = IslandDetectionAlgorithm {
-                min_distance: 2.0,
-                distance_unit: DistanceUnit::Miles,
-                algorithm_type: ComponentsAlgorithmType::Wcc,
-            };
             let local_path = local_source.as_deref().map(Path::new);
             bambam_omf::app::network::run(
                 &request.name,
@@ -220,47 +244,47 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
                 &edge_lists,
                 out_dir,
                 local_path,
-                Some(island_alg),
+                island_alg,
                 Some(extent_geom),
-                request.infrastructure_match_distance_meters,
+                match_distance,
             )
             .map_err(|e| e.to_string())
         }
         NetworkDataSource::OpenStreetMap {
             pbf_path,
+            local_source,
             simplify,
             truncate_by_edge,
         } => {
-            let edge_lists = match request.modes.as_ref().filter(|m| !m.is_empty()) {
-                Some(modes) => modes
-                    .iter()
-                    .map(|m| NetworkEdgeListConfiguration::default_for_mode(m))
-                    .collect::<Result<Vec<_>, _>>()?,
-                None => NetworkEdgeListConfiguration::default_multimodal(),
-            };
-            let island_alg = IslandDetectionAlgorithm {
-                min_distance: 2.0,
-                distance_unit: DistanceUnit::Miles,
-                algorithm_type: ComponentsAlgorithmType::Wcc,
-            };
-            let filter = ElementFilter::from_edge_list_configs(&edge_lists);
             let extent_opt = Some(extent_geom);
-            let (nodes_map, ways_map) =
-                import_ops::read_pbf(pbf_path, filter, &extent_opt).map_err(|e| e.to_string())?;
+            let (src_label, nodes_map, ways_map) = if let Some(ref local_dir) = local_source {
+                let col = import_ops::OsmCollection::from_local_source(Path::new(local_dir))
+                    .map_err(|e| e.to_string())?;
+                col.into_maps()
+            } else if Path::new(pbf_path).is_dir() {
+                let col = import_ops::OsmCollection::from_local_source(Path::new(pbf_path))
+                    .map_err(|e| e.to_string())?;
+                col.into_maps()
+            } else {
+                let filter = ElementFilter::from_edge_list_configs(&edge_lists);
+                let (n, w) = import_ops::read_pbf(pbf_path, filter, &extent_opt)
+                    .map_err(|e| e.to_string())?;
+                (pbf_path.clone(), n, w)
+            };
 
             let graph = OsmGraphVectorized::from_osm_maps_with_config(
-                pbf_path.clone(),
+                src_label,
                 Some(request.name.clone()),
                 nodes_map,
                 ways_map,
                 extent_opt.as_ref(),
                 &edge_lists,
                 &ComponentFilter::KeepAll,
-                Some(&island_alg),
+                island_alg.as_ref(),
                 truncate_by_edge.unwrap_or(true),
                 simplify.unwrap_or(true),
                 true,
-                request.infrastructure_match_distance_meters,
+                match_distance,
             )
             .map_err(|e| e.to_string())?;
 
@@ -367,6 +391,7 @@ mod tests {
                 local_source: Some(omf_source_dir.to_string_lossy().to_string()),
             },
             output_directory: omf_out_dir.to_string_lossy().to_string(),
+            configuration_file: None,
             modes: None, // defaults to ["walk", "bike", "drive"]
             infrastructure_match_distance_meters: Some(15.0),
         };
@@ -412,10 +437,12 @@ mod tests {
             },
             source: NetworkDataSource::OpenStreetMap {
                 pbf_path: pbf_path.to_string_lossy().to_string(),
+                local_source: None,
                 simplify: Some(true),
                 truncate_by_edge: Some(true),
             },
             output_directory: osm_out_dir.to_string_lossy().to_string(),
+            configuration_file: None,
             modes: Some(vec!["drive".to_string(), "walk".to_string()]),
             infrastructure_match_distance_meters: Some(15.0),
         };

@@ -1,13 +1,17 @@
 use super::{graph::osm_element_filter::ElementFilter, OsmError};
 use crate::{
     algorithm::truncation::ComponentFilter,
-    model::osm::{graph::OsmGraphVectorized, import_ops},
+    model::osm::{
+        graph::OsmGraphVectorized,
+        import_ops::{self, OsmCollection},
+    },
 };
-use bambam_network::{IslandDetectionAlgorithm, NetworkEdgeListConfiguration};
+use bambam_network::{
+    parse_wkt_str_to_geometry_and_bbox, IslandDetectionAlgorithm, NetworkEdgeListConfiguration,
+};
 use geo::Geometry;
-use geo::MapCoords;
-use geozero::{wkt::Wkt as WktReader, ToGeo};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum OsmSource {
@@ -16,6 +20,22 @@ pub enum OsmSource {
         #[serde(default)]
         study_region: Option<String>,
         network_filter: Option<ElementFilter>,
+        #[serde(default)]
+        edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
+        #[serde(default)]
+        island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
+        extent_filter_filepath: Option<String>,
+        component_filter: Option<ComponentFilter>,
+        truncate_by_edge: bool,
+        ignore_errors: bool,
+        simplify: bool,
+        #[serde(default)]
+        infrastructure_match_distance_meters: Option<f64>,
+    },
+    LocalParquet {
+        local_source: String,
+        #[serde(default)]
+        study_region: Option<String>,
         #[serde(default)]
         edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
         #[serde(default)]
@@ -88,6 +108,54 @@ impl OsmSource {
                 );
                 Ok(result)
             }
+            OsmSource::LocalParquet {
+                local_source,
+                study_region,
+                edge_lists,
+                island_algorithm_configuration,
+                extent_filter_filepath,
+                component_filter,
+                truncate_by_edge,
+                ignore_errors,
+                simplify,
+                infrastructure_match_distance_meters,
+            } => {
+                let effective_edge_lists = match edge_lists.as_ref().filter(|e| !e.is_empty()) {
+                    Some(lists) => lists.clone(),
+                    None => NetworkEdgeListConfiguration::default_multimodal(),
+                };
+                let extent_opt = extent_filter_filepath
+                    .as_deref()
+                    .map(read_extent_wkt)
+                    .transpose()?;
+                let cc_ftr = component_filter.clone().unwrap_or_default();
+
+                log::info!("Reading retained OSM Parquet source from '{local_source}'");
+                let collection = OsmCollection::from_local_source(Path::new(local_source))?;
+                let (src_label, nodes_map, ways_map) = collection.into_maps();
+
+                let result = OsmGraphVectorized::from_osm_maps_with_config(
+                    src_label,
+                    study_region.clone(),
+                    nodes_map,
+                    ways_map,
+                    extent_opt.as_ref(),
+                    &effective_edge_lists,
+                    &cc_ftr,
+                    island_algorithm_configuration.as_ref(),
+                    *truncate_by_edge,
+                    *simplify,
+                    *ignore_errors,
+                    *infrastructure_match_distance_meters,
+                )?;
+
+                log::info!(
+                    "Loaded local Parquet-sourced OSM Compass graph with {} vertices across {} mode edge lists",
+                    result.vertices.len(),
+                    result.edge_lists.len()
+                );
+                Ok(result)
+            }
         }
     }
 }
@@ -103,20 +171,14 @@ fn read_extent_wkt(extent_filter_filepath: &str) -> Result<Geometry<f32>, OsmErr
 
 /// Try to deserialize a string into geometry and validate if said geometry is useful as a extent (Polygon or Multipolygon)
 fn deserialize_validate_extent_str(wkt_str: &str) -> Result<Geometry<f32>, OsmError> {
-    let geometry_f64 = WktReader(wkt_str).to_geo().map_err(|e| {
-        OsmError::InvalidWKT(format!("unable to deserialize WKT in {wkt_str}: {e}"))
-    })?;
-    let geometry: Geometry<f32> = geometry_f64.map_coords(|geo::Coord { x, y }| geo::Coord {
-        x: x as f32,
-        y: y as f32,
-    });
-
-    match geometry {
-        Geometry::Polygon(..) | Geometry::MultiPolygon(..) => Ok(geometry),
-        _ => Err(OsmError::InvalidExtentWKT(format!(
-            "Invalid extent provided. Only Polygon or Multipolygon can be a valid extent: {geometry:?}"
-        ))),
-    }
+    parse_wkt_str_to_geometry_and_bbox(wkt_str)
+        .map(|(geom, _)| geom)
+        .map_err(|e| match e {
+            bambam_network::NetworkImportError::InvalidGeometry(msg) => {
+                OsmError::InvalidExtentWKT(msg)
+            }
+            other => OsmError::InvalidWKT(other.to_string()),
+        })
 }
 
 #[cfg(test)]

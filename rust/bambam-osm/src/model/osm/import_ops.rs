@@ -299,6 +299,33 @@ impl OsmCollection {
             ways,
         })
     }
+
+    /// Load an [`OsmCollection`] from a local source path (`raw/` Parquet directory or `.parquet` file).
+    pub fn from_local_source(path: &Path) -> Result<Self, OsmError> {
+        if path.is_dir() {
+            return Self::from_parquet_dir(path);
+        }
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("parquet"))
+        {
+            let parent = path.parent().unwrap_or_else(|| Path::new("."));
+            return Self::from_parquet_dir(parent);
+        }
+
+        Err(OsmError::ConfigurationError(format!(
+            "expected a directory containing raw OSM Parquet files or a .parquet file, got '{}'",
+            path.display()
+        )))
+    }
+
+    /// Converts this collection back into `(OsmNodes, OsmWays)` maps.
+    pub fn into_maps(self) -> (String, OsmNodes, OsmWays) {
+        let nodes = self.nodes.into_iter().map(|n| (n.osmid, n)).collect();
+        let ways = self.ways.into_iter().map(|w| (w.osmid, w)).collect();
+        (self.source, nodes, ways)
+    }
 }
 
 fn write_records_to_parquet<T>(records: &[T], filepath: &Path, source: &str) -> Result<(), OsmError>

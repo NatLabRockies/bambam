@@ -10,6 +10,8 @@ categories = ["science", "science::geo"]
 
 [dependencies]
 chrono = { workspace = true }
+clap = { workspace = true }
+config = { workspace = true }
 csv = { workspace = true }
 flate2 = { workspace = true }
 geo = { workspace = true }
@@ -25,6 +27,7 @@ routee-compass-core = { workspace = true }
 rstar = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = { workspace = true }
 uom = { workspace = true }
