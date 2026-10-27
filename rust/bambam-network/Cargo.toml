@@ -21,8 +21,8 @@ indexmap = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
-ordered-float = { workspace = true }
 opening-hours-syntax = { workspace = true }
+ordered-float = { workspace = true }
 rayon = { workspace = true }
 routee-compass-core = { workspace = true }
 rstar = { workspace = true }
