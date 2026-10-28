@@ -8,10 +8,16 @@ use routee_compass_core::{
     model::{label::Label, network::VertexId, state::StateModel, unit::Cost},
 };
 
+/// A single destination branch `(Label, &SearchTreeNode)`.
+pub type DestinationBranch<'a> = (Label, &'a SearchTreeNode);
+
+/// Destination branches grouped by [`BinInterval`].
+pub type BinnedDestinations<'a> = Vec<(BinInterval, Vec<DestinationBranch<'a>>)>;
+
 /// iterates through destinations of a search result. optionally filters to those
 /// destinations that are within a bin.
 pub type DestinationsIter<'a> =
-    Box<dyn Iterator<Item = Result<(Label, &'a SearchTreeNode), DestinationError>> + 'a>;
+    Box<dyn Iterator<Item = Result<DestinationBranch<'a>, DestinationError>> + 'a>;
 
 /// Best candidate branch reaching a destination vertex, paired with its lazily evaluated
 /// accumulated objective cost (`None` until a second branch collides on the same vertex).
@@ -52,6 +58,35 @@ pub fn new_destinations_iterator<'a>(
     };
 
     Box::new(results.into_iter().map(Ok))
+}
+
+/// Collects and deduplicates valid destination branches from `search_result` in a single pass
+/// over the search tree, then buckets them across all `bins`.
+///
+/// assumes exactly ONE tree in our search result.
+pub fn collect_binned_destinations<'a>(
+    search_result: &'a SearchAppResult,
+    bins: &[BinInterval],
+    destination_filter: Option<&DestinationFilter>,
+    state_model: &StateModel,
+) -> Result<BinnedDestinations<'a>, DestinationError> {
+    let Some(tree) = search_result.trees.first() else {
+        return Ok(bins.iter().cloned().map(|b| (b, Vec::new())).collect());
+    };
+
+    let best_by_vertex =
+        deduplicate_destinations_by_vertex(tree, destination_filter, state_model)?;
+
+    let mut binned: Vec<Vec<DestinationBranch<'a>>> = vec![Vec::new(); bins.len()];
+    for (_cost_opt, label, branch) in best_by_vertex.into_values() {
+        for (bin, bucket) in bins.iter().zip(binned.iter_mut()) {
+            if within_bin_range(branch, Some(bin), state_model)? {
+                bucket.push((label.clone(), branch));
+            }
+        }
+    }
+
+    Ok(bins.iter().cloned().zip(binned).collect())
 }
 
 /// Scans `tree` for non-root branches passing `destination_filter` and deduplicates
