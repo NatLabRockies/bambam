@@ -68,7 +68,12 @@ impl ConstraintModel for MultimodalConstraintModel {
         validate_frontier(ctx.edge, state, state_model, self)
     }
 
-    fn valid_edge(&self, _edge: &Edge) -> Result<bool, ConstraintModelError> {
+    fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
+        for constraint in self.constraints.iter() {
+            if !constraint.valid_edge(&self.engine.mode, edge)? {
+                return Ok(false);
+            }
+        }
         Ok(true)
     }
 }
@@ -839,5 +844,28 @@ mod test {
         let is_valid =
             validate_frontier(&bike_edge, &state, &state_model, &bike_mfm).expect("test failed");
         assert!(!is_valid); // Should be invalid as this would create a second leg
+    }
+
+    #[test]
+    fn test_valid_edge_checks_allowed_modes() {
+        let max_trip_legs = NonZeroU64::new(1).unwrap();
+        let allowed = Constraint::AllowedModes(HashSet::from(["walk".to_string()]));
+        let (_, walk_mfm, _, _) = test_setup(
+            vec![allowed],
+            "walk",
+            &["walk", "bike", "drive"],
+            max_trip_legs,
+        );
+        let allowed_bike = Constraint::AllowedModes(HashSet::from(["walk".to_string()]));
+        let (_, drive_mfm, _, _) = test_setup(
+            vec![allowed_bike],
+            "drive",
+            &["walk", "bike", "drive"],
+            max_trip_legs,
+        );
+
+        let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(100.0));
+        assert!(walk_mfm.valid_edge(&edge).expect("test failed"));
+        assert!(!drive_mfm.valid_edge(&edge).expect("test failed"));
     }
 }

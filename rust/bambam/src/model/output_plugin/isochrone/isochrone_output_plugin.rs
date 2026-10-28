@@ -91,9 +91,19 @@ pub fn run_isochrone(
     let bins = bin_config
         .build_bins(false)
         .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
-    for bin in bins.into_iter() {
+    let binned_destinations = destination::iter::collect_binned_destinations(
+        sr,
+        &bins,
+        get_isochrone_request.filter.as_ref(),
+        &si.state_model,
+    )
+    .map_err(|e| {
+        OutputPluginError::OutputPluginFailed(format!("failure collecting destinations: {e}"))
+    })?;
+
+    for (bin, tree_destinations) in binned_destinations {
         let bin_key = bin.bin_key();
-        let result = get_isochrone_request.run(&bin, sr, si)?;
+        let result = get_isochrone_request.run(&tree_destinations, si)?;
         agg.set_isochrone(&bin_key, result.isochrone_value);
         agg.set_n_destinations(&bin_key, result.tree_size);
     }
@@ -146,26 +156,15 @@ impl GetIsochroneRequest {
 
     pub fn run(
         &self,
-        bin: &BinInterval,
-        search_result: &SearchAppResult,
+        tree_destinations: &[destination::iter::DestinationBranch<'_>],
         si: &SearchInstance,
     ) -> Result<GetIsochroneResult, OutputPluginError> {
-        let tree_destinations: Vec<_> = destination::iter::new_destinations_iterator(
-            search_result,
-            Some(bin),
-            self.filter.as_ref(),
-            &si.state_model,
-        )
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| {
-            OutputPluginError::OutputPluginFailed(format!("failure collecting destinations: {e}"))
-        })?;
         let tree_size = tree_destinations.len();
 
         // draw isochrone and serialize result
         let tree_mp = self
             .geometry_model
-            .generate_destination_points(&tree_destinations, si.map_model.clone())?;
+            .generate_destination_points(tree_destinations, si.map_model.clone())?;
         let geometry = self.isochrone_algorithm.run(tree_mp)?;
         let isochrone = self.isochrone_format.serialize_geometry(&geometry)?;
         let result = GetIsochroneResult {

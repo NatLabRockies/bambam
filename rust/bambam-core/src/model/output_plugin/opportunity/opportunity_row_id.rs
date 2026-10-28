@@ -8,7 +8,7 @@ use routee_compass_core::{
     model::{
         label::Label,
         map::MapModel,
-        network::{EdgeId, EdgeListId, Graph},
+        network::{EdgeId, EdgeListId, Graph, VertexId},
     },
 };
 use rstar::{RTreeObject, AABB};
@@ -19,16 +19,16 @@ use crate::model::output_plugin::opportunity::opportunity_orientation::Opportuni
 // identifier in the graph tagging where an opportunity was found
 #[derive(Serialize, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum OpportunityRowId {
-    OriginVertex(Label),
-    DestinationVertex(Label),
+    OriginVertex(VertexId),
+    DestinationVertex(VertexId),
     Edge(EdgeListId, EdgeId),
 }
 
 impl std::fmt::Display for OpportunityRowId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            OpportunityRowId::OriginVertex(label) => label.to_string(),
-            OpportunityRowId::DestinationVertex(label) => label.to_string(),
+            OpportunityRowId::OriginVertex(vertex_id) => vertex_id.to_string(),
+            OpportunityRowId::DestinationVertex(vertex_id) => vertex_id.to_string(),
             OpportunityRowId::Edge(edge_list_id, edge_id) => format!("{edge_list_id}-{edge_id}"),
         };
         write!(f, "{s}")
@@ -47,11 +47,11 @@ impl OpportunityRowId {
             // stored at the origin of the edge, corresponding with the branch origin id
             O::OriginVertexOriented => match branch.parent_label() {
                 None => Err(OutputPluginError::InternalError(String::from("while building EdgeOriented OpportunityRowId, was passed tree root, which has no corresponding edge"))),
-                Some(parent_label) => Ok(Self::OriginVertex(parent_label.clone())),
+                Some(parent_label) => Ok(Self::OriginVertex(*parent_label.vertex_id())),
             },
             // stored at the destination of the edge at the branch's terminal vertex id
             O::DestinationVertexOriented => {
-                Ok(Self::DestinationVertex(child_label.clone()))
+                Ok(Self::DestinationVertex(*child_label.vertex_id()))
             },
             // stored on the edge itself
             O::EdgeOriented => {
@@ -69,8 +69,8 @@ impl OpportunityRowId {
         graph: Arc<Graph>,
     ) -> Result<geo::Point<f32>, OutputPluginError> {
         let vertex_id = match self {
-            OpportunityRowId::OriginVertex(label) => Ok(label.vertex_id()),
-            OpportunityRowId::DestinationVertex(label) => Ok(label.vertex_id()),
+            OpportunityRowId::OriginVertex(vertex_id) => Ok(vertex_id),
+            OpportunityRowId::DestinationVertex(vertex_id) => Ok(vertex_id),
             OpportunityRowId::Edge(..) => Err(OutputPluginError::InternalError(String::from(
                 "cannot get vertex point for edge",
             ))),
