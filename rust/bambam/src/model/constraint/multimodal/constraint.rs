@@ -65,6 +65,17 @@ pub enum Constraint {
 }
 
 impl Constraint {
+    /// validates an edge independent of search state (e.g., during map matching).
+    pub fn valid_edge(&self, edge_mode: &str, _edge: &Edge) -> Result<bool, ConstraintModelError> {
+        use Constraint as MFC;
+
+        match self {
+            MFC::AllowedModes(items) => Ok(items.contains(edge_mode)),
+            MFC::ModeCounts(limits) => Ok(limits.get(edge_mode).copied().unwrap_or(0) > 0),
+            _ => Ok(true),
+        }
+    }
+
     /// validates an edge for traversal in a multimodal traversal
     pub fn valid_frontier(
         &self,
