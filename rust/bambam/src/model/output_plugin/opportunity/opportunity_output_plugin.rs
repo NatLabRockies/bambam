@@ -186,17 +186,22 @@ fn process_aggregate_opportunities(
     let bins = bin_config
         .build_bins(false)
         .map_err(|e| OutputPluginError::OutputPluginFailed(e.to_string()))?;
-    for bin in bins.into_iter() {
+    let binned_destinations = destination::iter::collect_binned_destinations(
+        result,
+        &bins,
+        filter,
+        &instance.state_model,
+    )
+    .map_err(|e| {
+        OutputPluginError::OutputPluginFailed(format!("failure collecting destinations: {e}"))
+    })?;
+
+    for (bin, destinations) in binned_destinations {
         let start_time = Instant::now();
         let bin_key = bin.bin_key();
 
-        // collect all opportunities from destinations within this bin
-        let destinations_iter = destination::iter::new_destinations_iterator(
-            result,
-            Some(&bin),
-            filter,
-            &instance.state_model,
-        );
+        let destinations_iter: destination::iter::DestinationsIter<'_> =
+            Box::new(destinations.into_iter().map(Ok));
 
         // collect aggregated opportunities and write to output
         let destination_opportunities = plugin
