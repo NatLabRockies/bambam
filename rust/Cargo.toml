@@ -70,7 +70,7 @@ rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
 routee-compass = { version = "0.19.5", default-features = false, git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
-routee-compass-core = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
+routee-compass-core = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66", features = ["accumulated_cost"] }
 routee-compass-macros = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
 # routee-compass-powertrain = { version = "0.19.5" }
 routee-compass-py = { version = "0.19.5", default-features = false }
