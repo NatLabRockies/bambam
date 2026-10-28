@@ -175,8 +175,8 @@ impl OpportunityModel {
 
                 // at this time, only vertex-oriented opportunities are supported (refactor needed due to EdgeLists)
                 let index = match &opp_row {
-                    OpportunityRowId::OriginVertex(label) => label.vertex_id().0,
-                    OpportunityRowId::DestinationVertex(label) => label.vertex_id().0,
+                    OpportunityRowId::OriginVertex(vertex_id) => vertex_id.0,
+                    OpportunityRowId::DestinationVertex(vertex_id) => vertex_id.0,
                     OpportunityRowId::Edge(edge_list_id, edge_id) => {
                         return Err(OutputPluginError::InternalError(
                             "edge-oriented opportunities not yet implemented".to_string(),

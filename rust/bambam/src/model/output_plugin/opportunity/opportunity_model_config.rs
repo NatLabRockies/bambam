@@ -200,6 +200,7 @@ impl OpportunityModelConfig {
                 let proportion_groups = match_by_vertex
                     .iter()
                     .enumerate()
+                    .sorted_by_key(|(_, match_id)| *match_id)
                     .chunk_by(|(_, match_id)| *match_id);
                 let proportion_iter = tqdm!(
                     proportion_groups.into_iter(),

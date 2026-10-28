@@ -1,4 +1,4 @@
-use routee_compass_core::model::state::StateModelError;
+use routee_compass_core::{algorithm::search::SearchTreeError, model::state::StateModelError};
 
 use crate::model::destination::{filter::DestinationPredicate, BinInterval};
 
@@ -16,4 +16,6 @@ pub enum DestinationError {
     },
     #[error("invalid bin configuration: {reason}")]
     InvalidBinConfig { reason: String },
+    #[error("search tree error while collecting destinations: {0}")]
+    SearchTreeError(#[from] SearchTreeError),
 }
