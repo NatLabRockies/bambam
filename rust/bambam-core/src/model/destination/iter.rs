@@ -74,8 +74,7 @@ pub fn collect_binned_destinations<'a>(
         return Ok(bins.iter().cloned().map(|b| (b, Vec::new())).collect());
     };
 
-    let best_by_vertex =
-        deduplicate_destinations_by_vertex(tree, destination_filter, state_model)?;
+    let best_by_vertex = deduplicate_destinations_by_vertex(tree, destination_filter, state_model)?;
 
     let mut binned: Vec<Vec<DestinationBranch<'a>>> = vec![Vec::new(); bins.len()];
     for (_cost_opt, label, branch) in best_by_vertex.into_values() {
