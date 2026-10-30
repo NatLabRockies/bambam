@@ -3,7 +3,7 @@ name = "bambam-omf"
 version.workspace = true
 edition = "2021"
 license = "BSD-3-Clause"
-include = ["Cargo.toml", "README.md", "src/**/*.rs", "src/util/bambam-config-omf.toml"]
+include = ["Cargo.toml", "README.md", "src/**/*.rs"]
 readme = "README.md"
 repository = "https://github.com/NatLabRockies/bambam"
 documentation = "https://docs.rs/bambam-omf"
@@ -12,12 +12,8 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
-
 arrow = { workspace = true }
-bamcensus = { workspace = true }
-bamcensus-acs = { workspace = true }
-bamcensus-core = { workspace = true }
-bamcensus-lehd = { workspace = true }
+bambam-network = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
@@ -35,18 +31,19 @@ log = { workspace = true }
 object_store = { workspace = true }
 opening-hours-syntax = { workspace = true }
 ordered-float = { workspace = true }
-parquet = { workspace = true }
+parquet = { workspace = true, features = ["async", "object_store"] }
 rayon = { workspace = true }
 reqwest = { workspace = true }
 routee-compass = { workspace = true, default-features = false }
 routee-compass-core = { workspace = true }
 # routee-compass-powertrain = { workspace = true }
+rstar = { workspace = true }
 schemars = { workspace = true }
 serde = { workspace = true }
 serde_arrow = { workspace = true }
 serde_bytes = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 toml = { workspace = true }
 uom = { workspace = true }

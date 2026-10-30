@@ -713,6 +713,7 @@ mod tests {
         let mut row = BambamOutputRow::new(&mut value);
         let cost = TraversalCost {
             objective_cost: Cost::new(42.0),
+            total_cost: Cost::new(42.0),
             edge_cost: Cost::new(42.0),
         };
         {

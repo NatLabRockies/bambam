@@ -1,0 +1,34 @@
+[package]
+name = "bambam-network"
+version.workspace = true
+edition = "2021"
+license = "BSD-3-Clause"
+include = ["Cargo.toml", "README.md", "src/**/*.rs", "src/bambam.toml"]
+repository = "https://github.com/NatLabRockies/bambam"
+description = "Shared split-based road network ETL, island detection, and RouteE Compass serialization core"
+keywords = ["nlr", "routing", "network", "osm", "overture-maps"]
+categories = ["science", "science::geo"]
+
+[dependencies]
+chrono = { workspace = true }
+clap = { workspace = true }
+config = { workspace = true }
+csv = { workspace = true }
+flate2 = { workspace = true }
+geo = { workspace = true }
+geozero = { workspace = true }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+kdam = { workspace = true }
+log = { workspace = true }
+opening-hours-syntax = { workspace = true }
+ordered-float = { workspace = true }
+rayon = { workspace = true }
+routee-compass-core = { workspace = true }
+rstar = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+uom = { workspace = true }

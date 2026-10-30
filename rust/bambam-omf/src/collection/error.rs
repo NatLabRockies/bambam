@@ -55,3 +55,41 @@ pub enum OvertureMapsCollectionError {
     #[error("{0}")]
     InternalError(String),
 }
+
+impl From<bambam_network::NetworkImportError> for OvertureMapsCollectionError {
+    fn from(value: bambam_network::NetworkImportError) -> Self {
+        use bambam_network::NetworkImportError as N;
+        match value {
+            N::InvalidUserInput(s) => Self::InvalidUserInput(s),
+            N::SerializationError(s) => Self::SerializationError(s),
+            N::InvalidSegmentConnectors(s) => Self::InvalidSegmentConnectors(s),
+            N::InvalidLinearReference(v) => Self::InvalidLinearReference(v),
+            N::InvalidGeometry(s) => Self::InvalidGeometry(s),
+            N::CsvWriteError(s) => Self::CsvWriteError(s),
+            N::ReadError { path, message } => Self::ReadError { path, message },
+            N::WriteError { path, message } => Self::WriteError { path, message },
+            N::InvalidBetweenVector(s) => Self::InvalidBetweenVector(s),
+            N::MissingAttribute(s) => Self::MissingAttribute(s),
+            N::InternalError(s) => Self::InternalError(s),
+        }
+    }
+}
+
+impl From<OvertureMapsCollectionError> for bambam_network::NetworkImportError {
+    fn from(value: OvertureMapsCollectionError) -> Self {
+        use OvertureMapsCollectionError as E;
+        match value {
+            E::InvalidUserInput(s) => Self::InvalidUserInput(s),
+            E::SerializationError(s) => Self::SerializationError(s),
+            E::InvalidSegmentConnectors(s) => Self::InvalidSegmentConnectors(s),
+            E::InvalidLinearReference(v) => Self::InvalidLinearReference(v),
+            E::InvalidGeometry(s) => Self::InvalidGeometry(s),
+            E::CsvWriteError(s) => Self::CsvWriteError(s),
+            E::ReadError { path, message } => Self::ReadError { path, message },
+            E::WriteError { path, message } => Self::WriteError { path, message },
+            E::InvalidBetweenVector(s) => Self::InvalidBetweenVector(s),
+            E::MissingAttribute(s) => Self::MissingAttribute(s),
+            other => Self::InternalError(other.to_string()),
+        }
+    }
+}

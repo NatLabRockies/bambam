@@ -7,7 +7,7 @@ use crate::model::output_plugin::h3_util::BoundaryGeometryFormat;
 pub enum H3UtilOutputPluginConfig {
     /// reads an h3 identifier from some path in the output JSON and uses
     /// h3 cellToBoundary to write the h3
-    /// see [[https://h3geo.org/docs/api/indexing#celltoboundary]].
+    /// see <https://h3geo.org/docs/api/indexing#celltoboundary>.
     H3BoundaryToGeometry {
         from: String,
         to: String,

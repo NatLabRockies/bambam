@@ -18,10 +18,11 @@ pub use filter::RowFilter;
 pub use filter::RowFilterConfig;
 pub use object_source::ObjectStoreSource;
 pub use record::{
-    BuildingsRecord, OvertureRecord, OvertureRecordType, PlacesRecord,
+    BuildingsRecord, InfrastructureRecord, OvertureRecord, OvertureRecordType, PlacesRecord,
     SegmentAccessRestrictionWhen, SegmentClass, SegmentFullType, SegmentSpeedLimit,
     SegmentSpeedUnit, SegmentSubclass, SegmentSubtype, TransportationCollection,
     TransportationConnectorRecord, TransportationSegmentRecord,
+    DEFAULT_TRANSPORTATION_INFRASTRUCTURE_CLASSES,
 };
 pub use taxonomy::{TaxonomyModel, TaxonomyModelBuilder};
 pub use version::ReleaseVersion;

@@ -76,10 +76,7 @@ pub fn batch_process(
     let archive_paths = bundle_directory_path
         .read_dir()
         .map_err(|e| ScheduleError::GtfsApp(format!("failure reading directory: {e}")))?
-        .filter(|entry| match entry {
-            Ok(entry) if is_not_zip(entry) => false,
-            _ => true,
-        })
+        .filter(|entry| !matches!(entry, Ok(entry) if is_not_zip(entry)))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| ScheduleError::GtfsApp(format!("failure reading directory: {e}")))?;
 

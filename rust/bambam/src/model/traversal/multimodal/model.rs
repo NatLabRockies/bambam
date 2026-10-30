@@ -237,6 +237,7 @@ mod test {
         label::Label,
         network::VertexId,
         traversal::EdgeFrontierContext,
+        unit::Cost,
     };
     use routee_compass_core::{
         algorithm::search::{EdgeTraversal, SearchTree},
@@ -356,6 +357,7 @@ mod test {
         let et1 = EdgeTraversal::new_local(
             &ctx1,
             &initial_state,
+            Cost::ZERO,
             &state_model,
             test_walk.as_ref(),
             &cost_model,
@@ -391,6 +393,7 @@ mod test {
         let et2 = EdgeTraversal::new_local(
             &ctx2,
             &et1.result_state,
+            Cost::ZERO,
             &state_model,
             test_bike.as_ref(),
             &cost_model,
@@ -449,6 +452,7 @@ mod test {
         let et1 = EdgeTraversal::new_local(
             &ctx1,
             &initial_state,
+            Cost::ZERO,
             &state_model,
             test_walk.as_ref(),
             &cost_model,
@@ -473,6 +477,7 @@ mod test {
         let result = EdgeTraversal::new_local(
             &ctx2,
             &et1.result_state,
+            Cost::ZERO,
             &state_model,
             test_bike.as_ref(),
             &cost_model,

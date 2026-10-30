@@ -1,6 +1,6 @@
-use crate::model::osm::OsmError;
-use geo::{Centroid, Coord, Geometry, Intersects, MultiPoint, Point};
+use geo::{Geometry, Intersects, Point};
 use itertools::Itertools;
+use routee_compass_core::model::network::Vertex;
 use serde::{Deserialize, Serialize};
 
 use super::OsmNodeId;
@@ -48,59 +48,124 @@ impl OsmNodeData {
         Point::new(self.x, self.y)
     }
 
-    pub fn consolidate(
-        new_node_id: &OsmNodeId,
-        nodes: &[&OsmNodeData],
-    ) -> Result<OsmNodeData, OsmError> {
-        if nodes.is_empty() {
-            return Err(OsmError::InternalError(String::from(
-                "cannot merge empty vector of nodes",
-            )));
-        }
+    pub fn has_traffic_signals(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|h| h.contains("traffic_signals"))
+    }
 
-        // create a new location from the centroid of the collection of nodes
-        let coords = nodes
-            .iter()
-            .map(|n| Point(Coord::from((n.x, n.y))))
-            .collect_vec();
-        let mp = MultiPoint::from(coords);
-        let centroid = mp.centroid().ok_or_else(|| {
-            OsmError::InternalError(String::from("non-empty vector of nodes has no centroid"))
-        })?;
+    pub fn has_stop(&self) -> bool {
+        self.highway.as_ref().is_some_and(|h| h.contains("stop"))
+    }
 
-        let node_ids = nodes
-            .iter()
-            .flat_map(|n| {
-                let mut ids = n.consolidated_ids.clone();
-                ids.push(n.osmid);
-                ids
-            })
-            .collect_vec();
+    pub fn has_give_way(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|h| h.contains("give_way"))
+    }
 
-        let highway: Option<String> = collect_attribute(nodes, |n| n.highway.clone());
-        let ele: Option<String> = collect_attribute(nodes, |n| n.ele.clone());
-        let junction: Option<String> = collect_attribute(nodes, |n| n.junction.clone());
-        let railway: Option<String> = collect_attribute(nodes, |n| n.railway.clone());
-        let _ref: Option<String> = collect_attribute(nodes, |n| n._ref.clone());
+    pub fn has_crossing(&self) -> bool {
+        self.highway
+            .as_ref()
+            .is_some_and(|h| h.contains("crossing"))
+    }
 
-        let result = OsmNodeData {
-            osmid: *new_node_id,
-            x: centroid.x(),
-            y: centroid.y(),
-            highway,
-            ele,
-            junction,
-            railway,
-            _ref,
-            consolidated_ids: node_ids,
-        };
-        Ok(result)
+    pub fn has_control_or_intersection_tag(&self) -> bool {
+        self.has_traffic_signals()
+            || self.has_stop()
+            || self.has_give_way()
+            || self.has_crossing()
+            || self.junction.is_some()
+            || self.railway.is_some()
     }
 }
 
 impl Intersects<Geometry<f32>> for OsmNodeData {
     fn intersects(&self, rhs: &Geometry<f32>) -> bool {
         rhs.intersects(&geo::Point::new(self.x, self.y))
+    }
+}
+
+/// Wrapper around `OsmNodeData` with a cached string ID to implement
+/// `bambam_network::ImportConnector` and `bambam_network::ImportInfrastructure`.
+#[derive(Debug, Clone)]
+pub struct OsmConnectorRecord {
+    pub id_str: String,
+    pub node: OsmNodeData,
+}
+
+impl OsmConnectorRecord {
+    pub fn new(node: OsmNodeData) -> Self {
+        Self {
+            id_str: node.osmid.to_string(),
+            node,
+        }
+    }
+}
+
+impl bambam_network::ImportConnector for OsmConnectorRecord {
+    fn connector_id(&self) -> &str {
+        &self.id_str
+    }
+
+    fn try_to_vertex(&self, idx: usize) -> Result<Vertex, bambam_network::NetworkImportError> {
+        Ok(Vertex::new(idx, self.node.x, self.node.y))
+    }
+
+    fn has_traffic_signals(&self) -> bool {
+        self.node.has_traffic_signals()
+    }
+
+    fn has_stop(&self) -> bool {
+        self.node.has_stop()
+    }
+
+    fn has_give_way(&self) -> bool {
+        self.node.has_give_way()
+    }
+
+    fn has_crossing(&self) -> bool {
+        self.node.has_crossing()
+    }
+
+    fn consolidated_infrastructure_ids(&self) -> Option<Vec<String>> {
+        if self.node.consolidated_ids.is_empty() {
+            None
+        } else {
+            Some(
+                self.node
+                    .consolidated_ids
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect(),
+            )
+        }
+    }
+}
+
+impl bambam_network::ImportInfrastructure for OsmConnectorRecord {
+    fn infrastructure_id(&self) -> &str {
+        &self.id_str
+    }
+
+    fn reference_point(&self) -> Option<Point<f32>> {
+        Some(self.node.get_point())
+    }
+
+    fn is_traffic_signals(&self) -> bool {
+        self.node.has_traffic_signals()
+    }
+
+    fn is_stop(&self) -> bool {
+        self.node.has_stop()
+    }
+
+    fn is_give_way(&self) -> bool {
+        self.node.has_give_way()
+    }
+
+    fn is_crossing(&self) -> bool {
+        self.node.has_crossing()
     }
 }
 
@@ -152,37 +217,9 @@ impl From<&osmpbf::dense::DenseNode<'_>> for OsmNodeData {
     }
 }
 
-/// helper function that parses ele values. these should be in meters and contain
-/// only numeric strings according to the documentation, and we follow that logic
-/// optimistically here by supressing parse failures.
 fn parse_ele(ele: &str) -> Option<f64> {
     ele.parse::<i64>()
         .map(|i| i as f64)
         .or_else(|_| ele.parse::<f64>())
-        // .map_err(|e| {
-        //     format!(
-        //         "unable to parse 'ele' value as integer or decimal number: {}",
-        //         e
-        //     )
-        // })
         .ok()
-}
-
-/// helper to combine all unique values for a key and concatenate them
-/// with whitespace
-fn collect_attribute(
-    nodes: &[&OsmNodeData],
-    op: impl FnMut(&&OsmNodeData) -> Option<String>,
-) -> Option<String> {
-    let s = nodes
-        .iter()
-        .flat_map(op)
-        .dedup()
-        .sorted()
-        .join(OsmNodeData::VALUE_DELIMITER);
-    if s.is_empty() {
-        None
-    } else {
-        Some(s)
-    }
 }

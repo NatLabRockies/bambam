@@ -7,15 +7,12 @@ use crate::collection::{
 };
 
 use super::{
-    access_restriction::SegmentAccessRestriction,
-    class::SegmentClass,
     destination::{SegmentDestination, SegmentProhibitedTransitions},
     flags::{SegmentRailFlags, SegmentRoadFlags, SegmentRoadSurfaceType},
     route::{ConnectorReference, SegmentRoute},
     speed_limit::SegmentSpeedLimit,
-    subclass::SegmentSubclass,
-    subtype::{SegmentFullType, SegmentSubtype},
     value_between::SegmentValueBetween,
+    SegmentAccessRestriction, SegmentClass, SegmentFullType, SegmentSubclass, SegmentSubtype,
 };
 
 /// Represents a transportation segment record in the Overture Maps schema.
@@ -138,5 +135,113 @@ impl TransportationSegmentRecord {
             )))?,
             self.subclass.clone(),
         ))
+    }
+}
+
+impl bambam_network::FilterableSegment for TransportationSegmentRecord {
+    fn segment_subtype(&self) -> Option<&SegmentSubtype> {
+        self.subtype.as_ref()
+    }
+
+    fn segment_class(&self) -> Option<&SegmentClass> {
+        self.class.as_ref()
+    }
+
+    fn segment_subclass(&self) -> Option<&SegmentSubclass> {
+        self.subclass.as_ref()
+    }
+
+    fn segment_access_restrictions(&self) -> Option<&[SegmentAccessRestriction]> {
+        self.access_restrictions.as_deref()
+    }
+}
+
+impl bambam_network::ImportSegment<SegmentFullType> for TransportationSegmentRecord {
+    fn segment_id(&self) -> &str {
+        &self.id
+    }
+
+    fn get_linestring(&self) -> Result<&LineString<f32>, bambam_network::NetworkImportError> {
+        TransportationSegmentRecord::get_linestring(self).map_err(Into::into)
+    }
+
+    fn get_split_speed(
+        &self,
+        start_lr: f64,
+        end_lr: f64,
+        heading: &bambam_network::SegmentHeading,
+    ) -> Result<Option<f64>, bambam_network::NetworkImportError> {
+        use bambam_network::NetworkImportError as E;
+
+        let speed_limits = match self.speed_limits.as_ref() {
+            Some(limits) => limits,
+            None => return Ok(None),
+        };
+
+        let speed_limits_with_heading: Vec<_> = speed_limits
+            .iter()
+            .filter(|s| crate::graph::segment_split::has_max_speed_for_heading(s, heading))
+            .collect();
+
+        let intersecting_portions: Vec<f64> = speed_limits_with_heading
+            .iter()
+            .map(|speed_limit| {
+                speed_limit
+                    .get_linear_reference_portion(start_lr, end_lr)
+                    .map_err(Into::into)
+            })
+            .collect::<Result<_, E>>()?;
+
+        let total_intersecting_length: f64 = intersecting_portions.iter().sum();
+        if total_intersecting_length < 1e-6 {
+            return Ok(None);
+        }
+
+        let weighted_mph = speed_limits_with_heading
+            .iter()
+            .zip(intersecting_portions)
+            .map(|(speed_limit, portion)| {
+                let weight = portion / total_intersecting_length;
+                let max_speed = speed_limit.get_max_speed().ok_or_else(|| {
+                    E::InternalError(format!("Expected a value for `max_speed`: {speed_limit:?}"))
+                })?;
+
+                Ok(max_speed
+                    .to_uom_value()
+                    .get::<uom::si::velocity::mile_per_hour>()
+                    * weight)
+            })
+            .collect::<Result<Vec<f64>, E>>()?;
+
+        Ok(Some(weighted_mph.iter().sum()))
+    }
+
+    fn get_split_class(
+        &self,
+        start_lr: f64,
+        end_lr: f64,
+    ) -> Result<SegmentFullType, bambam_network::NetworkImportError> {
+        let segment_class = self.get_segment_full_type()?;
+        if segment_class.has_subclass() {
+            return Ok(segment_class);
+        }
+
+        let opt_first_matching_subclass = self.subclass_rules.as_ref().and_then(|rules| {
+            rules
+                .iter()
+                .find(|rule| matches!(rule.check_open_intersection(start_lr, end_lr), Ok(true)))
+        });
+
+        let subclass =
+            opt_first_matching_subclass.and_then(|value_between| value_between.value.clone());
+
+        match subclass {
+            Some(value) => Ok(segment_class.with_subclass(value)),
+            None => Ok(segment_class),
+        }
+    }
+
+    fn class_to_string(class: &SegmentFullType) -> String {
+        class.as_str()
     }
 }
