@@ -26,10 +26,6 @@ class OmfNetworkArgs(BaseModel):
         populate_by_name=True,
     )
 
-    name: str = Field(
-        ...,
-        description="descriptive user-provided name for this import region.",
-    )
     configuration_file: Union[str, Path] = Field(
         ...,
         description=(
@@ -37,12 +33,9 @@ class OmfNetworkArgs(BaseModel):
             "into mode-specific edge lists."
         ),
     )
-    output_directory: Optional[Union[str, Path]] = Field(
-        default=None,
-        description=(
-            "location on disk to write output files. if not provided, "
-            "use the current working directory."
-        ),
+    output_directory: Union[str, Path] = Field(
+        ...,
+        description="location on disk to write output files.",
     )
     local_source: Optional[Union[str, Path]] = Field(
         default=None,
@@ -80,13 +73,11 @@ class OmfNetworkArgs(BaseModel):
         """Convert to CLI argument list suitable for invoking `bambam-omf network`."""
         args: list[str] = [
             "network",
-            "--name",
-            self.name,
             "--configuration-file",
             str(self.configuration_file),
+            "--output-directory",
+            str(self.output_directory),
         ]
-        if self.output_directory is not None:
-            args.extend(["--output-directory", str(self.output_directory)])
         if self.local_source is not None:
             args.extend(["--local-source", str(self.local_source)])
         if self.extent_file is not None:
@@ -127,7 +118,6 @@ class OmfNetworkArgs(BaseModel):
 def run_omf_network(
     args: Optional[Union[OmfNetworkArgs, dict[str, Any]]] = None,
     *,
-    name: Optional[str] = None,
     configuration_file: Optional[Union[str, Path]] = None,
     output_directory: Optional[Union[str, Path]] = None,
     local_source: Optional[Union[str, Path]] = None,
@@ -149,8 +139,6 @@ def run_omf_network(
             raise TypeError(f"Expected OmfNetworkArgs or dict, got {type(args).__name__}")
     else:
         explicit_kwargs: dict[str, Any] = {}
-        if name is not None:
-            explicit_kwargs["name"] = name
         if configuration_file is not None:
             explicit_kwargs["configuration_file"] = configuration_file
         if output_directory is not None:
@@ -166,5 +154,5 @@ def run_omf_network(
         explicit_kwargs.update(kwargs)
         network_args = OmfNetworkArgs(**explicit_kwargs)
 
-    logger.info("Executing OMF network import for region '%s'...", network_args.name)
+    logger.info("Executing OMF network import -> '%s'...", network_args.output_directory)
     _rust_run_omf_network(network_args.to_rust_dict())

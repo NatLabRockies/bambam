@@ -65,10 +65,11 @@ class OpenStreetMapDataSource(BaseModel):
 
     type: Literal["open_street_map"] = "open_street_map"
     pbf_path: str
+    local_source: Optional[str] = None
     simplify: Optional[bool] = True
     truncate_by_edge: Optional[bool] = True
 
-    @field_validator("pbf_path", mode="before")
+    @field_validator("pbf_path", "local_source", mode="before")
     @classmethod
     def _stringify_path(cls, v: Any) -> Any:
         return str(v) if isinstance(v, Path) else v
@@ -90,10 +91,6 @@ class NetworkImportRequest(BaseModel):
         populate_by_name=True,
     )
 
-    name: str = Field(
-        default="network",
-        description="Study region / network name.",
-    )
     extent: GeographicExtent = Field(
         ...,
         description="Geographic extent (bounding box, WKT string, or WKT file).",
@@ -106,6 +103,10 @@ class NetworkImportRequest(BaseModel):
         ...,
         description="Output directory where Compass network files, mappings, and raw/ Parquet files are written.",
     )
+    configuration_file: Optional[str] = Field(
+        default=None,
+        description="Optional path to a network import configuration file (`bambam-network-config.json`).",
+    )
     modes: Optional[list[str]] = Field(
         default=None,
         description="Optional travel modes (e.g., ['walk', 'bike', 'drive']).",
@@ -115,7 +116,7 @@ class NetworkImportRequest(BaseModel):
         description="Optional maximum distance in meters for snapping infrastructure to vertices (defaults to 15.0).",
     )
 
-    @field_validator("output_directory", mode="before")
+    @field_validator("output_directory", "configuration_file", mode="before")
     @classmethod
     def _stringify_path(cls, v: Any) -> Any:
         return str(v) if isinstance(v, Path) else v
@@ -235,7 +236,7 @@ def import_network(
     output_directory: Optional[Union[str, Path]] = None,
     *,
     request: Optional[NetworkImportRequest] = None,
-    name: str = "network",
+    configuration_file: Optional[Union[str, Path]] = None,
     modes: Optional[Sequence[str]] = None,
     pbf_path: Optional[Union[str, Path]] = None,
     local_source: Optional[Union[str, Path]] = None,
@@ -264,14 +265,14 @@ def import_network(
             truncate_by_edge=truncate_by_edge,
         )
         req = NetworkImportRequest(
-            name=name,
             extent=coerced_extent,
             source=coerced_source,
             output_directory=str(output_directory),
+            configuration_file=str(configuration_file) if configuration_file is not None else None,
             modes=list(modes) if modes is not None else None,
             infrastructure_match_distance_meters=infrastructure_match_distance_meters,
         )
 
-    logger.info("Executing network import '%s' -> '%s'...", req.name, req.output_directory)
+    logger.info("Executing network import -> '%s'...", req.output_directory)
     req.run()
     return req

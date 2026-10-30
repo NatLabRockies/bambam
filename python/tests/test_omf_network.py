@@ -21,8 +21,8 @@ def test_schema_parity_with_rust() -> None:
 
     rust_schema = OmfNetworkArgs.rust_json_schema()
     assert rust_schema["title"] == "OmfNetworkArgs"
-    assert "name" in rust_schema["required"]
     assert "configuration_file" in rust_schema["required"]
+    assert "output_directory" in rust_schema["required"]
 
     py_schema = OmfNetworkArgs.model_json_schema()
     for prop in rust_schema["properties"]:
@@ -35,12 +35,10 @@ def test_omf_network_args_validation() -> None:
         OmfNetworkArgs()  # type: ignore[call-arg]
 
     args = OmfNetworkArgs(
-        name="denver",
         configuration_file=Path("config.toml"),
         output_directory=Path("output"),
         infrastructure_match_distance_meters=15.0,
     )
-    assert args.name == "denver"
     assert args.configuration_file == "config.toml"
     assert args.output_directory == "output"
     assert args.infrastructure_match_distance_meters == 15.0
@@ -49,7 +47,6 @@ def test_omf_network_args_validation() -> None:
 def test_cli_args_conversion() -> None:
     """Validate translation from Pydantic model to CLI arguments."""
     args = OmfNetworkArgs(
-        name="denver",
         configuration_file="config.toml",
         output_directory="out",
         local_source="raw",
@@ -59,8 +56,6 @@ def test_cli_args_conversion() -> None:
     cli_args = args.to_cli_args()
     assert cli_args == [
         "network",
-        "--name",
-        "denver",
         "--configuration-file",
         "config.toml",
         "--output-directory",
@@ -78,8 +73,9 @@ def test_run_omf_network_error_propagation() -> None:
     """Validate error propagation from the Rust runtime to Python."""
     with pytest.raises(RuntimeError, match="not found"):
         run_omf_network(
-            name="test",
             configuration_file="nonexistent_config_file_for_test.toml",
+            output_directory="out",
+            local_source="raw",
         )
 
 
@@ -100,7 +96,6 @@ def test_unified_network_import_request_coercion() -> None:
     assert osm_src.pbf_path == "region.osm.pbf"
 
     req = NetworkImportRequest(
-        name="boulder",
         extent=bbox_ext,
         source=omf_src,
         output_directory="out_dir",
