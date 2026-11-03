@@ -116,7 +116,9 @@ fn segment_class_to_highways(cls: &SegmentClass) -> Vec<Highway> {
 }
 
 /// filters ways that do not have a highway tag present in the tags argument,
-/// or that fail public-road checks (`area=yes`, `access=private`, `service=private`).
+/// or that fail structural road checks (`area=yes` or non-active highway lifecycle tags).
+/// Access restrictions (`access=private`, `service=private`, etc.) are deferred to
+/// mode-specific `TravelModeFilter` evaluation so mode-level overrides survive.
 /// has no effect on Relation/Node/DenseNode Elements.
 ///
 /// # Arguments
@@ -129,15 +131,12 @@ fn segment_class_to_highways(cls: &SegmentClass) -> Vec<Highway> {
 /// true if the [`Element`] is a [`Way`] with a valid [`Highway`] tag, or is not a [`Way`]
 fn custom_highway_tag_filter(element: &Element, tags: &HashSet<Highway>) -> bool {
     match element {
-        Element::Way(way) => {
-            if !osmnx_all_public_filter(element) {
-                return false;
+        Element::Way(way) => match get_highway_tag(way) {
+            Some(highway) => {
+                passes_structural_way_checks(element, &highway) && tags.contains(&highway)
             }
-            match get_highway_tag(way) {
-                Some(highway) => tags.contains(&highway),
-                None => false, // throw out Ways without Highway tags
-            }
-        }
+            None => false, // throw out Ways without Highway tags
+        },
         Element::Relation(_) => false,
         _ => true,
     }
@@ -146,6 +145,34 @@ fn custom_highway_tag_filter(element: &Element, tags: &HashSet<Highway>) -> bool
 /// applies overpass queries that are filter-type queries
 fn custom_overpass_queries_filter(element: &Element, queries: &[FilterQuery]) -> bool {
     queries.iter().all(|q| q.filter(element))
+}
+
+/// Structural exclusions shared by [`custom_highway_tag_filter`] and [`osmnx_all_public_filter`]:
+/// rejects `area=yes` polygons and non-active/non-road `highway` lifecycle tags.
+fn passes_structural_way_checks(e: &Element, highway: &Highway) -> bool {
+    // ["area"!~"yes"]
+    if let Some(area_is_yes) = get_tag(e, "area").map(|a| a == "yes") {
+        if area_is_yes {
+            log::debug!("['area'!~'yes']");
+            return false;
+        }
+    }
+
+    // ["highway"!~"abandoned|construction|no|planned|platform|proposed|raceway|razed"]
+    let not_in_use = match highway {
+        Highway::Other(s) if matches!(s.as_str(), "abandoned" | "no" | "planned" | "razed") => true,
+        Highway::Construction | Highway::Platform | Highway::Proposed | Highway::Raceway => true,
+        _ => false,
+    };
+
+    if not_in_use {
+        log::debug!(
+            "['highway'~'abandoned|construction|no|planned|platform|proposed|raceway|razed']"
+        );
+        return false;
+    }
+
+    true
 }
 
 /// OSMNX definition:
@@ -178,39 +205,16 @@ fn osmnx_all_public_filter(e: &Element) -> bool {
         }
     };
 
-    // ["area"!~"yes"]
-    if let Some(area_is_yes) = get_tag(e, "area").map(|a| a == "yes") {
-        if area_is_yes {
-            log::debug!("['area'!~'yes']");
-            return false;
-        }
+    if !passes_structural_way_checks(e, &highway) {
+        return false;
     }
+
     // settings.default_access aka ["access"!~"private"]
     if let Some(access_private) = get_tag(e, "access").map(|a| a == "private") {
         if access_private {
             log::debug!("['access'!~'private']");
             return false;
         }
-    }
-
-    // ["highway"!~"abandoned|construction|no|planned|platform|proposed|raceway|razed"]
-    let not_in_use = match highway {
-        Highway::Other(s) if s == *"abandoned" => true,
-        Highway::Construction => true,
-        Highway::Other(s) if s == *"no" => true,
-        Highway::Other(s) if s == *"planned" => true,
-        Highway::Platform => true,
-        Highway::Proposed => true,
-        Highway::Raceway => true,
-        Highway::Other(s) if s == *"razed" => true,
-        _ => false,
-    };
-
-    if not_in_use {
-        log::debug!(
-            "['highway'~'abandoned|construction|no|planned|platform|proposed|raceway|razed']"
-        );
-        return false;
     }
 
     // ["service"!~"private"]
