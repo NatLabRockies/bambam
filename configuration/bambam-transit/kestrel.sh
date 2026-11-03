@@ -1,6 +1,6 @@
 #!/bin/sh
 
-#SBATCH --job-name=bambam-gtfs
+#SBATCH --job-name=bambam-transit
 #SBATCH --nodes=1
 #SBATCH --ntasks=100
 #SBATCH --mem=240GB
@@ -9,7 +9,7 @@
 
 module load bzip2
 
-/projects/mepcore/bin/bambam-gtfs \
+/projects/mepcore/bin/bambam-transit \
     import \
     --input /home/$USER/data/bam/gtfs/2025-10-08 \
     --parallelism 50 \

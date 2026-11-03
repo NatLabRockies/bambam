@@ -20,6 +20,7 @@ bambam-modal-metrics = { workspace = true }
 bambam-network = { workspace = true }
 bambam-omf = { workspace = true }
 bambam-osm = { workspace = true }
+bambam-transit = { workspace = true }
 bamcensus = { workspace = true }
 bamcensus-acs = { workspace = true }
 bamcensus-core = { workspace = true }

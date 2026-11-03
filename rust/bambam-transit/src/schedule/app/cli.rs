@@ -1,4 +1,4 @@
-//! GTFS archive pre-processing scripts for bambam-gtfs transit modeling.
+//! GTFS archive pre-processing scripts for bambam-transit modeling.
 //! see <https://github.com/MobilityData/mobility-database-catalogs> for
 //! information on the mobility database catalog listing.
 use crate::schedule::bundle_ops::ProcessBundlesConfig;

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-./rust/target/release/bambam-gtfs import \
+./rust/target/release/bambam-transit import \
     --input "boulder_co/ucb-gtfs.zip" \
     --parallelism 1 \
     --date-mapping-policy nearest-date \

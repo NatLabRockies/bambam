@@ -13,7 +13,7 @@ pub struct GtfsArchiveMetadata {
     pub agencies: Vec<Value>,
     /// direct output of GTFS feed_info.txt
     pub feed_info: Vec<Value>,
-    /// time required to read this archive using bambam-gtfs
+    /// time required to read this archive using bambam-transit
     #[serde(deserialize_with = "deserialize_duration")]
     pub read_duration: Duration,
     /// direct output of GTFS calendar.txt by service_id

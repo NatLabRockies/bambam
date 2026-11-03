@@ -11,6 +11,7 @@ members = [
     "bambam-omf",
     "bambam-osm",
     "bambam-py",
+    "bambam-transit",
 ]
 
 [workspace.package]
@@ -28,6 +29,7 @@ bambam-modal-metrics = { version = "0.3.3", path = "bambam-modal-metrics" }
 bambam-network = { version = "0.3.3", path = "bambam-network" }
 bambam-omf = { version = "0.3.3", path = "bambam-omf" }
 bambam-osm = { version = "0.3.3", path = "bambam-osm" }
+bambam-transit = { version = "0.3.3", path = "bambam-transit" }
 bamcensus = { version = "0.1.0" }
 bamcensus-acs = { version = "0.1.0" }
 bamcensus-core = { version = "0.1.0" }

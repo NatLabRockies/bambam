@@ -1,0 +1,14 @@
+[package]
+name = "bambam-gtfs"
+version.workspace = true
+edition = "2021"
+license = "BSD-3-Clause"
+exclude = ["test", "**/.DS_Store", "target/"]
+readme = "README.md"
+repository = "https://github.com/NatLabRockies/bambam"
+documentation = "https://docs.rs/bambam-gtfs"
+description = "GTFS Schedule and GTFS-Flex data structures and reader for BAMBAM"
+keywords = ["nlr", "access-model", "accessibility", "gtfs", "transit"]
+categories = ["science", "science::geo"]
+
+[dependencies]
