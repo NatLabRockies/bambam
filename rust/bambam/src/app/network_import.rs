@@ -24,12 +24,9 @@ use std::path::Path;
 
 use bambam_network::{ComponentsAlgorithmType, IslandDetectionAlgorithm};
 use bambam_omf::app::{network::NetworkEdgeListConfiguration, CliBoundingBox};
-use bambam_osm::{
-    algorithm::truncation::ComponentFilter,
-    model::osm::{
-        graph::{osm_element_filter::ElementFilter, CompassWriter, OsmGraphVectorized},
-        import_ops,
-    },
+use bambam_osm::model::osm::{
+    graph::{osm_element_filter::ElementFilter, CompassWriter, OsmGraphVectorized},
+    import_ops,
 };
 use geo::{BoundingRect, Coord, Geometry, LineString, MapCoords, Polygon};
 use geozero::{wkt::Wkt as WktReader, ToGeo};
@@ -275,7 +272,6 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
                 ways_map,
                 extent_opt.as_ref(),
                 &edge_lists,
-                &ComponentFilter::KeepAll,
                 island_alg.as_ref(),
                 truncate_by_edge.unwrap_or(true),
                 simplify.unwrap_or(true),

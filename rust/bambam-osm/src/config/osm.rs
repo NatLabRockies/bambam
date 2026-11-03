@@ -1,7 +1,4 @@
-use crate::{
-    algorithm::truncation::ComponentFilter,
-    model::{osm::graph::osm_element_filter::ElementFilter, OsmCliError},
-};
+use crate::model::{osm::graph::osm_element_filter::ElementFilter, OsmCliError};
 use bambam_network::{
     ComponentsAlgorithmType, IslandDetectionAlgorithm, NetworkEdgeListConfiguration,
 };
@@ -9,7 +6,7 @@ use routee_compass_core::model::unit::DistanceUnit;
 use serde::{Deserialize, Serialize};
 
 /// defines behaviors for an OSM network import.
-/// Supports both legacy `bambam-osm` TOML/JSON configs and `bambam-network-config.json`
+/// Supports both `bambam-osm` TOML/JSON configs and `bambam-network-config.json`
 /// (`edge_lists` + `island_algorithm_configuration`).
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct OsmImportConfiguration {
@@ -17,8 +14,6 @@ pub struct OsmImportConfiguration {
     pub edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
     #[serde(default)]
     pub island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
-    #[serde(default)]
-    pub component_filter: ComponentFilter,
     #[serde(default)]
     pub element_filter: ElementFilter,
     #[serde(default)]
@@ -47,21 +42,9 @@ impl OsmImportConfiguration {
         }
     }
 
-    /// Returns the configured [`IslandDetectionAlgorithm`], defaulting to a 2-mile WCC
-    /// island filter when neither `island_algorithm_configuration` nor a specific `ComponentFilter`
-    /// is overriding it.
+    /// Returns the configured [`IslandDetectionAlgorithm`].
     pub fn resolved_island_detection(&self) -> Option<IslandDetectionAlgorithm> {
-        if self.edge_lists.is_some() || self.island_algorithm_configuration.is_some() {
-            return self.island_algorithm_configuration.clone();
-        }
-        match self.component_filter {
-            ComponentFilter::KeepAll => None,
-            _ => Some(IslandDetectionAlgorithm {
-                min_distance: 2.0,
-                distance_unit: DistanceUnit::Miles,
-                algorithm_type: ComponentsAlgorithmType::Wcc,
-            }),
-        }
+        self.island_algorithm_configuration.clone()
     }
 
     /// Returns the effective [`ElementFilter`] for PBF reading: uses an explicit
@@ -91,7 +74,6 @@ impl Default for OsmImportConfiguration {
                 distance_unit: DistanceUnit::Miles,
                 algorithm_type: ComponentsAlgorithmType::Wcc,
             }),
-            component_filter: Default::default(),
             element_filter: Default::default(),
             ignore_osm_parsing_errors: true,
             truncate_by_edge: true,

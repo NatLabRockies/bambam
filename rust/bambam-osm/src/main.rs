@@ -15,7 +15,6 @@ mod tests {
         CommonNetworkImportArgs, EdgeMappingRecord, VertexCompleteRecord, VertexMappingRecord,
     };
     use bambam_osm::{
-        algorithm::truncation::ComponentFilter,
         app::{OsmNetworkArgs, OsmOperation},
         model::osm::{
             graph::{osm_element_filter::ElementFilter, CompassWriter},
@@ -107,7 +106,7 @@ mod tests {
             }
         }
 
-        // Also verify simplified + largest component import on the same Liechtenstein PBF
+        // Also verify simplified import on the same Liechtenstein PBF
         let simplified_dir = Path::new("src/test/tmp_simplified");
         let simplified_source = OsmSource::Pbf {
             pbf_filepath: pbf_file.to_string(),
@@ -116,7 +115,6 @@ mod tests {
             edge_lists: None,
             island_algorithm_configuration: None,
             extent_filter_filepath: Some(extent_file.to_string()),
-            component_filter: Some(ComponentFilter::Largest),
             truncate_by_edge: true,
             ignore_errors: true,
             simplify: true,

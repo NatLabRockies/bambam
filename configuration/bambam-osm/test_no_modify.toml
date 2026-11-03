@@ -4,9 +4,6 @@ simplify = false
 overwrite = true
 infrastructure_match_distance_meters = 15.0
 
-[component_filter]
-type = "keep_all"
-
 [element_filter]
 type = "osmnx_all_public"
 
