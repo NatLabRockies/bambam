@@ -47,12 +47,8 @@ See the contents of these scripts to review.
 git clone https://github.com/NatLabRockies/bambam
 cd bambam
 
-# bring in an example
-./scripts/setup_test_bambam.sh
-./scripts/setup_test_bambam_gtfs.sh
-
-# generates result_transit.csv and result_transit.json
-./scripts/run_gtfs_test.sh
+# generates result.csv and result.json using the boulder_co test assets
+./script/run_gtfs_test.sh
 ```
 
 ## License

@@ -40,7 +40,6 @@ jobs:
 
       - name: Install test assets
         run: |
-          ./script/setup_test_bambam.sh  
           ./script/setup_test_bambam_osm.sh
 
       - name: Cargo test
