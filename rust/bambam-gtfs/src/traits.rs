@@ -1,4 +1,4 @@
-//! Core traits for `gtfs2` records and spatial/temporal entities.
+//! Core traits for `bambam-gtfs` records and spatial/temporal entities.
 
 use crate::primitives::{BoundingBox, Coord, GtfsTime, TimeWindow};
 use std::hash::Hash;

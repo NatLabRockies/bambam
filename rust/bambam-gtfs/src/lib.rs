@@ -1,4 +1,4 @@
-//! `gtfs2`: Next-generation phased GTFS and GTFS-Flex data model and RAPTOR-style
+//! `bambam-gtfs`: Next-generation phased GTFS and GTFS-Flex data model and RAPTOR-style
 //! routing timetable with Linear Referencing System (LRS) shape reconstruction.
 //!
 //! ## Phased Initialization Pipeline

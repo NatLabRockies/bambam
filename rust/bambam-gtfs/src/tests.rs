@@ -1,4 +1,4 @@
-//! Unit and integration tests for `gtfs2` across all three initialization phases,
+//! Unit and integration tests for `bambam-gtfs` across all three initialization phases,
 //! GTFS-Flex extensions, and shape linear referencing / sub-segment extraction.
 
 use crate::ids::*;
@@ -668,7 +668,10 @@ fn test_timezone_and_overnight_service_day_normalization() {
     let query_date = NaiveDate::from_ymd_opt(2017, 1, 9).unwrap();
     let query_time = GtfsTime::from_hms(0, 15, 0);
     let window = timetable.active_services_at_time(query_date, query_time);
-    assert_eq!(window.yesterday_overnight_time, GtfsTime::from_hms(24, 15, 0));
+    assert_eq!(
+        window.yesterday_overnight_time,
+        GtfsTime::from_hms(24, 15, 0)
+    );
 
     let board = timetable
         .earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &window)

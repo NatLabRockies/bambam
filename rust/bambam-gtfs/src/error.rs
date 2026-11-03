@@ -1,4 +1,4 @@
-//! Top-level error aggregation for `gtfs2`.
+//! Top-level error aggregation.
 //!
 //! Each phase module (`primitives`, `raw`, `model`, `routing`) defines its own
 //! `thiserror` error type, and [`Gtfs2Error`] aggregates them.
@@ -9,7 +9,7 @@ use crate::raw::RawReadError;
 use crate::routing::RoutingError;
 use thiserror::Error;
 
-/// Top-level error type for the `gtfs2` phased initialization and routing pipeline.
+/// Top-level error type for the `bambam-gtfs` phased initialization and routing pipeline.
 #[derive(Error, Debug)]
 pub enum Gtfs2Error {
     /// Error parsing a primitive GTFS value (time, date, color).
