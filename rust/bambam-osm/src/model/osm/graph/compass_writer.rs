@@ -18,13 +18,16 @@ impl CompassWriter for OsmGraphVectorized {
 
         // Always retain raw OSM nodes and ways as Parquet files in `<output_directory>/raw/`
         if let Some(ref raw) = self.raw_collection {
-            raw.to_parquet(output_directory)?;
+            raw.to_parquet(output_directory, overwrite)?;
         }
 
         // Write `summary.toml` matching `bambam-omf` (echoing `output_directory` as `study_region`)
-        let mut summary = self.to_summary();
-        summary.source.study_region = output_directory.to_string_lossy().into_owned();
-        write_summary(output_directory, &summary)?;
+        let summary_path = output_directory.join("summary.toml");
+        if overwrite || !summary_path.exists() {
+            let mut summary = self.to_summary();
+            summary.source.study_region = output_directory.to_string_lossy().into_owned();
+            write_summary(&summary_path, &summary)?;
+        }
 
         let mode_names: Vec<String> = self
             .edge_list_config

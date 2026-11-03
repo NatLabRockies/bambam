@@ -757,40 +757,45 @@ impl ModeAccessAccumulator {
         )
     }
 
-    pub fn add_restriction(&mut self, r: &SegmentAccessRestriction) {
+    pub fn add_restriction_for_heading(
+        &mut self,
+        r: &SegmentAccessRestriction,
+        target_heading: &SegmentHeading,
+    ) {
         let has_mode = r.when.as_ref().and_then(|x| {
             x.mode
                 .as_ref()
                 .map(|modes| modes.iter().any(|m| self.modes.contains(m)))
         });
-        let heading = r.when.as_ref().and_then(|x| x.heading.clone());
+        let heading = r.when.as_ref().and_then(|x| x.heading.as_ref());
+        let heading_applies = heading.is_none_or(|h| h == target_heading);
+        if !heading_applies {
+            return;
+        }
+
         let mods = r
             .when
             .as_ref()
             .map(|x| x.recognized.is_some() || x.using.is_some());
 
         use SegmentAccessType as SAT;
-        use SegmentHeading as SH;
-        match (&r.access_type, has_mode, heading, mods) {
-            // 1. Blanket Denial
-            (SAT::Denied, None, None, None) if self.state == ModeAccessState::DefaultAllowed => {
+        match (&r.access_type, has_mode, mods) {
+            // 1. Blanket Denial (omnidirectional or for this heading)
+            (SAT::Denied, None, None) if self.state == ModeAccessState::DefaultAllowed => {
                 self.state = ModeAccessState::BlanketDenied;
             }
-            // 2. Specific Denial overrides everything
-            (SAT::Denied, Some(true), None | Some(SH::Forward), _) => {
+            // 2. Specific Denial for this heading (or omnidirectional) overrides everything
+            (SAT::Denied, Some(true), _) => {
                 self.state = ModeAccessState::SpecificallyDenied;
             }
             // 3. Exception Allowed (if we were blanket denied, or just explicitly allowed)
-            (
-                SAT::Allowed | SAT::Designated,
-                Some(true),
-                None | Some(SH::Forward),
-                None | Some(false),
-            ) if self.state != ModeAccessState::SpecificallyDenied => {
+            (SAT::Allowed | SAT::Designated, Some(true), None | Some(false))
+                if self.state != ModeAccessState::SpecificallyDenied =>
+            {
                 self.state = ModeAccessState::AllowedException;
             }
             // 4. Conditional Exception (e.g. Employee only) -> deny access
-            (SAT::Allowed | SAT::Designated, Some(true), None | Some(SH::Forward), Some(true))
+            (SAT::Allowed | SAT::Designated, Some(true), Some(true))
                 if self.state != ModeAccessState::SpecificallyDenied =>
             {
                 self.state = ModeAccessState::SpecificallyDenied;
@@ -833,11 +838,15 @@ impl TravelModeFilter {
 
             TravelModeFilter::MatchesModeAccess { modes } => {
                 let restrictions = segment.segment_access_restrictions().unwrap_or(&[]);
-                let mut acc = ModeAccessAccumulator::new(modes);
-                for r in restrictions {
-                    acc.add_restriction(r);
-                }
-                acc.supports_mode()
+                [SegmentHeading::Forward, SegmentHeading::Backward]
+                    .iter()
+                    .any(|heading| {
+                        let mut acc = ModeAccessAccumulator::new(modes);
+                        for r in restrictions {
+                            acc.add_restriction_for_heading(r, heading);
+                        }
+                        acc.supports_mode()
+                    })
             }
         }
     }

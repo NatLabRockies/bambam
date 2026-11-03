@@ -47,7 +47,6 @@ impl OsmNetworkArgs {
         let out_path = self.common.resolved_output_directory();
         let edge_lists = conf.resolved_edge_lists();
         let island_alg = conf.resolved_island_detection();
-        let element_filter = conf.resolved_element_filter();
         let match_distance = self
             .common
             .infrastructure_match_distance_meters
@@ -60,7 +59,6 @@ impl OsmNetworkArgs {
                 edge_lists: Some(edge_lists),
                 island_algorithm_configuration: island_alg,
                 extent_filter_filepath: self.common.extent_file.clone(),
-                component_filter: Some(conf.component_filter),
                 truncate_by_edge: conf.truncate_by_edge,
                 ignore_errors: conf.ignore_osm_parsing_errors,
                 simplify: conf.simplify,
@@ -71,10 +69,8 @@ impl OsmNetworkArgs {
                 pbf_filepath: pbf_path.clone(),
                 study_region: Some(self.common.output_directory.clone()),
                 extent_filter_filepath: self.common.extent_file.clone(),
-                network_filter: Some(element_filter),
                 edge_lists: Some(edge_lists),
                 island_algorithm_configuration: island_alg,
-                component_filter: Some(conf.component_filter),
                 truncate_by_edge: conf.truncate_by_edge,
                 ignore_errors: conf.ignore_osm_parsing_errors,
                 simplify: conf.simplify,

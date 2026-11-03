@@ -49,19 +49,12 @@ Install the library, currently unpublished, using pip: `pip install -e ".[all]"`
 
 # Example
 
-Before running any examples, run the following setup command(s) to download example data assets:
+### Walk / Single-Mode Example
 
-``` sh
-$ ./script/setup_test_bambam.sh
-$ ./script/setup_test_bambam_osm.sh
-```
+This test uses walk-mode traversal to report opportunities near the University of Colorado Boulder:
 
-### Denver
-
-This test uses drive-mode traversal to report opportunities in the Denver Metro region:
-
-```
-$ RUST_LOG=info ./rust/target/release/bambam --config-file denver_co/denver_test.toml --query-file query/denver_extent.json
+```sh
+$ RUST_LOG=info ./rust/target/release/bambam --config-file configuration/test_denver.toml --query-file query/boulder_broadway_and_euclid.json
 ```
 
 or, in Python:
@@ -72,11 +65,12 @@ import pandas
 import json
 
 app = BambamRunner.from_config_file("configuration/test_denver.toml")
-with open("query/denver_extent.json") as f:
+with open("query/boulder_broadway_and_euclid.json") as f:
     query = json.loads(f.read())
 result = app.run(query)
 ```
-### Boulder
+
+### Walk-Transit (GTFS) Example
 
 This test uses walk-transit traversal to report opportunities near University of Colorado Boulder. First, process the GTFS archive:
 

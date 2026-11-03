@@ -12,5 +12,5 @@ uv.lock
 # test path conventions
 configuration/test_gtfs_config_boulder_gtfs.toml
 denver_*
-boulder_*
+boulder_co/transit
 out/

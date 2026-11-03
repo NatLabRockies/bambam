@@ -220,6 +220,17 @@ pub fn process_archive(
         let msg = format!("user date request is invalid: {e}");
         GtfsFlexError::Runtime(msg)
     })?;
+    let jiff_date = {
+        let year = i16::try_from(date.year()).map_err(|e| {
+            GtfsFlexError::Runtime(format!(
+                "year {} out of range for jiff Date: {e}",
+                date.year()
+            ))
+        })?;
+        jiff::civil::Date::new(year, date.month() as i8, date.day() as i8).map_err(|e| {
+            GtfsFlexError::Runtime(format!("user date request is invalid for jiff Date: {e}"))
+        })?
+    };
 
     log::info!("requested date: {:?}", date);
 
@@ -238,7 +249,7 @@ pub fn process_archive(
     let active_service_ids: Vec<&str> = gtfs
         .calendar
         .values()
-        .filter(|c| weekday(c) && c.start_date <= date && date <= c.end_date)
+        .filter(|c| weekday(c) && c.start_date <= jiff_date && jiff_date <= c.end_date)
         .map(|c| c.id.as_str())
         .collect();
 

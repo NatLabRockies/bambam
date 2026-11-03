@@ -83,7 +83,10 @@ impl OmfGraphVectorized {
         crate::util::fs::create_dirs(output_directory)?;
 
         // write the TOML summary file
-        write_summary(output_directory, summary)?;
+        let summary_path = output_directory.join("summary.toml");
+        if overwrite || !summary_path.exists() {
+            write_summary(&summary_path, summary)?;
+        }
 
         let mode_names: Vec<String> = self
             .edge_list_config
