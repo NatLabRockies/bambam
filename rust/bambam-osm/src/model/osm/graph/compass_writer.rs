@@ -18,7 +18,7 @@ impl CompassWriter for OsmGraphVectorized {
 
         // Always retain raw OSM nodes and ways as Parquet files in `<output_directory>/raw/`
         if let Some(ref raw) = self.raw_collection {
-            raw.to_parquet(output_directory)?;
+            raw.to_parquet(output_directory, overwrite)?;
         }
 
         // Write `summary.toml` matching `bambam-omf` (echoing `output_directory` as `study_region`)

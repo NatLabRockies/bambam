@@ -262,12 +262,20 @@ impl OsmCollection {
     }
 
     /// Write raw OSM nodes and ways to `<output_directory>/raw/nodes.parquet` and `ways.parquet`.
-    pub fn to_parquet(&self, output_directory: &Path) -> Result<(), OsmError> {
+    pub fn to_parquet(&self, output_directory: &Path, overwrite: bool) -> Result<(), OsmError> {
         let raw_dir = output_directory.join(RAW_DIRNAME);
         bambam_network::fs::create_dirs(&raw_dir)?;
 
-        write_records_to_parquet(&self.nodes, &raw_dir.join(RAW_NODES_PARQUET), &self.source)?;
-        write_records_to_parquet(&self.ways, &raw_dir.join(RAW_WAYS_PARQUET), &self.source)?;
+        let nodes_path = raw_dir.join(RAW_NODES_PARQUET);
+        if overwrite || !nodes_path.exists() {
+            write_records_to_parquet(&self.nodes, &nodes_path, &self.source)?;
+        }
+
+        let ways_path = raw_dir.join(RAW_WAYS_PARQUET);
+        if overwrite || !ways_path.exists() {
+            write_records_to_parquet(&self.ways, &ways_path, &self.source)?;
+        }
+
         Ok(())
     }
 
