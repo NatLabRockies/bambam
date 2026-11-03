@@ -1,9 +1,12 @@
+use bambam_gtfs::{
+    model::{Stop, StopTime},
+    TemporalStopTime, ValidatedFeed as Gtfs,
+};
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use geo::{Geometry, Intersects, LineString, Point};
 use geozero::ToWkt;
-use gtfs_structures::{Gtfs, Stop, StopTime};
 use itertools::Itertools;
 use kdam::{Bar, BarBuilder, BarExt};
 use rayon::prelude::*;
@@ -195,7 +198,7 @@ pub fn process_bundle(
     let stop_locations: HashMap<String, Option<Point<f64>>> = gtfs
         .stops
         .iter()
-        .map(|(stop_id, stop)| (stop_id.clone(), get_stop_location(stop.clone(), &gtfs)))
+        .map(|(stop_id, stop)| (stop_id.to_string(), get_stop_location(stop.clone(), &gtfs)))
         .collect();
 
     let feed_id = Path::new(bundle_file)
@@ -230,7 +233,7 @@ pub fn process_bundle(
                 (Err(e), _) => return Err(e),
             };
             if target_date != picked_date {
-                let route = gtfs.get_route(&trip.route_id).map_err(|_| {
+                let route = gtfs.get_route(&trip.route_id).ok_or_else(|| {
                     ScheduleError::MalformedGtfs(format!(
                         "trip {} references route id {} that does not exist",
                         trip.trip_id, trip.route_id
@@ -238,7 +241,7 @@ pub fn process_bundle(
                 })?;
                 let dm = DateMapping {
                     feed_id: feed_id.clone(),
-                    agency_id: route.agency_id.clone(),
+                    agency_id: route.agency_id.as_ref().map(ToString::to_string),
                     route_id: trip.route_id.clone(),
                     service_id: trip.service_id.clone(),
                     target_date,
@@ -299,7 +302,7 @@ pub fn read_gtfs(
     spatial_index: Arc<SpatialIndex>,
     missing_stop_matching_policy: &MissingStopLocationPolicy,
 ) -> Result<Gtfs, ScheduleError> {
-    let mut gtfs = Gtfs::new(gtfs_file)?;
+    let mut gtfs = Gtfs::from_path(gtfs_file)?;
     let mut disconnected_stops = HashSet::new();
     for stop in gtfs.stops.values() {
         let remove_stop = match get_stop_location(stop.clone(), &gtfs) {
@@ -309,24 +312,22 @@ pub fn read_gtfs(
         match (remove_stop, missing_stop_matching_policy) {
             (true, MissingStopLocationPolicy::Fail) => {
                 return Err(ScheduleError::MapMatchError {
-                    stop_id: stop.id.clone(),
+                    stop_id: stop.id.to_string(),
                     error: "failed to map match stop with policy set to 'fail'. see CLI --help command for options.".to_string(),
                 });
             }
             (true, MissingStopLocationPolicy::Drop) => {
-                let _ = disconnected_stops.insert(&stop.id);
+                let _ = disconnected_stops.insert(stop.id.clone());
             }
             _ => {}
         }
     }
     let mut disconnected_trips = HashSet::new();
-    let trip_ids = gtfs.trips.keys().collect_vec();
-    for trip_id in trip_ids {
-        let trip = gtfs.get_trip(trip_id)?;
+    for (trip_id, trip) in gtfs.trips.iter() {
         for stop_time in trip.stop_times.iter() {
-            if let Some(stop) = &stop_time.stop {
+            if let Some(stop) = stop_time.place.as_stop() {
                 if disconnected_stops.contains(&stop.id) {
-                    disconnected_trips.insert(trip.id.clone());
+                    disconnected_trips.insert(trip_id.clone());
                     break;
                 }
             }
@@ -504,7 +505,10 @@ fn process_schedule(
         gtfs_edge
     });
 
-    let (src_departure_time, dst_arrival_time) = match (src.departure_time, dst.arrival_time) {
+    let (src_departure_time, dst_arrival_time) = match (
+        src.departure_time().map(|t| t.seconds()),
+        dst.arrival_time().map(|t| t.seconds()),
+    ) {
         (None, Some(t)) | (Some(t), None) => {
             let dt = create_datetime(t, picked_date)?;
             Ok((dt, dt))
@@ -515,15 +519,15 @@ fn process_schedule(
             Ok((dep_dt, arr_dt))
         }
         (None, None) => {
-            let id = match &src.stop {
-                Some(stop) => stop.id.clone(),
+            let id = match src.place.as_stop() {
+                Some(stop) => stop.id.to_string(),
                 None => "no id (GTFS-Flex?)".to_string(),
             };
             Err(ScheduleError::MissingAllStopTimes(id))
         }
     }?;
 
-    let route = gtfs.routes.get(&trip.route_id).ok_or_else(|| {
+    let route = gtfs.routes.get(trip.route_id.as_str()).ok_or_else(|| {
         ScheduleError::MalformedGtfs(format!(
             "trip {} has route id {} which is missing from the archive",
             trip.trip_id, trip.route_id
@@ -536,7 +540,7 @@ fn process_schedule(
         feed_id.map(|s| s.to_string()),
         trip.route_id.clone(),
         trip.service_id.clone(),
-        route.agency_id.clone(),
+        route.agency_id.as_ref().map(ToString::to_string),
         src_departure_time,
         dst_arrival_time,
     );
@@ -567,8 +571,8 @@ fn create_datetime(gtfs_time: u32, date: &NaiveDate) -> Result<NaiveDateTime, Sc
 fn get_stop_location(stop: Arc<Stop>, gtfs: &Gtfs) -> Option<Point<f64>> {
     // Happy path, we have the info in this point
     // lon,lat is required if `location_type` in [0, 1, 2]
-    if let (Some(lon), Some(lat)) = (stop.longitude, stop.latitude) {
-        return Some(Point::new(lon, lat));
+    if let Some(coord) = stop.coord {
+        return Some(Point::new(coord.lon, coord.lat));
     }
 
     // Use lon,lat from parent station if data is missing. `parent_station` is required for `location_type=3 or 4`
@@ -577,14 +581,9 @@ fn get_stop_location(stop: Arc<Stop>, gtfs: &Gtfs) -> Option<Point<f64>> {
     // look only one step further is better. If this doesn't work
     // there are some wrong assumptions about the data
     stop.parent_station
-        .clone()
-        .and_then(|parent_id| gtfs.stops.get(&parent_id))
-        .and_then(
-            |parent_stop| match (parent_stop.longitude, parent_stop.latitude) {
-                (Some(lon), Some(lat)) => Some(Point::new(lon, lat)),
-                _ => None,
-            },
-        )
+        .as_ref()
+        .and_then(|parent_id| gtfs.stops.get(parent_id))
+        .and_then(|parent_stop| parent_stop.coord.map(|c| Point::new(c.lon, c.lat)))
 }
 
 /// helper function that creates a list of all unique, fully-qualified route ids in this
@@ -639,22 +638,22 @@ fn map_match(
     spatial_index: Arc<SpatialIndex>,
 ) -> Result<MapMatchResult, ScheduleError> {
     let src_stop = src
-        .stop
-        .as_ref()
+        .place
+        .as_stop()
         .ok_or_else(|| ScheduleError::StopTimeMissingStop)?;
     let dst_stop = dst
-        .stop
-        .as_ref()
+        .place
+        .as_stop()
         .ok_or_else(|| ScheduleError::StopTimeMissingStop)?;
 
     // Since `stop_locations` is computed from `gtfs.stops`, this should never fail
-    let maybe_src = stop_locations.get(&src_stop.id).ok_or_else(|| {
+    let maybe_src = stop_locations.get(src_stop.id.as_str()).ok_or_else(|| {
         ScheduleError::MalformedGtfs(format!(
             "source stop_id '{}' is not associated with a geographic location in either it's stop row or any parent row (see 'parent_station' of GTFS Stops.txt)",
             src_stop.id
         ))
     })?;
-    let maybe_dst = stop_locations.get(&dst_stop.id).ok_or_else(|| {
+    let maybe_dst = stop_locations.get(dst_stop.id.as_str()).ok_or_else(|| {
         ScheduleError::MalformedGtfs(format!(
             "destination stop_id '{}' is not associated with a geographic location in either it's stop row or any parent row (see 'parent_station' of GTFS Stops.txt)",
             dst_stop.id

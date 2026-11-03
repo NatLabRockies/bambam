@@ -8,7 +8,7 @@ use chrono::{Datelike, NaiveDate, Weekday};
 use std::collections::HashSet;
 
 /// Recurring weekly operating pattern from `calendar.txt`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WeeklyPattern {
     /// Bitmask of active weekdays (`bit 0 = Monday` .. `bit 6 = Sunday`).
     pub weekday_mask: u8,
@@ -68,7 +68,7 @@ impl From<&RawCalendar> for WeeklyPattern {
 }
 
 /// Unified service schedule for a `ServiceId` combining `calendar.txt` and `calendar_dates.txt`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServiceCalendar {
     /// Unique service identifier.
     pub id: ServiceId,

@@ -3,8 +3,8 @@ use routee_compass_core::model::map::MapError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum ScheduleError {
-    #[error("Failed to parse gtfs bundle file into `Gtfs` struct: {0}")]
-    BundleRead(#[from] gtfs_structures::Error), // { source: gtfs_structures::Error },
+    #[error("Failed to parse gtfs bundle file into `ValidatedFeed` struct: {0}")]
+    BundleRead(#[from] bambam_gtfs::Gtfs2Error),
     #[error("failure running bambam_transit: {0}")]
     GtfsApp(String),
     #[error("Failed to match point with spatial index: {source}")]

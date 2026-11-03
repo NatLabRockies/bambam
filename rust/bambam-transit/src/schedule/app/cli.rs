@@ -8,10 +8,10 @@ use crate::schedule::{
     bundle_ops, DateMappingPolicy, DateMappingPolicyConfig, DateMappingPolicyType, GtfsBundle,
     GtfsProvider, GtfsSummary, MalformedTripPolicy, MissingStopLocationPolicy,
 };
+use bambam_gtfs::ValidatedFeed as Gtfs;
 use clap::Subcommand;
 use geo::{Coord, Geometry, LineString};
 use geozero::{wkt::Wkt as WktReader, ToGeo, ToWkt};
-use gtfs_structures::Gtfs;
 use itertools::Itertools;
 use kdam::Bar;
 use rayon::prelude::*;
@@ -318,7 +318,7 @@ fn summarize(rows: &Vec<GtfsProvider>) {
         .par_iter()
         .map(|record| match &record.url {
             None => Ok((record, GtfsSummary::default())),
-            Some(url) => match Gtfs::new(url) {
+            Some(url) => match Gtfs::from_path(url) {
                 Err(e) => Ok((record, GtfsSummary::error(format!("gtfs error: {e}")))),
                 Ok(gtfs) => {
                     let n_trips = gtfs.trips.len();
@@ -330,19 +330,19 @@ fn summarize(rows: &Vec<GtfsProvider>) {
                         if trip.stop_times.len() < 2 {
                             continue; // ignore invalid trips with 0 or 1 stop times
                         }
-                        let mut leg_ods: HashSet<(&String, &String)> = HashSet::new();
+                        let mut leg_ods: HashSet<(&str, &str)> = HashSet::new();
                         for pair in trip.stop_times.windows(2) {
                             let src_stop = pair[0]
-                                .stop
-                                .as_ref()
+                                .place
+                                .as_stop()
                                 .ok_or_else(|| ScheduleError::StopTimeMissingStop)
                                 .unwrap();
                             let dst_stop = pair[1]
-                                .stop
-                                .as_ref()
+                                .place
+                                .as_stop()
                                 .ok_or_else(|| ScheduleError::StopTimeMissingStop)
                                 .unwrap();
-                            leg_ods.insert((&src_stop.id, &dst_stop.id));
+                            leg_ods.insert((src_stop.id.as_str(), dst_stop.id.as_str()));
                         }
                         let trip_legs = trip.stop_times.len() - 1; // stop_times are vertices, we want edges
                         n_legs += trip_legs;
@@ -401,21 +401,22 @@ fn shapes(rows: &Vec<GtfsProvider>) {
         .par_iter()
         .flat_map(|record| match &record.url {
             None => vec![],
-            Some(url) => match Gtfs::new(url) {
+            Some(url) => match Gtfs::from_path(url) {
                 Err(_) => vec![],
                 Ok(gtfs) => {
                     let rows = gtfs
                         .shapes
                         .into_iter()
-                        .map(|(shape_id, shapes)| {
-                            let coords = shapes
-                                .into_iter()
-                                .map(|shape| Coord {
-                                    x: shape.longitude,
-                                    y: shape.latitude,
+                        .map(|(shape_id, shape_poly)| {
+                            let coords = shape_poly
+                                .vertices
+                                .iter()
+                                .map(|vertex| Coord {
+                                    x: vertex.lon as f64,
+                                    y: vertex.lat as f64,
                                 })
                                 .collect_vec();
-                            (record, shape_id, LineString::new(coords))
+                            (record, shape_id.to_string(), LineString::new(coords))
                         })
                         .collect_vec();
 

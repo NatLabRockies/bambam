@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use bambam_gtfs::{model::StopTime, Exception, TemporalStopTime, ValidatedFeed as Gtfs};
 use chrono::{Datelike, NaiveDate, NaiveTime};
-use gtfs_structures::{Exception, Gtfs, StopTime};
 use itertools::Itertools;
 
 use crate::schedule::{
@@ -394,8 +394,8 @@ fn pick_exact_date(
     trip: &SortedTrip,
     gtfs: &Gtfs,
 ) -> Result<NaiveDate, ScheduleError> {
-    let c_opt = gtfs.get_calendar(&trip.service_id).ok();
-    let cd_opt = gtfs.get_calendar_date(&trip.service_id).ok();
+    let c_opt = gtfs.get_calendar(&trip.service_id);
+    let cd_opt = gtfs.get_calendar_date(&trip.service_id);
     match (c_opt, cd_opt) {
         (None, None) => Err(ScheduleError::TripWithInvalidServiceId(
             trip.trip_id.clone(),
@@ -428,8 +428,8 @@ fn pick_nearest_date(
     date_tolerance: u64,
     match_weekday: bool,
 ) -> Result<NaiveDate, ScheduleError> {
-    let c_opt = gtfs.get_calendar(&trip.service_id).ok();
-    let cd_opt = gtfs.get_calendar_date(&trip.service_id).ok();
+    let c_opt = gtfs.get_calendar(&trip.service_id);
+    let cd_opt = gtfs.get_calendar_date(&trip.service_id);
     match (c_opt, cd_opt) {
         (None, None) => Err(ScheduleError::TripWithInvalidServiceId(
             trip.trip_id.clone(),
@@ -507,7 +507,10 @@ fn test_dst_arrival(
     end_time: &NaiveTime,
 ) -> bool {
     let is_within_time_range = |t: &NaiveTime| start_time <= t && t <= end_time;
-    match (src.departure_time, dst.arrival_time) {
+    match (
+        src.departure_time().map(|t| t.seconds()),
+        dst.arrival_time().map(|t| t.seconds()),
+    ) {
         (None, None) => true,
         (None, Some(arr)) => match NaiveTime::from_num_seconds_from_midnight_opt(arr, 0) {
             Some(t) => is_within_time_range(&t),

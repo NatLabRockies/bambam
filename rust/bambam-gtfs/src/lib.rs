@@ -41,12 +41,16 @@ pub use traits::{Identifiable, Spatial, TemporalStopTime};
 
 use std::convert::TryFrom;
 use std::path::Path;
+use std::time::Instant;
 
 impl ValidatedFeed {
     /// Reads and validates a [`ValidatedFeed`] (Phase 1 -> Phase 2) from a directory or `.zip` path.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Gtfs2Error> {
+        let start = Instant::now();
         let raw = RawFeed::from_path(path)?;
-        Ok(Self::try_from(raw)?)
+        let mut validated = Self::try_from(raw)?;
+        validated.read_duration = start.elapsed();
+        Ok(validated)
     }
 }
 

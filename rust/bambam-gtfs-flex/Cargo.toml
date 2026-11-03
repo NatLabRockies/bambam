@@ -8,7 +8,8 @@ repository = "https://github.com/NREL/bambam"
 readme = "README.md"
 
 [dependencies]
-bambam-core = { workspace = true } 
+bambam-core = { workspace = true }
+bambam-gtfs = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 csv = { workspace = true }
@@ -17,7 +18,6 @@ flate2 = { workspace = true }
 geo = { workspace = true }
 geo-types = { workspace = true }
 geozero = { workspace = true }
-gtfs-structures = { git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
 kdam = { workspace = true }
 log = { workspace = true }
 ordered-float = { workspace = true }

@@ -1,4 +1,4 @@
-use gtfs_structures::CalendarDate;
+use bambam_gtfs::raw::RawCalendarDate as CalendarDate;
 
 /// Create a wrapper type for CalendarDates that supports an Ordering by first
 /// looking at the distance, in days, from the target date (stored in slot 0).

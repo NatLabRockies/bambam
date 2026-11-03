@@ -1,6 +1,6 @@
 use std::collections::BinaryHeap;
 
-use gtfs_structures::{StopTime, Trip};
+use bambam_gtfs::model::{StopTime, Trip};
 
 use crate::schedule::schedule_error::ScheduleError;
 
@@ -26,9 +26,9 @@ impl SortedTrip {
     pub fn new(trip: &Trip) -> Result<Option<SortedTrip>, ScheduleError> {
         let stop_times = get_ordered_stops(trip)?;
         let result = Self {
-            trip_id: trip.id.clone(),
-            route_id: trip.route_id.clone(),
-            service_id: trip.service_id.clone(),
+            trip_id: trip.id.to_string(),
+            route_id: trip.route_id.to_string(),
+            service_id: trip.service_id.to_string(),
             stop_times,
             // start_date,
         };
@@ -63,7 +63,7 @@ fn get_ordered_stops(trip: &Trip) -> Result<Vec<StopTime>, ScheduleError> {
 #[cfg(test)]
 mod test {
     use super::get_ordered_stops;
-    use gtfs_structures::Gtfs;
+    use bambam_gtfs::ValidatedFeed;
     use std::path::PathBuf;
 
     #[test]
@@ -75,12 +75,8 @@ mod test {
             .join("boulder_co")
             .join("ucb-gtfs.zip");
 
-        let gtfs = Gtfs::new(
-            test_bundle
-                .to_str()
-                .unwrap_or_else(|| panic!("Failed to interpret {test_bundle:?} as string")),
-        )
-        .expect("Test bundle not found in boulder_co/ucb-gtfs.zip");
+        let gtfs = ValidatedFeed::from_path(&test_bundle)
+            .expect("Test bundle not found in boulder_co/ucb-gtfs.zip");
 
         // Check that all stops for all trips are in ascending order
         for (_, trip) in gtfs.trips {

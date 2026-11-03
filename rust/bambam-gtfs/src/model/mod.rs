@@ -24,11 +24,12 @@ pub use trip::{BoardingPolicy, FrequencyWindow, StopTime, StopTimeTiming, Trip};
 
 use crate::ids::*;
 use crate::primitives::TimeWindow;
-use crate::raw::{RawFeed, RawStopTime};
+use crate::raw::{RawCalendar, RawCalendarDate, RawFeed, RawFeedInfo, RawStopTime};
 use crate::traits::Spatial;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Phase 2: Relationally validated GTFS feed where all foreign keys are resolved,
 /// mutually exclusive fields are collapsed into strict enums (`StopPlace`, `StopTimeTiming`),
@@ -43,6 +44,14 @@ pub struct ValidatedFeed {
     pub routes: HashMap<RouteId, Route>,
     /// Unified service calendars by `ServiceId` (`calendar.txt` + `calendar_dates.txt`).
     pub services: HashMap<ServiceId, ServiceCalendar>,
+    /// Raw calendar entries by `ServiceId` (`calendar.txt`).
+    pub calendar: HashMap<ServiceId, RawCalendar>,
+    /// Raw calendar date exceptions by `ServiceId` (`calendar_dates.txt`).
+    pub calendar_dates: HashMap<ServiceId, Vec<RawCalendarDate>>,
+    /// Feed metadata rows (`feed_info.txt`).
+    pub feed_info: Vec<RawFeedInfo>,
+    /// Elapsed wall-clock time spent reading and validating this feed.
+    pub read_duration: Duration,
     /// Validated shape polylines by `ShapeId` (`shapes.txt`).
     pub shapes: HashMap<ShapeId, Arc<ShapePolyline>>,
     /// Validated trips by `TripId` (`trips.txt` + `stop_times.txt` + `frequencies.txt`).
@@ -62,6 +71,31 @@ pub struct ValidatedFeed {
 }
 
 impl ValidatedFeed {
+    /// Retrieves a [`Trip`] by its string identifier.
+    pub fn get_trip(&self, id: &str) -> Option<&Trip> {
+        self.trips.get(id)
+    }
+
+    /// Retrieves a [`Route`] by its string identifier.
+    pub fn get_route(&self, id: &str) -> Option<&Route> {
+        self.routes.get(id)
+    }
+
+    /// Retrieves a [`Stop`] by its string identifier.
+    pub fn get_stop(&self, id: &str) -> Option<&Arc<Stop>> {
+        self.stops.get(id)
+    }
+
+    /// Retrieves a [`RawCalendar`] by its `service_id`.
+    pub fn get_calendar(&self, service_id: &str) -> Option<&RawCalendar> {
+        self.calendar.get(service_id)
+    }
+
+    /// Retrieves [`RawCalendarDate`] exceptions by `service_id`.
+    pub fn get_calendar_date(&self, service_id: &str) -> Option<&Vec<RawCalendarDate>> {
+        self.calendar_dates.get(service_id)
+    }
+
     /// Reconstructs the geographic linestring (`Vec<Coord>`) for `trip_id` between
     /// `from_stop_Idx_in_trip` and `to_stop_idx_in_trip` (inclusive indices into `trip.stop_times`).
     ///
@@ -204,21 +238,29 @@ impl TryFrom<RawFeed> for ValidatedFeed {
 
         // 4. Unified ServiceCalendars (calendar.txt + calendar_dates.txt)
         let mut services: HashMap<ServiceId, ServiceCalendar> = HashMap::new();
+        let mut calendar: HashMap<ServiceId, RawCalendar> = HashMap::new();
         if let Some(calendars) = raw.calendar {
             for cal in calendars {
                 let mut sc = ServiceCalendar::new(cal.id.clone());
                 sc.weekly = Some(WeeklyPattern::from(&cal));
-                services.insert(cal.id, sc);
+                services.insert(cal.id.clone(), sc);
+                calendar.insert(cal.id.clone(), cal);
             }
         }
+        let mut calendar_dates: HashMap<ServiceId, Vec<RawCalendarDate>> = HashMap::new();
         if let Some(cal_dates) = raw.calendar_dates {
             for cd in cal_dates {
                 services
                     .entry(cd.service_id.clone())
                     .or_insert_with(|| ServiceCalendar::new(cd.service_id.clone()))
                     .add_exception(&cd);
+                calendar_dates
+                    .entry(cd.service_id.clone())
+                    .or_default()
+                    .push(cd);
             }
         }
+        let feed_info = raw.feed_info.unwrap_or_default();
 
         // 5. Routes
         let mut routes: HashMap<RouteId, Route> = raw
@@ -434,6 +476,10 @@ impl TryFrom<RawFeed> for ValidatedFeed {
             stops,
             routes,
             services,
+            calendar,
+            calendar_dates,
+            feed_info,
+            read_duration: Duration::default(),
             shapes,
             trips,
             stop_areas,

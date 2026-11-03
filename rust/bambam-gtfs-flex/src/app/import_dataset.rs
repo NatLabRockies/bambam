@@ -3,11 +3,12 @@ use crate::model::GtfsFlexError;
 use crate::util::zone::ZoneGeometry;
 use crate::util::zone::ZoneId;
 use crate::util::zone::ZoneRecord;
+use bambam_gtfs::model::{FlexLocation, StopPlace, StopTime, Trip};
+use bambam_gtfs::raw::{RawCalendar, RawFlexGeometry};
+use bambam_gtfs::{PickupDropOffType, TemporalStopTime, ValidatedFeed};
 use chrono::Datelike;
 use chrono::NaiveTime;
 use geozero::ToWkt;
-use gtfs_structures::Location;
-use gtfs_structures::{Calendar, Gtfs, PickupDropOffType, StopTime, Trip};
 use kdam::tqdm;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -188,10 +189,11 @@ pub fn process_flex_files(
             log::info!("Processing feed {feed_name} in file {:?}", path);
 
             // load GTFS
-            let gtfs = Gtfs::from_path(&path).map_err(|error| GtfsFlexError::GtfsRead {
-                path: path.to_path_buf(),
-                error,
-            })?;
+            let gtfs =
+                ValidatedFeed::from_path(&path).map_err(|error| GtfsFlexError::GtfsRead {
+                    path: path.to_path_buf(),
+                    error,
+                })?;
 
             // process files for requested date and time and get valid zones
             let archive_dataset = process_archive(&gtfs, date_requested, &feed_name, idx)?;
@@ -210,7 +212,7 @@ pub fn process_flex_files(
 
 /// process calender, trips, routes, and stop_times files for the requested date and time
 pub fn process_archive(
-    gtfs: &Gtfs,
+    gtfs: &ValidatedFeed,
     date_requested: &str,
     feed_name: &str,
     archive_idx: usize,
@@ -225,13 +227,13 @@ pub fn process_archive(
 
     // filter calendar for the requested date
     let weekday = match date.weekday() {
-        chrono::Weekday::Mon => |c: &Calendar| c.monday,
-        chrono::Weekday::Tue => |c: &Calendar| c.tuesday,
-        chrono::Weekday::Wed => |c: &Calendar| c.wednesday,
-        chrono::Weekday::Thu => |c: &Calendar| c.thursday,
-        chrono::Weekday::Fri => |c: &Calendar| c.friday,
-        chrono::Weekday::Sat => |c: &Calendar| c.saturday,
-        chrono::Weekday::Sun => |c: &Calendar| c.sunday,
+        chrono::Weekday::Mon => |c: &RawCalendar| c.monday,
+        chrono::Weekday::Tue => |c: &RawCalendar| c.tuesday,
+        chrono::Weekday::Wed => |c: &RawCalendar| c.wednesday,
+        chrono::Weekday::Thu => |c: &RawCalendar| c.thursday,
+        chrono::Weekday::Fri => |c: &RawCalendar| c.friday,
+        chrono::Weekday::Sat => |c: &RawCalendar| c.saturday,
+        chrono::Weekday::Sun => |c: &RawCalendar| c.sunday,
     };
     log::info!("requested day: {:?}", date.weekday());
 
@@ -254,10 +256,10 @@ pub fn process_archive(
     for route in gtfs.routes.values() {
         if !route_to_agency.contains_key(route.id.as_str()) {
             let agency_id = match &route.agency_id {
-                Some(id) => id.clone(),
+                Some(id) => id.to_string(),
                 None => default_agency_id.clone(),
             };
-            route_to_agency.insert(&route.id, agency_id);
+            route_to_agency.insert(route.id.as_str(), agency_id);
         }
     }
 
@@ -269,7 +271,7 @@ pub fn process_archive(
         .filter(|t| active_service_ids.contains(&t.service_id.as_str()))
         .inspect(|t| {
             if let Some(agency_id) = route_to_agency.get(t.route_id.as_str()) {
-                trip_to_agency.insert(&t.id, agency_id.to_string());
+                trip_to_agency.insert(t.id.as_str(), agency_id.to_string());
             }
         })
         .collect();
@@ -281,35 +283,28 @@ pub fn process_archive(
     for trip in active_trips.into_iter() {
         match trip.stop_times.as_slice() {
             [src, dst] if valid_flex_trip_stops(src, dst) => {
-                let resolved_agency_id = trip_to_agency.get(&trip.id.as_str())
+                let resolved_agency_id = trip_to_agency.get(trip.id.as_str())
                     .cloned()
                     .ok_or_else(|| {
                         let msg = format!("after ensuring bijection from routes to agencies, found trip {} had no agency", trip.id);
                         GtfsFlexError::Internal(msg)
                     })?;
-                let route_id = &trip.route_id;
-                let trip_id = &trip.id;
+                let route_id = trip.route_id.as_str();
+                let trip_id = trip.id.as_str();
                 let (src_loc, dst_loc) = get_locations(src, dst, trip)?;
-                let src_loc_id = &src_loc.id;
-                let dst_loc_id = &dst_loc.id;
+                let src_loc_id = src_loc.id.as_str();
+                let dst_loc_id = dst_loc.id.as_str();
                 let src_zone_id =
                     ZoneId::from_full_namespace(&resolved_agency_id, route_id, trip_id, src_loc_id);
                 let dst_zone_id =
                     ZoneId::from_full_namespace(&resolved_agency_id, route_id, trip_id, dst_loc_id);
-                let start_pickup_drop_off_window = src
-                    .start_pickup_drop_off_window
-                    .and_then(|s| NaiveTime::from_num_seconds_from_midnight_opt(s, 0));
-                let end_pickup_drop_off_window = dst
-                    .end_pickup_drop_off_window
-                    .and_then(|s| NaiveTime::from_num_seconds_from_midnight_opt(s, 0));
-                let src_geometry = match &src_loc.geometry {
-                    gtfs_structures::LocationGeometry::Polygon(geometry) => geometry,
-                    gtfs_structures::LocationGeometry::MultiPolygon(geometry) => geometry,
-                };
-                let geom: geo_types::Geometry<f64> = src_geometry.try_into().map_err(|e| {
-                    let msg = format!("failed to parse GeoJSON geometry into Geo geometry: {e}");
-                    GtfsFlexError::Runtime(msg)
-                })?;
+                let start_pickup_drop_off_window = src.flex_window().and_then(|w| {
+                    NaiveTime::from_num_seconds_from_midnight_opt(w.start.seconds(), 0)
+                });
+                let end_pickup_drop_off_window = dst.flex_window().and_then(|w| {
+                    NaiveTime::from_num_seconds_from_midnight_opt(w.end.seconds(), 0)
+                });
+                let geom = raw_flex_geometry_to_geo(&src_loc.geometry);
 
                 let wkt_str = geom
                     .to_wkt()
@@ -319,7 +314,7 @@ pub fn process_archive(
                     agency_id: resolved_agency_id,
                     feed: feed_name.to_string(),
                     requested_date: date_requested.to_string(),
-                    trip_id: trip.id.clone(),
+                    trip_id: trip.id.to_string(),
                     origin_zone: src_zone_id.clone(),
                     start_pickup_drop_off_window,
                     end_pickup_drop_off_window,
@@ -356,11 +351,36 @@ pub fn process_archive(
     })
 }
 
+fn raw_flex_geometry_to_geo(raw: &RawFlexGeometry) -> geo_types::Geometry<f64> {
+    let ring_to_linestring = |ring: &[bambam_gtfs::Coord]| -> geo_types::LineString<f64> {
+        geo_types::LineString::from(
+            ring.iter()
+                .map(|c| (c.lon, c.lat))
+                .collect::<Vec<(f64, f64)>>(),
+        )
+    };
+    let rings_to_polygon = |rings: &[Vec<bambam_gtfs::Coord>]| -> geo_types::Polygon<f64> {
+        let mut iter = rings.iter();
+        let exterior = iter
+            .next()
+            .map(|r| ring_to_linestring(r))
+            .unwrap_or_else(|| geo_types::LineString::new(vec![]));
+        let interiors = iter.map(|r| ring_to_linestring(r)).collect();
+        geo_types::Polygon::new(exterior, interiors)
+    };
+    match raw {
+        RawFlexGeometry::Polygon(rings) => geo_types::Geometry::Polygon(rings_to_polygon(rings)),
+        RawFlexGeometry::MultiPolygon(polys) => geo_types::Geometry::MultiPolygon(
+            geo_types::MultiPolygon::new(polys.iter().map(|r| rings_to_polygon(r)).collect()),
+        ),
+    }
+}
+
 fn valid_flex_trip_stops(src: &StopTime, dst: &StopTime) -> bool {
-    matches!(src.pickup_type, PickupDropOffType::ArrangeByPhone)
-        && matches!(src.drop_off_type, PickupDropOffType::NotAvailable)
-        && matches!(dst.pickup_type, PickupDropOffType::NotAvailable)
-        && matches!(dst.drop_off_type, PickupDropOffType::ArrangeByPhone)
+    matches!(src.pickup.method, PickupDropOffType::ArrangeByPhone)
+        && matches!(src.drop_off.method, PickupDropOffType::NotAvailable)
+        && matches!(dst.pickup.method, PickupDropOffType::NotAvailable)
+        && matches!(dst.drop_off.method, PickupDropOffType::ArrangeByPhone)
 }
 
 /// helper to grab the locations of two [StopTime]s along some [Trip].
@@ -368,9 +388,16 @@ fn get_locations(
     src: &StopTime,
     dst: &StopTime,
     trip: &Trip,
-) -> Result<(Arc<Location>, Arc<Location>), GtfsFlexError> {
-    let locations = (src.location.clone(), dst.location.clone());
-    match locations {
+) -> Result<(Arc<FlexLocation>, Arc<FlexLocation>), GtfsFlexError> {
+    let src_loc = match &src.place {
+        StopPlace::FlexZone(loc) => Some(Arc::clone(loc)),
+        _ => None,
+    };
+    let dst_loc = match &dst.place {
+        StopPlace::FlexZone(loc) => Some(Arc::clone(loc)),
+        _ => None,
+    };
+    match (src_loc, dst_loc) {
         (Some(sloc), Some(dloc)) => Ok((sloc, dloc)),
         (None, Some(_)) => Err(GtfsFlexError::Runtime(format!(
             "GTFS-Flex Trip {} has origin StopTime that is missing a 'location' entry",

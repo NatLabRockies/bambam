@@ -1,7 +1,10 @@
 use std::collections::BinaryHeap;
 
+use bambam_gtfs::{
+    raw::{RawCalendar as Calendar, RawCalendarDate as CalendarDate},
+    Exception,
+};
 use chrono::{Datelike, Days, NaiveDate};
-use gtfs_structures::{Calendar, CalendarDate, Exception};
 
 use crate::schedule::{
     date::date_codec::app::APP_DATE_FORMAT, date::DateCandidate, schedule_error::ScheduleError,
@@ -196,6 +199,7 @@ pub fn error_msg_suffix(target: &NaiveDate, start: &NaiveDate, end: &NaiveDate) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bambam_gtfs::ServiceId;
     use chrono::NaiveDate;
 
     #[test]
@@ -895,7 +899,7 @@ mod tests {
     // Helper function to create test CalendarDate TODO move
     fn create_calendar_date(date: NaiveDate, exception_type: Exception) -> CalendarDate {
         CalendarDate {
-            service_id: "test_service".to_string(),
+            service_id: ServiceId::new("test_service"),
             date,
             exception_type,
         }
@@ -904,7 +908,7 @@ mod tests {
     // Helper function to create test Calendar
     fn create_calendar(start_date: NaiveDate, end_date: NaiveDate) -> Calendar {
         Calendar {
-            id: "test_service".to_string(),
+            id: ServiceId::new("test_service"),
             start_date,
             end_date,
             monday: true,
