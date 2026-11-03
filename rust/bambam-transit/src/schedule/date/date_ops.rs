@@ -10,28 +10,6 @@ use crate::schedule::{
     date::date_codec::app::APP_DATE_FORMAT, date::DateCandidate, schedule_error::ScheduleError,
 };
 
-/// converts a [`jiff::civil::Date`] into a [`chrono::NaiveDate`].
-pub fn jiff_to_naive_date(date: &Date) -> Result<NaiveDate, ScheduleError> {
-    NaiveDate::from_ymd_opt(date.year() as i32, date.month() as u32, date.day() as u32).ok_or_else(
-        || ScheduleError::InvalidData(format!("failed to convert jiff Date '{date}' to NaiveDate")),
-    )
-}
-
-/// converts a [`chrono::NaiveDate`] into a [`jiff::civil::Date`].
-pub fn naive_to_jiff_date(date: &NaiveDate) -> Result<Date, ScheduleError> {
-    let year = i16::try_from(date.year()).map_err(|e| {
-        ScheduleError::InvalidData(format!(
-            "year {} out of range for jiff Date: {e}",
-            date.year()
-        ))
-    })?;
-    Date::new(year, date.month() as i8, date.day() as i8).map_err(|e| {
-        ScheduleError::InvalidData(format!(
-            "failed to convert NaiveDate '{date}' to jiff Date: {e}"
-        ))
-    })
-}
-
 /// tests intersection (inclusive) of some target date with a date range.
 ///
 /// # Arguments
@@ -97,9 +75,9 @@ pub fn find_in_calendar(
     target: &NaiveDate,
     calendar: &Calendar,
 ) -> Result<NaiveDate, ScheduleError> {
-    let start = jiff_to_naive_date(&calendar.start_date)?;
-    let end = jiff_to_naive_date(&calendar.end_date)?;
-    let within_service_date_range = &start <= target && target <= &end;
+    let start = &calendar.start_date;
+    let end = &calendar.end_date;
+    let within_service_date_range = start <= target && target <= end;
     if within_service_date_range {
         Ok(*target)
     } else {
@@ -116,10 +94,9 @@ pub fn confirm_add_exception(
     target: &NaiveDate,
     calendar_dates: &[CalendarDate],
 ) -> Result<NaiveDate, ScheduleError> {
-    let target_jiff = naive_to_jiff_date(target)?;
     match calendar_dates
         .iter()
-        .find(|cd| cd.date == target_jiff && cd.exception_type == Exception::Added)
+        .find(|cd| cd.date == *target && cd.exception_type == Exception::Added)
     {
         Some(_) => Ok(*target),
         None => {
@@ -137,12 +114,9 @@ pub fn confirm_add_exception(
 ///   1) not exist, or
 ///   2) NOT have an exception_type of "Deleted".
 pub fn confirm_no_delete_exception(target: &NaiveDate, calendar_dates: &[CalendarDate]) -> bool {
-    let Ok(target_jiff) = naive_to_jiff_date(target) else {
-        return true;
-    };
     !calendar_dates
         .iter()
-        .any(|cd| cd.date == target_jiff && cd.exception_type == Exception::Deleted)
+        .any(|cd| cd.date == *target && cd.exception_type == Exception::Deleted)
 }
 
 /// finds the nearest date to the target date that has an exception_type of "Added"
@@ -155,7 +129,7 @@ pub fn find_nearest_add_exception(
 ) -> Result<NaiveDate, ScheduleError> {
     let mut heap = BinaryHeap::new();
     for date in calendar_dates.iter() {
-        let cd_naive = jiff_to_naive_date(&date.date)?;
+        let cd_naive = &date.date;
         let matches_exception = date.exception_type == Exception::Added;
         let matches_weekday = if match_weekday {
             cd_naive.weekday() == target.weekday()
@@ -172,7 +146,7 @@ pub fn find_nearest_add_exception(
         }
     }
     match heap.pop() {
-        Some(min_distance_date) => jiff_to_naive_date(&min_distance_date.1.date),
+        Some(min_distance_date) => Ok(min_distance_date.1.date),
         None => {
             let mwd_str = if match_weekday {
                 " with matching weekday"
