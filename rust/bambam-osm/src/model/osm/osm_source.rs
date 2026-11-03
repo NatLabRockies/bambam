@@ -1,32 +1,52 @@
 use super::{graph::osm_element_filter::ElementFilter, OsmError};
 use crate::{
-    algorithm::{
-        consolidation, simplification,
-        truncation::{self, ComponentFilter},
-    },
+    algorithm::truncation::ComponentFilter,
     model::osm::{
-        graph::{OsmGraph, OsmGraphVectorized},
-        import_ops,
+        graph::OsmGraphVectorized,
+        import_ops::{self, OsmCollection},
     },
 };
+use bambam_network::{
+    parse_wkt_str_to_geometry_and_bbox, IslandDetectionAlgorithm, NetworkEdgeListConfiguration,
+};
 use geo::Geometry;
-use geo::MapCoords;
-use geozero::{wkt::Wkt as WktReader, ToGeo};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum OsmSource {
     Pbf {
         pbf_filepath: String,
+        #[serde(default)]
+        study_region: Option<String>,
         network_filter: Option<ElementFilter>,
+        #[serde(default)]
+        edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
+        #[serde(default)]
+        island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
         extent_filter_filepath: Option<String>,
         component_filter: Option<ComponentFilter>,
         truncate_by_edge: bool,
         ignore_errors: bool,
         simplify: bool,
-        consolidate: bool,
-        consolidation_threshold: uom::si::f64::Length,
-        parallelize: bool,
+        #[serde(default)]
+        infrastructure_match_distance_meters: Option<f64>,
+    },
+    LocalParquet {
+        local_source: String,
+        #[serde(default)]
+        study_region: Option<String>,
+        #[serde(default)]
+        edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
+        #[serde(default)]
+        island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
+        extent_filter_filepath: Option<String>,
+        component_filter: Option<ComponentFilter>,
+        truncate_by_edge: bool,
+        ignore_errors: bool,
+        simplify: bool,
+        #[serde(default)]
+        infrastructure_match_distance_meters: Option<f64>,
     },
 }
 
@@ -35,113 +55,104 @@ impl OsmSource {
         match self {
             OsmSource::Pbf {
                 pbf_filepath,
+                study_region,
                 network_filter,
+                edge_lists,
+                island_algorithm_configuration,
                 extent_filter_filepath,
                 component_filter,
                 truncate_by_edge,
                 ignore_errors,
                 simplify,
-                consolidate,
-                consolidation_threshold,
-                parallelize,
+                infrastructure_match_distance_meters,
             } => {
-                let net_ftr = network_filter.clone().unwrap_or_default();
+                let effective_edge_lists = match edge_lists.as_ref().filter(|e| !e.is_empty()) {
+                    Some(lists) => lists.clone(),
+                    None => NetworkEdgeListConfiguration::default_multimodal(),
+                };
+                let net_ftr = match network_filter {
+                    Some(ElementFilter::NoFilter) | None => {
+                        ElementFilter::from_edge_list_configs(&effective_edge_lists)
+                    }
+                    Some(other) => other.clone(),
+                };
                 let extent_opt = extent_filter_filepath
                     .as_deref()
                     .map(read_extent_wkt)
                     .transpose()?;
                 let cc_ftr = component_filter.clone().unwrap_or_default();
 
-                // # download the network data from OSM within buffered polygon
-                // # create buffered graph from the downloaded data
-                eprintln!();
-                log::info!("  (((1))) reading PBF source");
-                let (nodes, ways) = import_ops::read_pbf(pbf_filepath, net_ftr, &extent_opt)?;
-                let mut graph = OsmGraph::new(nodes, ways)?;
+                log::info!("Reading PBF source and extracting topological Connectors & Segments");
+                let (nodes_map, ways_map) =
+                    import_ops::read_pbf(pbf_filepath, net_ftr, &extent_opt)?;
 
-                // rjf: this is handled above in import_ops::read_pbf for performance reasons
-                // # truncate buffered graph to the buffered polygon and retain_all for
-                // # now. needed because overpass returns entire ways that also include
-                // # nodes outside the poly if the way (that is, a way with a single OSM
-                // # ID) has a node inside the poly at some point.
-                // G_buff = truncate.truncate_graph_polygon(G_buff, poly_buff, truncate_by_edge=truncate_by_edge)
-                // if let Some(extent) = &extent_opt {
-                //     let extent_buffered = buffer_extent(extent, Self::BUFFER_500M_IN_DEGREES)?;
-                //     truncation::truncate_graph_polygon(&mut graph, extent, *truncate_by_edge)?;
-                // }
-
-                // # keep only the largest weakly connected component if retain_all is False
-                // if not retain_all:
-                // G_buff = truncate.largest_component(G_buff, strongly=False)
-                eprintln!();
-                log::info!("  (((2))) truncating graph via connected components filtering");
-                truncation::filter_components(&mut graph, &cc_ftr)?;
-
-                let mut apply_second_component_filter = false;
-                if *simplify {
-                    eprintln!();
-                    log::info!("  (((3))) simplifying graph");
-                    simplification::simplify_graph(&mut graph, *parallelize)?;
-                    apply_second_component_filter = true;
-                } else {
-                    eprintln!();
-                    log::info!("  (((3))) simplifying graph (skipped)");
-                }
-
-                // # truncate graph by original polygon to return graph within polygon
-                // # caller wants. don't *simplify again: this allows us to retain
-                // # intersections along the street that may now only connect 2 street
-                // # segments in the network, but in reality also connect to an
-                // # intersection just outside the polygon
-                // G = truncate.truncate_graph_polygon(G_buff, polygon, truncate_by_edge=truncate_by_edge)
-                if let Some(extent) = &extent_opt {
-                    eprintln!();
-                    log::info!("  (((4))) truncating graph via extent filtering");
-                    truncation::truncate_graph_polygon(
-                        &mut graph,
-                        extent,
-                        *truncate_by_edge,
-                        *ignore_errors,
-                    )?;
-                    apply_second_component_filter = true;
-                } else {
-                    eprintln!();
-                    log::info!("  (((4))) truncating graph via extent filtering (skipped)");
-                }
-
-                // # keep only the largest weakly connected component if retain_all is False
-                // # we're doing this again in case the last truncate disconnected anything
-                // # on the periphery
-                // if not retain_all:
-                // G = truncate.largest_component(G, strongly=False)
-                if apply_second_component_filter {
-                    eprintln!();
-                    log::info!("  (((5))) truncating graph via connected components filtering");
-                    truncation::filter_components(&mut graph, &cc_ftr)?;
-                } else {
-                    eprintln!();
-                    log::info!(
-                        "  (((5))) truncating graph via connected components filtering (skipped)"
-                    );
-                }
-
-                // if requested, consolidate nodes in the graph
-                if *consolidate {
-                    eprintln!();
-                    log::info!("  (((6))) consolidating graph nodes");
-                    consolidation::consolidate_graph(&mut graph, *consolidation_threshold)?;
-                } else {
-                    eprintln!();
-                    log::info!("  (((6))) consolidating graph nodes (skipped)");
-                }
-
-                // finalize the graph via vectorization
-                let result = OsmGraphVectorized::new(graph, true)?;
+                let result = OsmGraphVectorized::from_osm_maps_with_config(
+                    pbf_filepath.clone(),
+                    study_region.clone(),
+                    nodes_map,
+                    ways_map,
+                    extent_opt.as_ref(),
+                    &effective_edge_lists,
+                    &cc_ftr,
+                    island_algorithm_configuration.as_ref(),
+                    *truncate_by_edge,
+                    *simplify,
+                    *ignore_errors,
+                    *infrastructure_match_distance_meters,
+                )?;
 
                 log::info!(
-                    "loaded PBF-sourced Compass graph with {} nodes, {} ways",
-                    result.nodes.len(),
-                    result.ways.len()
+                    "Loaded PBF-sourced Compass graph with {} vertices across {} mode edge lists",
+                    result.vertices.len(),
+                    result.edge_lists.len()
+                );
+                Ok(result)
+            }
+            OsmSource::LocalParquet {
+                local_source,
+                study_region,
+                edge_lists,
+                island_algorithm_configuration,
+                extent_filter_filepath,
+                component_filter,
+                truncate_by_edge,
+                ignore_errors,
+                simplify,
+                infrastructure_match_distance_meters,
+            } => {
+                let effective_edge_lists = match edge_lists.as_ref().filter(|e| !e.is_empty()) {
+                    Some(lists) => lists.clone(),
+                    None => NetworkEdgeListConfiguration::default_multimodal(),
+                };
+                let extent_opt = extent_filter_filepath
+                    .as_deref()
+                    .map(read_extent_wkt)
+                    .transpose()?;
+                let cc_ftr = component_filter.clone().unwrap_or_default();
+
+                log::info!("Reading retained OSM Parquet source from '{local_source}'");
+                let collection = OsmCollection::from_local_source(Path::new(local_source))?;
+                let (src_label, nodes_map, ways_map) = collection.into_maps();
+
+                let result = OsmGraphVectorized::from_osm_maps_with_config(
+                    src_label,
+                    study_region.clone(),
+                    nodes_map,
+                    ways_map,
+                    extent_opt.as_ref(),
+                    &effective_edge_lists,
+                    &cc_ftr,
+                    island_algorithm_configuration.as_ref(),
+                    *truncate_by_edge,
+                    *simplify,
+                    *ignore_errors,
+                    *infrastructure_match_distance_meters,
+                )?;
+
+                log::info!(
+                    "Loaded local Parquet-sourced OSM Compass graph with {} vertices across {} mode edge lists",
+                    result.vertices.len(),
+                    result.edge_lists.len()
                 );
                 Ok(result)
             }
@@ -160,20 +171,14 @@ fn read_extent_wkt(extent_filter_filepath: &str) -> Result<Geometry<f32>, OsmErr
 
 /// Try to deserialize a string into geometry and validate if said geometry is useful as a extent (Polygon or Multipolygon)
 fn deserialize_validate_extent_str(wkt_str: &str) -> Result<Geometry<f32>, OsmError> {
-    let geometry_f64 = WktReader(wkt_str).to_geo().map_err(|e| {
-        OsmError::InvalidWKT(format!("unable to deserialize WKT in {wkt_str}: {e}"))
-    })?;
-    let geometry: Geometry<f32> = geometry_f64.map_coords(|geo::Coord { x, y }| geo::Coord {
-        x: x as f32,
-        y: y as f32,
-    });
-
-    match geometry {
-        Geometry::Polygon(..) | Geometry::MultiPolygon(..) => Ok(geometry),
-        _ => Err(OsmError::InvalidExtentWKT(format!(
-            "Invalid extent provided. Only Polygon or Multipolygon can be a valid extent: {geometry:?}"
-        ))),
-    }
+    parse_wkt_str_to_geometry_and_bbox(wkt_str)
+        .map(|(geom, _)| geom)
+        .map_err(|e| match e {
+            bambam_network::NetworkImportError::InvalidGeometry(msg) => {
+                OsmError::InvalidExtentWKT(msg)
+            }
+            other => OsmError::InvalidWKT(other.to_string()),
+        })
 }
 
 #[cfg(test)]

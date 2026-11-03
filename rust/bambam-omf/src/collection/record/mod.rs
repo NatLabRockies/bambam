@@ -1,6 +1,7 @@
 mod building;
 mod common;
 mod during_expression;
+mod infrastructure;
 mod overture_record;
 mod place;
 mod record_type;
@@ -9,6 +10,7 @@ mod transportation_collection;
 mod transportation_connector;
 
 pub use building::BuildingsRecord;
+pub use infrastructure::{InfrastructureRecord, DEFAULT_TRANSPORTATION_INFRASTRUCTURE_CLASSES};
 pub use overture_record::OvertureRecord;
 pub use place::PlacesRecord;
 pub use record_type::OvertureRecordType;

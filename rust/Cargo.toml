@@ -7,6 +7,7 @@ members = [
     "bambam-gtfs",
     "bambam-gtfs-flex",
     "bambam-modal-metrics",
+    "bambam-network",
     "bambam-omf",
     "bambam-osm",
     "bambam-py",
@@ -24,6 +25,7 @@ bambam-gbfs = { version = "0.3.3", path = "bambam-gbfs" }
 bambam-gtfs = { version = "0.3.3", path = "bambam-gtfs" } 
 bambam-gtfs-flex = { version = "0.3.3", path = "bambam-gtfs-flex" }
 bambam-modal-metrics = { version = "0.3.3", path = "bambam-modal-metrics" }
+bambam-network = { version = "0.3.3", path = "bambam-network" }
 bambam-omf = { version = "0.3.3", path = "bambam-omf" }
 bambam-osm = { version = "0.3.3", path = "bambam-osm" }
 bamcensus = { version = "0.1.0" }
@@ -60,16 +62,16 @@ opening-hours-syntax = "1.1.5"
 ordered-float = { version = "5.1.0", features = ["serde"] }
 osmio = "0.14.0"
 osmpbf = "0.3.4"
-parquet = { version = "=58.0.0", features = ["snap", "async", "object_store"] }
+parquet = { version = "=58.0.0", features = ["snap"] }
 pyo3 = { version = "0.29.0", features = ["extension-module", "serde"] }
 pythonize = "0.29.0"
 rand = "0.10.0"
 rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
-routee-compass = { version = "0.19.5", default-features = false, git = "https://github.com/NatLabRockies/routee-compass", rev = "090bee509bb3597a6d0910beecf4550bc03b10db" }
-routee-compass-core = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "090bee509bb3597a6d0910beecf4550bc03b10db" }
-routee-compass-macros = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "090bee509bb3597a6d0910beecf4550bc03b10db" }
+routee-compass = { version = "0.19.5", default-features = false, git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
+routee-compass-core = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66", features = ["accumulated_cost"] }
+routee-compass-macros = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
 # routee-compass-powertrain = { version = "0.19.5" }
 routee-compass-py = { version = "0.19.5", default-features = false }
 rstar = { version = "0.12.2" }

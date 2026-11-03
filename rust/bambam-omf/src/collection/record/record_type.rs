@@ -8,6 +8,7 @@ pub enum OvertureRecordType {
     Buildings,
     Segment,
     Connector,
+    Infrastructure,
 }
 
 impl OvertureRecordType {
@@ -24,6 +25,9 @@ impl OvertureRecordType {
             }
             OvertureRecordType::Connector => {
                 format!("release/{release_str}/theme=transportation/type=connector/").to_owned()
+            }
+            OvertureRecordType::Infrastructure => {
+                format!("release/{release_str}/theme=base/type=infrastructure/").to_owned()
             }
         }
     }
@@ -52,6 +56,7 @@ impl std::fmt::Display for OvertureRecordType {
             Self::Buildings => write!(f, "Buildings"),
             Self::Segment => write!(f, "Segment"),
             Self::Connector => write!(f, "Connector"),
+            Self::Infrastructure => write!(f, "Infrastructure"),
         }
     }
 }

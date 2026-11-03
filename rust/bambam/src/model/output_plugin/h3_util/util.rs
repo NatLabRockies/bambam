@@ -16,7 +16,7 @@ use crate::model::output_plugin::h3_util::{
 pub enum H3Util {
     /// reads an h3 identifier from some path in the output JSON and uses
     /// h3 cellToBoundary to write the h3
-    /// see [[https://h3geo.org/docs/api/indexing#celltoboundary]].
+    /// see <https://h3geo.org/docs/api/indexing#celltoboundary>.
     H3BoundaryToGeometry {
         from: DotDelimitedPath,
         to: DotDelimitedPath,
@@ -190,7 +190,7 @@ fn get_hex(output: &Value, json_path: &str) -> Result<CellIndex, String> {
 
 /// helper function to write a value to the output at some json pointer location.
 /// json pointers look like this: a/b/c
-/// see [[https://datatracker.ietf.org/doc/html/rfc6901]] for the spec.
+/// see <https://datatracker.ietf.org/doc/html/rfc6901> for the spec.
 fn set_value(
     output: &mut Value,
     to: &DotDelimitedPath,

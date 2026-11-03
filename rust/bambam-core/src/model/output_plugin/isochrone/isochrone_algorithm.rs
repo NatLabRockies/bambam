@@ -17,7 +17,7 @@ pub enum IsochroneAlgorithm {
         simplify_epsilon_latlon: Option<f32>,
     },
     /// uses the k-nearest concave hull algorithm. see
-    /// [https://docs.rs/geo/latest/geo/algorithm/k_nearest_concave_hull/trait.KNearestConcaveHull.html]
+    /// <https://docs.rs/geo/latest/geo/algorithm/k_nearest_concave_hull/trait.KNearestConcaveHull.html>
     KNearestConcaveHull { k: u32 },
     /// uses the k-nearest concave hull algorithm but
     /// computes k dynamically via `k = log(b, n) * c` for base b (default 10), n

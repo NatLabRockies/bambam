@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 /// recording opportunities.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "format", rename_all = "snake_case")]
+#[allow(clippy::large_enum_variant)]
 pub enum BambamOutputConfig {
     Aggregate {
         /// the method for binning the output. required when opportunity_format == Aggregate.

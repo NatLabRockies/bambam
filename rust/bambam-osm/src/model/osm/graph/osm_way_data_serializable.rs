@@ -1,18 +1,14 @@
 use super::osm_way_ops::{self, deserialize_linestring, serialize_linestring};
-use super::{OsmGraph, OsmNodeData, OsmNodeId, OsmWayData, OsmWayId};
+use super::{OsmNodeId, OsmWayData, OsmWayId};
 use crate::model::{feature::highway::Highway, osm::OsmError};
 use bambam_modal_metrics::common::cycleway_tag::CyclewayTag;
 use bambam_modal_metrics::network_traits::edge_for_modal_metric::EdgeForModalMetric;
 use bambam_modal_metrics::network_traits::spatial_edge::SpatialEdge;
-use geo::{Convert, Coord, Haversine, Length, LineString};
-use geozero::ToWkt;
+use geo::LineString;
 use itertools::Itertools;
-use routee_compass_core::model::network::{Vertex, VertexId};
+use routee_compass_core::model::network::VertexId;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct OsmWayDataSerializable {
@@ -53,86 +49,30 @@ pub struct OsmWayDataSerializable {
 impl OsmWayDataSerializable {
     /// a delimter for aggregated fields which does not collide with CSV delimiters
     pub const VALUE_DELIMITER: &'static str = ";";
-}
 
-impl OsmWayDataSerializable {
-    /// creates a new output row from triplets that each represent a multiedge adjacency
-    /// in the fully-processed multiedge graph.
-    ///
-    /// here we finally deal with aggregating fields where possible.
-    pub fn new(
-        triplets: Vec<(&OsmNodeData, &OsmWayData, &OsmNodeData)>,
-        graph: &OsmGraph,
-        vertex_lookup: &HashMap<OsmNodeId, (usize, Vertex)>,
+    /// Constructs a serializable OSM way record directly from a split sub-segment,
+    /// its resolved source/destination `VertexId`s, and its `LineString<f32>` geometry.
+    pub fn from_split_way(
+        way: &OsmWayData,
+        node_sequence: &[OsmNodeId],
+        src_vertex_id: VertexId,
+        dst_vertex_id: VertexId,
+        linestring: LineString<f32>,
+        length_meters: f64,
     ) -> Result<Self, OsmError> {
-        // prevent building invalid linestring objects with 0 or 1 coordinates
-        let nodes_connected = triplets
-            .iter()
-            .flat_map(|(_, e, _)| e.nodes.clone())
-            .collect::<HashSet<_>>();
-        if nodes_connected.len() < 2 {
-            return Err(OsmError::InternalError(String::from(
-                "attempting to build output row with fewer than 2 unique nodes/coordinates present",
-            )));
-        }
-
-        // in OSMNx, the first edge in a multi-edge is the one that is taken.
-        // but perhaps we should consider combining edges here with OsmWayData::try_from(ways.as_slice())?
-        // note from osmnx.simplification:
-        //
-        // # get edge between these nodes: if multiple edges exist between
-        // # them (see above), we retain only one in the simplified graph
-        // # We can't assume that there exists an edge from u to v
-        // # with key=0, so we get a list of all edges from u to v
-        // # and just take the first one.
-        let (src_node, way, dst_node) = triplets.into_iter().next().ok_or_else(|| {
-            OsmError::InternalError(String::from(
-                "attempting to build output row from empty trajectory",
-            ))
-        })?;
-        let src_node_id = src_node.osmid;
-        let dst_node_id = dst_node.osmid;
-
-        let (src_vertex_id, _) = &vertex_lookup.get(&src_node_id).ok_or_else(|| {
-            OsmError::InternalError(format!(
-                "during output processing, way ({})-[{}]->({}) has no matching source vertex id",
-                src_node_id, way.osmid, dst_node_id
-            ))
-        })?;
-        let (dst_vertex_id, _) = &vertex_lookup.get(&dst_node_id).ok_or_else(|| {
-            OsmError::InternalError(format!(
-                "during output processing, way ({})-[{}]->({}) has no matching destination vertex id",
-                src_node_id, way.osmid, dst_node_id
-            ))
-        })?;
-
-        let linestring = create_linestring_for_od_path(&src_node_id, &dst_node_id, way, graph)?;
-        if linestring.coords().collect_vec().len() < 2 {
-            return Err(OsmError::InternalError(format!(
-                "during output processing, way ({})-[{}]->({}) produces a linestring with less than 2 nodes: '{}'",
-                src_node_id, way.osmid, dst_node_id, { let ls_f64: LineString<f64> = linestring.convert(); geo::Geometry::from(ls_f64).to_wkt().unwrap_or_default() }
-            )));
-        }
-
-        // use Haversine in f64 to estimate distance
-        let linestring_f64: LineString<f64> = linestring.convert();
-        let length_meters = Haversine.length(&linestring_f64);
         let highway = top_highway(&way.highway, OsmWayData::VALUE_DELIMITER)?;
-
-        let row = Self {
+        Ok(Self {
             osmid: way.osmid,
-            src_vertex_id: VertexId(*src_vertex_id),
-            dst_vertex_id: VertexId(*dst_vertex_id),
+            src_vertex_id,
+            dst_vertex_id,
             highway,
             linestring,
             length_meters,
-            // NUMERICAL
             area: max(way.area.as_ref()),
             est_width: min(way.est_width.as_ref()),
             lanes: min(way.lanes.as_ref()),
             maxspeed: min(way.maxspeed.as_ref()),
             width: min(way.width.as_ref()),
-            // CATEGORICAL / RAW / REFERENCE
             _ref: unique(way._ref.as_ref()),
             access: unique(way.access.as_ref()),
             bridge: unique(way.bridge.as_ref()),
@@ -142,14 +82,13 @@ impl OsmWayDataSerializable {
             landuse: unique(way.landuse.as_ref()),
             maxspeed_raw: replace_delimiter(way.maxspeed.as_ref()),
             name: unique(way.name.as_ref()),
-            nodes: join_node_ids(&way.nodes),
+            nodes: join_node_ids(node_sequence),
             oneway: unique(way.oneway.as_ref()),
             sidewalk: unique(way.sidewalk.as_ref()),
             service: unique(way.service.as_ref()),
             tunnel: unique(way.tunnel.as_ref()),
-            way_ids: join_way_ids(way.way_ids.as_ref()),
-        };
-        Ok(row)
+            way_ids: join_way_ids(way.way_ids.as_slice()),
+        })
     }
 
     pub fn get_string_at_field(&self, fieldname: &str) -> Result<Option<String>, String> {
@@ -408,29 +347,6 @@ fn join_way_ids(value: &[OsmWayId]) -> Option<String> {
             Some(joined)
         }
     }
-}
-
-pub fn create_linestring_for_od_path(
-    src: &OsmNodeId,
-    dst: &OsmNodeId,
-    way: &OsmWayData,
-    graph: &OsmGraph,
-) -> Result<LineString<f32>, OsmError> {
-    let coords = osm_way_ops::extract_between_nodes(src, dst, &way.nodes)
-        .ok_or_else(|| {
-            let nodes = way.nodes.iter().map(|n| format!("({n})")).join("->");
-            OsmError::InternalError(format!(
-                "trajectory ({})-[{}]->({}) not found in (aggregate) way nodes: {}",
-                src, way.osmid, dst, nodes
-            ))
-        })?
-        .iter()
-        .map(|n| {
-            let node = graph.get_node_data(n)?;
-            Ok(Coord::from((node.x, node.y)))
-        })
-        .collect::<Result<Vec<Coord<f32>>, _>>()?;
-    Ok(LineString(coords))
 }
 
 /// if the highway value is non-empty, split it by the expected delimiter and take the top-ranked Highway

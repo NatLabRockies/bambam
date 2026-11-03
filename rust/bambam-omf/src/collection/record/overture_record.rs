@@ -1,4 +1,6 @@
-use crate::collection::record::{TransportationConnectorRecord, TransportationSegmentRecord};
+use crate::collection::record::{
+    InfrastructureRecord, TransportationConnectorRecord, TransportationSegmentRecord,
+};
 
 use super::{BuildingsRecord, PlacesRecord};
 
@@ -8,6 +10,7 @@ pub enum OvertureRecord {
     Buildings(BuildingsRecord),
     Segment(TransportationSegmentRecord),
     Connector(TransportationConnectorRecord),
+    Infrastructure(InfrastructureRecord),
 }
 
 impl From<PlacesRecord> for OvertureRecord {
@@ -31,5 +34,11 @@ impl From<TransportationSegmentRecord> for OvertureRecord {
 impl From<TransportationConnectorRecord> for OvertureRecord {
     fn from(value: TransportationConnectorRecord) -> Self {
         Self::Connector(value)
+    }
+}
+
+impl From<InfrastructureRecord> for OvertureRecord {
+    fn from(value: InfrastructureRecord) -> Self {
+        Self::Infrastructure(value)
     }
 }

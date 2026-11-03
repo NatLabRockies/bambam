@@ -10,3 +10,13 @@ pub trait VertexForModalMetric {
     /// returns true if the vertex has a stop sign.
     fn has_stop_sign(&self) -> bool;
 }
+
+impl VertexForModalMetric for bambam_network::VertexCompleteRecord {
+    fn has_traffic_signals(&self) -> bool {
+        self.traffic_signals
+    }
+
+    fn has_stop_sign(&self) -> bool {
+        self.stop
+    }
+}

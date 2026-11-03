@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use super::graph::{AdjacencyDirection, OsmNodeId, OsmWayId};
+use super::graph::{OsmNodeId, OsmWayId};
 
 #[derive(Error, Debug)]
 pub enum OsmError {
@@ -8,24 +8,12 @@ pub enum OsmError {
     ConfigurationError(String),
     #[error("failure reading .pbf file: {source}")]
     PbfLibError { source: osmpbf::Error },
-    #[error("failure simplifying graph: {0}")]
-    GraphSimplificationError(String),
-    #[error("failure consolidating graph: {0}")]
-    GraphConsolidationError(String),
     #[error("failure writing to file {0}: {1}")]
     CsvWriteError(String, csv::Error),
-    #[error("attempting to get {0} adjacencies for node '{1}' not in graph")]
-    AdjacencyMissingSourceNodeId(AdjacencyDirection, OsmNodeId),
-    #[error("attempting to get destination node '{2}' for source node '{0}' via its {1} adjacency list not in graph")]
-    AdjacencyWithSourceMissingDestinationNodeId(OsmNodeId, AdjacencyDirection, OsmNodeId),
-    #[error("attempting to remove adjacency list entry for node '{0}': {1}")]
-    AdjacencyRemovalError(OsmNodeId, String),
     #[error("attempting to get node '{0}' not in graph")]
     GraphMissingNodeId(OsmNodeId),
     #[error("attempting to get way '{0}' not in graph")]
     GraphMissingWayId(OsmWayId),
-    #[error("{0}")]
-    GraphModificationError(String),
     #[error("failure while serializing graph: {0}")]
     GraphSerializationError(String),
     #[error("structure of OSM data is invalid: {0}")]
@@ -40,4 +28,29 @@ pub enum OsmError {
     InvalidExtentWKT(String),
     #[error("{0}")]
     InternalError(String),
+}
+
+impl From<bambam_network::NetworkImportError> for OsmError {
+    fn from(value: bambam_network::NetworkImportError) -> Self {
+        use bambam_network::NetworkImportError as N;
+        match value {
+            N::InvalidUserInput(s) | N::MissingAttribute(s) | N::InvalidBetweenVector(s) => {
+                Self::ConfigurationError(s)
+            }
+            N::InvalidGeometry(s) => Self::InvalidWKT(s),
+            N::SerializationError(s) | N::CsvWriteError(s) => Self::GraphSerializationError(s),
+            N::InvalidSegmentConnectors(s) => Self::InvalidOsmData(s),
+            N::InvalidLinearReference(v) => {
+                Self::InvalidOsmData(format!("invalid linear reference {v}"))
+            }
+            N::ReadError { path, message } => {
+                Self::ConfigurationError(format!("error reading '{}': {message}", path.display()))
+            }
+            N::WriteError { path, message } => Self::GraphSerializationError(format!(
+                "error writing '{}': {message}",
+                path.display()
+            )),
+            N::InternalError(s) => Self::InternalError(s),
+        }
+    }
 }

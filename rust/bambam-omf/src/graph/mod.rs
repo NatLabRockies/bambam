@@ -1,14 +1,15 @@
-mod connector_in_segment;
-pub mod island_detection;
 mod omf_graph;
-mod segment_split;
-mod serialize_ops;
+pub(crate) mod segment_split;
 mod summary;
 mod vertex_serializable;
 
-pub mod consts;
 pub mod segment_ops;
-pub use connector_in_segment::ConnectorInSegment;
+pub use bambam_network::{
+    attach_infrastructure_to_vertices, consts, consts::*, island_detection, serialize_ops,
+    ConnectorInSegment, EdgeMappingRecord, SegmentSplit, VertexCompassRecord, VertexCompleteRecord,
+    VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+};
 pub use omf_graph::OmfGraphVectorized;
-pub use segment_split::SegmentSplit;
-pub use summary::{ClassStats, EdgeListStats, OmfGraphSource, OmfGraphStats, OmfGraphSummary};
+pub use summary::{
+    ClassStats, EdgeListStats, NetworkGraphSource, NetworkGraphStats, NetworkGraphSummary,
+};

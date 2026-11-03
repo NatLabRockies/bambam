@@ -21,6 +21,7 @@ use std::{collections::HashMap, fs::File, io::BufReader};
 /// for algorithm implementation details.
 #[derive(Deserialize, Serialize, Clone, Debug)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
 pub enum OpportunityModelConfig {
     /// this collection of opportunities comes from a file source.
     #[serde(rename = "file")]

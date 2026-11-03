@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    access_restriction_when::SegmentAccessRestrictionWhen,
-    mode::{SegmentHeading, SegmentMode},
-};
+use super::{SegmentAccessRestrictionWhen, SegmentHeading, SegmentMode};
 
 /// Describes objects that can be reached by following a transportation
 /// segment in the same way those objects are described on signposts or

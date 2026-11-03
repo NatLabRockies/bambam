@@ -12,7 +12,7 @@ pub const FQ_ROUTE_ID_SEPARATOR: &str = "->";
 /// in order to allow for deconstruction of this fully-qualified name,
 /// we use a non-standard separator of multiple characters, as per the
 /// GTFS specification, ID types can contain any UTF-8 characters. see
-/// [https://gtfs.org/documentation/schedule/reference/#field-types].
+/// <https://gtfs.org/documentation/schedule/reference/#field-types>.
 pub fn get_fully_qualified_route_id(
     feed_id: Option<&str>,
     agency_id: Option<&str>,

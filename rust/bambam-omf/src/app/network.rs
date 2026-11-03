@@ -1,66 +1,39 @@
 use std::{collections::HashSet, path::Path, sync::Arc};
 
+pub use bambam_network::NetworkEdgeListConfiguration;
 use geo::{BoundingRect, Geometry, Intersects};
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 
 use crate::{
     app::CliBoundingBox,
     collection::{
-        filter::TravelModeFilter, ObjectStoreSource, OvertureMapsCollectionError,
-        OvertureMapsCollectorConfig, ReleaseVersion, SegmentAccessRestrictionWhen,
-        TransportationCollection,
+        ObjectStoreSource, OvertureMapsCollectionError, OvertureMapsCollectorConfig,
+        ReleaseVersion, TransportationCollection,
     },
     graph::{
-        island_detection::IslandDetectionAlgorithm, OmfGraphSource, OmfGraphStats, OmfGraphSummary,
-        OmfGraphVectorized,
+        island_detection::IslandDetectionAlgorithm, NetworkGraphSource, NetworkGraphStats,
+        NetworkGraphSummary, OmfGraphVectorized,
     },
     util,
 };
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct NetworkEdgeListConfiguration {
-    pub mode: String,
-    pub filter: Vec<TravelModeFilter>,
-    pub island_algorithm_config: Option<IslandDetectionAlgorithm>,
-}
-
-impl From<&NetworkEdgeListConfiguration> for SegmentAccessRestrictionWhen {
-    fn from(value: &NetworkEdgeListConfiguration) -> Self {
-        let user_modes_opt = value.filter.iter().find_map(|f| match f {
-            TravelModeFilter::MatchesModeAccess { modes } => Some(modes.clone()),
-            _ => None,
-        });
-        let mut result = SegmentAccessRestrictionWhen::default();
-        if let Some(modes) = user_modes_opt {
-            result.mode = Some(modes);
-        }
-        result
-    }
-}
-
 /// runs an OMF network import using the provided configuration.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
-    name: &str,
     bbox: Option<&CliBoundingBox>,
     modes: &[NetworkEdgeListConfiguration],
     output_directory: &Path,
     local_source: Option<&Path>,
-    write_json: bool,
     island_detection_configuration: Option<IslandDetectionAlgorithm>,
-    export_omf_ids: bool,
     extent: Option<Geometry<f32>>,
+    infrastructure_match_distance_meters: Option<f64>,
 ) -> Result<(), OvertureMapsCollectionError> {
     let collection: TransportationCollection = match local_source {
         Some(src_path) => read_local(src_path),
         None => run_collector(bbox),
     }?;
 
-    if write_json {
-        util::fs::create_dirs(output_directory)?;
-        collection.to_json(output_directory)?;
-    }
+    util::fs::create_dirs(output_directory)?;
 
     let collection = if let Some(ext_geom) = extent {
         apply_extent_to_collection(collection, ext_geom)
@@ -68,36 +41,40 @@ pub fn run(
         collection
     };
 
-    let vectorized_graph =
-        OmfGraphVectorized::new(&collection, modes, island_detection_configuration)?;
+    // Always retain the raw OMF dataset in `<output_directory>/raw/*.parquet`
+    // unless `local_source` is already reading from that exact directory.
+    let target_raw_dir = output_directory.join("raw");
+    let same_raw_source = local_source.is_some_and(|src| {
+        src == output_directory || src == target_raw_dir || src.parent() == Some(&target_raw_dir)
+    });
+    if !same_raw_source {
+        collection.to_parquet(output_directory)?;
+    }
+
+    let vectorized_graph = OmfGraphVectorized::new_with_match_distance(
+        &collection,
+        modes,
+        island_detection_configuration,
+        infrastructure_match_distance_meters,
+    )?;
 
     // summarize imported graph
     let release = match local_source {
         Some(local) => format!("file://{}", local.to_string_lossy()),
         None => collection.release.clone(),
     };
-    let stats = OmfGraphStats::try_from(&vectorized_graph)?;
-    let source = OmfGraphSource::new(&release, name, bbox);
-    let summary = OmfGraphSummary { source, stats };
+    let study_region = output_directory.to_string_lossy();
+    let stats = NetworkGraphStats::try_from(&vectorized_graph)?;
+    let source = NetworkGraphSource::new(&release, &study_region, bbox);
+    let summary = NetworkGraphSummary { source, stats };
 
-    vectorized_graph.write_compass(&summary, output_directory, true, export_omf_ids)?;
+    vectorized_graph.write_compass(&summary, output_directory, true)?;
 
     Ok(())
 }
 
 fn read_local(path: &Path) -> Result<TransportationCollection, OvertureMapsCollectionError> {
-    let contents = std::fs::read(path).map_err(|e| OvertureMapsCollectionError::ReadError {
-        path: path.to_owned(),
-        message: e.to_string(),
-    })?;
-    let collection =
-        serde_json::from_slice::<TransportationCollection>(&contents).map_err(|e| {
-            OvertureMapsCollectionError::ReadError {
-                path: path.to_owned(),
-                message: format!("failed to deserialize from JSON: {e}"),
-            }
-        })?;
-    Ok(collection)
+    TransportationCollection::from_local_source(path)
 }
 
 /// retrieve a TransportationCollection from a URL.
@@ -180,9 +157,25 @@ fn apply_extent_to_collection(
         .filter(|connector| arc_ids.contains(&connector.id))
         .collect();
 
+    log::info!("Started applying extent to infrastructure");
+    let filtered_infrastructure = collection
+        .infrastructure
+        .into_par_iter()
+        .filter(|infra| match infra.get_geometry() {
+            Some(geom) => {
+                let Some(bbox) = geom.bounding_rect() else {
+                    return false;
+                };
+                extent_arc.intersects(&bbox) && extent_arc.intersects(geom)
+            }
+            None => false,
+        })
+        .collect();
+
     TransportationCollection {
         release: collection.release.clone(),
         connectors: filtered_connectors,
         segments: filtered_segments,
+        infrastructure: filtered_infrastructure,
     }
 }

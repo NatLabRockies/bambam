@@ -2,8 +2,8 @@
 
 use crate::{
     collection::{
-        record::{SegmentAccessRestriction, SegmentHeading},
-        OvertureMapsCollectionError, SegmentAccessRestrictionWhen, TransportationSegmentRecord,
+        record::SegmentHeading, OvertureMapsCollectionError, SegmentAccessRestrictionWhen,
+        TransportationSegmentRecord,
     },
     graph::{segment_split::SegmentSplit, ConnectorInSegment},
 };
@@ -65,203 +65,10 @@ pub fn get_headings(
     segment: &TransportationSegmentRecord,
     when: Option<&SegmentAccessRestrictionWhen>,
 ) -> Result<Vec<SegmentHeading>, OvertureMapsCollectionError> {
-    // If both when and access_restrictions are None/empty, return both headings
-    let access_restrictions = segment.access_restrictions.as_ref();
-
-    let no_restrictions = access_restrictions.map(|r| r.is_empty()).unwrap_or(true);
-    if when.is_none() && (access_restrictions.is_none() || no_restrictions) {
-        return Ok(vec![SegmentHeading::Forward, SegmentHeading::Backward]);
-    }
-
-    // Collect valid headings based on access restrictions
-    let mut valid_headings = Vec::new();
-    let when_heading = when.and_then(|w| w.heading.clone());
-    let (test_fwd, test_bwd) = match when_heading {
-        None => (true, true),
-        Some(SegmentHeading::Forward) => (true, false),
-        Some(SegmentHeading::Backward) => (false, true),
-    };
-
-    // Check Forward heading
-    if test_fwd && is_heading_valid(SegmentHeading::Forward, when, access_restrictions) {
-        valid_headings.push(SegmentHeading::Forward);
-    }
-
-    // Check Backward heading
-    if test_bwd && is_heading_valid(SegmentHeading::Backward, when, access_restrictions) {
-        valid_headings.push(SegmentHeading::Backward);
-    }
-
-    Ok(valid_headings)
-}
-
-/// Helper function to check if a heading is valid given the when constraint and access restrictions
-///
-/// Access restrictions are evaluated in order, where:
-/// - Multiple restrictions can combine (e.g., "Denied all" + "Allowed specific" = "allowed only for specific")
-/// - A restriction applies if its heading and when conditions match the query
-/// - The final decision is: allowed if any Allowed restriction applies AND no Denied restriction applies
-fn is_heading_valid(
-    heading: SegmentHeading,
-    when: Option<&SegmentAccessRestrictionWhen>,
-    access_restrictions: Option<&Vec<SegmentAccessRestriction>>,
-) -> bool {
-    use crate::collection::record::SegmentAccessType as SAT;
-
-    let Some(restrictions) = access_restrictions else {
-        return true;
-    };
-
-    let is_denied = |r: &&SegmentAccessRestriction| r.access_type == SAT::Denied;
-
-    // Partition applicable restrictions by heading-specificity
-    let (heading_specific, general): (Vec<_>, Vec<_>) = restrictions
-        .iter()
-        .filter(|r| restriction_applies_to(r, &heading, when))
-        .partition(|r| r.when.as_ref().and_then(|w| w.heading.as_ref()).is_some());
-
-    // Further partition each group by denied/allowed. each of these becomes a set of which
-    // emptiness proves a certain fact about the validity of this heading.
-    let (heading_denied, heading_allowed): (Vec<_>, Vec<_>) =
-        heading_specific.into_iter().partition(is_denied);
-    let (general_denied, general_allowed): (Vec<_>, Vec<_>) =
-        general.into_iter().partition(is_denied);
-    let has_heading_denied = !heading_denied.is_empty();
-    let has_heading_allowed = !heading_allowed.is_empty();
-    let no_general_denied = general_denied.is_empty();
-    let has_general_allowed = !general_allowed.is_empty();
-
-    // Heading-specific denial takes priority - can only be overridden by heading-specific allowance
-    if has_heading_denied {
-        has_heading_allowed
-    } else {
-        // No heading-specific denial: allow if any allowance exists, or no denial exists
-        has_heading_allowed || has_general_allowed || no_general_denied
-    }
-}
-
-/// Check if a restriction applies to the given heading and when conditions
-///
-/// A restriction applies if:
-/// 1. The heading matches (or restriction has no heading constraint)
-/// 2. The when conditions match:
-///    - If querying with when=None: restriction must have empty/minimal conditions (applies broadly)
-///    - If querying with when=Some: the query conditions must be compatible with restriction
-fn restriction_applies_to(
-    restriction: &SegmentAccessRestriction,
-    heading: &SegmentHeading,
-    when: Option<&SegmentAccessRestrictionWhen>,
-) -> bool {
-    let restriction_when = restriction.when.as_ref();
-
-    // Check if the restriction's heading matches or is unrestricted
-    let heading_matches = restriction_when
-        .and_then(|w| w.heading.as_ref())
-        .map(|h| h == heading)
-        .unwrap_or(true); // If no heading specified in restriction, it applies to all
-
-    if !heading_matches {
-        return false;
-    }
-
-    // If when is provided, check if the query conditions are compatible with the restriction
-    if let Some(when) = when {
-        when_is_compatible(when, restriction_when)
-    } else {
-        // No when constraint provided in query - we only match restrictions that apply
-        // broadly (without mode/using/recognized constraints), or have no when clause at all.
-        // This represents "what's allowed by default without specific conditions"
-        restriction_when.is_none()
-            || restriction_when.is_some_and(|rw| {
-                // A restriction with specific conditions (mode, using, recognized) doesn't
-                // apply to the "default" case
-                rw.mode.is_none() && rw.using.is_none() && rw.recognized.is_none()
-            })
-    }
-}
-
-/// Check if the when constraint is compatible with (contained by) the restriction when
-///
-/// Returns true if the query 'when' is compatible with the restriction 'when'.
-/// A restriction with None for a field means it applies broadly (to all values of that field).
-/// A restriction with Some([values]) means it only applies to those specific values.
-///
-/// # Arguments
-/// * `when` - Query conditions (e.g., "Car mode")
-/// * `segment_restrictions` - Restriction conditions (e.g., "Car and Bicycle modes" or None for all modes)
-///
-/// Note: Heading compatibility is handled by `restriction_applies_to`, not here.
-fn when_is_compatible(
-    when: &SegmentAccessRestrictionWhen,
-    segment_restrictions: Option<&SegmentAccessRestrictionWhen>,
-) -> bool {
-    // return early if no restrictions on segment
-    let Some(restrictions) = segment_restrictions else {
-        return true;
-    };
-
-    // compatibility checks
-    // in the following blocks, for a given restriction:
-    //   - if the restriction is not defined on the segment (None), we continue
-    //   - if the restriction IS defined (Some), the "when" query must match it
-    // headings are NOT tested here as they have already been tested in get_headings
-
-    // Check mode compatibility
-    if let Some(restriction_modes) = &restrictions.mode {
-        if let Some(when_modes) = &when.mode {
-            // Change .all() to .any()
-            if !when_modes.iter().any(|m| restriction_modes.contains(m)) {
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    // Check using compatibility
-    if let Some(restriction_using) = &restrictions.using {
-        if let Some(when_using) = &when.using {
-            if !when_using.iter().all(|u| restriction_using.contains(u)) {
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    // Check recognized compatibility
-    if let Some(restriction_recognized) = &restrictions.recognized {
-        if let Some(when_recognized) = &when.recognized {
-            if !when_recognized
-                .iter()
-                .all(|r| restriction_recognized.contains(r))
-            {
-                return false;
-            }
-        } else {
-            return false;
-        }
-    }
-
-    // Check vehicle dimension filters
-    if let Some(restrictions_vehicle) = &restrictions.vehicle {
-        let all_restrictions_apply_to_all_vehicles = restrictions_vehicle.iter().all(|r_vehicle| {
-            if let Some(when_vehicles) = &when.vehicle {
-                when_vehicles
-                    .iter()
-                    .all(|w_vehicle| r_vehicle.is_valid(w_vehicle))
-            } else {
-                false
-            }
-        });
-
-        if !all_restrictions_apply_to_all_vehicles {
-            return false;
-        }
-    }
-
-    // If we got here, all specified fields in when are compatible
-    true
+    Ok(bambam_network::evaluate_segment_headings(
+        segment.access_restrictions.as_deref(),
+        when,
+    ))
 }
 
 #[cfg(test)]
@@ -270,9 +77,9 @@ mod tests {
     use crate::collection::{
         filter::{MatchBehavior, TravelModeFilter},
         record::{
-            OvertureMapsBbox, SegmentAccessRestrictionWhenVehicle, SegmentAccessType,
-            SegmentLengthUnit, SegmentMode, SegmentRecognized, SegmentUnit, SegmentUsing,
-            SegmentVehicleComparator, SegmentVehicleDimension,
+            OvertureMapsBbox, SegmentAccessRestriction, SegmentAccessRestrictionWhenVehicle,
+            SegmentAccessType, SegmentLengthUnit, SegmentMode, SegmentRecognized, SegmentUnit,
+            SegmentUsing, SegmentVehicleComparator, SegmentVehicleDimension,
         },
         SegmentClass,
     };

@@ -5,7 +5,7 @@ use crate::model::destination::{BinInterval, DestinationError, DestinationFilter
 use routee_compass::app::search::SearchAppResult;
 use routee_compass_core::{
     algorithm::search::{SearchTree, SearchTreeNode},
-    model::{label::Label, network::VertexId, state::StateModel, unit::Cost},
+    model::{label::Label, network::VertexId, state::StateModel},
 };
 
 /// A single destination branch `(Label, &SearchTreeNode)`.
@@ -19,12 +19,8 @@ pub type BinnedDestinations<'a> = Vec<(BinInterval, Vec<DestinationBranch<'a>>)>
 pub type DestinationsIter<'a> =
     Box<dyn Iterator<Item = Result<DestinationBranch<'a>, DestinationError>> + 'a>;
 
-/// Best candidate branch reaching a destination vertex, paired with its lazily evaluated
-/// accumulated objective cost (`None` until a second branch collides on the same vertex).
-type BestDestinationBranch<'a> = (Option<Cost>, Label, &'a SearchTreeNode);
-
 /// Lookup from destination [`VertexId`] to its lowest-cost reaching branch.
-type BestDestinationByVertex<'a> = HashMap<VertexId, BestDestinationBranch<'a>>;
+type BestDestinationByVertex<'a> = HashMap<VertexId, DestinationBranch<'a>>;
 
 /// collects unique destination vertices from search tree branches that can be reached
 /// _as destinations_ within the given bin.
@@ -32,7 +28,7 @@ type BestDestinationByVertex<'a> = HashMap<VertexId, BestDestinationBranch<'a>>;
 /// In multimodal searches, a single [`VertexId`] may be reached by multiple [`Label`]s
 /// (for example, `["walk"]`, `["bike"]`, `["walk", "bike"]`). This function deduplicates
 /// valid destination branches by [`VertexId`], selecting the branch with the minimum
-/// accumulated objective cost before testing bin membership.
+/// accumulated `total_cost` before testing bin membership.
 ///
 /// assumes exactly ONE tree in our search result.
 pub fn new_destinations_iterator<'a>(
@@ -77,7 +73,7 @@ pub fn collect_binned_destinations<'a>(
     let best_by_vertex = deduplicate_destinations_by_vertex(tree, destination_filter, state_model)?;
 
     let mut binned: Vec<Vec<DestinationBranch<'a>>> = vec![Vec::new(); bins.len()];
-    for (_cost_opt, label, branch) in best_by_vertex.into_values() {
+    for (label, branch) in best_by_vertex.into_values() {
         for (bin, bucket) in bins.iter().zip(binned.iter_mut()) {
             if within_bin_range(branch, Some(bin), state_model)? {
                 bucket.push((label.clone(), branch));
@@ -90,7 +86,7 @@ pub fn collect_binned_destinations<'a>(
 
 /// Scans `tree` for non-root branches passing `destination_filter` and deduplicates
 /// them by terminal [`VertexId`], keeping the branch with the lowest accumulated
-/// objective cost at each vertex.
+/// `total_cost` at each vertex.
 fn deduplicate_destinations_by_vertex<'a>(
     tree: &'a SearchTree,
     destination_filter: Option<&DestinationFilter>,
@@ -102,52 +98,38 @@ fn deduplicate_destinations_by_vertex<'a>(
         if !passes_destination_filter(branch, destination_filter, state_model)? {
             continue;
         }
-        update_best_branch_for_vertex(&mut best_by_vertex, tree, label, branch)?;
+        update_best_branch_for_vertex(&mut best_by_vertex, label, branch);
     }
 
     Ok(best_by_vertex)
 }
 
 /// Inserts `(label, branch)` into `best_by_vertex` if it is the first valid branch reaching
-/// `*label.vertex_id()`, or replaces the existing entry if its total accumulated objective
-/// cost is strictly smaller.
-///
-/// NOTE: `routee-compass` currently stores only the marginal single-edge `TraversalCost` on
-/// each `EdgeTraversal` (`SearchTreeNode::Branch`), discarding the accumulated `g_score`
-/// computed during search. As a result, comparing two branches at the same `VertexId`
-/// requires backtracking up the `SearchTree` via `tree.calculate_total_objective_cost`.
-/// We evaluate this cost lazily only when multiple valid labels collide at the same vertex,
-/// but `routee-compass` should ultimately record the accumulated cost directly on each
-/// `EdgeTraversal` so that this comparison is O(1) without tree backtracking.
+/// `*label.vertex_id()`, or replaces the existing entry if its `total_cost` is strictly smaller.
 fn update_best_branch_for_vertex<'a>(
     best_by_vertex: &mut BestDestinationByVertex<'a>,
-    tree: &'a SearchTree,
     label: Label,
     branch: &'a SearchTreeNode,
-) -> Result<(), DestinationError> {
+) {
+    let Some(new_et) = branch.incoming_edge() else {
+        return;
+    };
     let vertex_id = *label.vertex_id();
     match best_by_vertex.get_mut(&vertex_id) {
         None => {
-            best_by_vertex.insert(vertex_id, (None, label, branch));
+            best_by_vertex.insert(vertex_id, (label, branch));
         }
-        Some((existing_cost_opt, existing_label, existing_branch)) => {
-            let existing_cost = match existing_cost_opt {
-                Some(cost) => *cost,
-                None => {
-                    let cost = tree.calculate_total_objective_cost(existing_label)?;
-                    *existing_cost_opt = Some(cost);
-                    cost
-                }
-            };
-            let new_cost = tree.calculate_total_objective_cost(&label)?;
-            if new_cost < existing_cost {
-                *existing_cost_opt = Some(new_cost);
+        Some((existing_label, existing_branch)) => {
+            let replace = existing_branch
+                .incoming_edge()
+                .map(|existing_et| new_et.cost.total_cost < existing_et.cost.total_cost)
+                .unwrap_or(true);
+            if replace {
                 *existing_label = label;
                 *existing_branch = branch;
             }
         }
     }
-    Ok(())
 }
 
 /// Filters the deduplicated per-vertex branches to those whose `result_state` falls
@@ -156,9 +138,9 @@ fn filter_destinations_by_bin<'a>(
     best_by_vertex: BestDestinationByVertex<'a>,
     bin_range: Option<&BinInterval>,
     state_model: &StateModel,
-) -> Result<Vec<(Label, &'a SearchTreeNode)>, DestinationError> {
+) -> Result<Vec<DestinationBranch<'a>>, DestinationError> {
     let mut results = Vec::with_capacity(best_by_vertex.len());
-    for (_cost_opt, label, branch) in best_by_vertex.into_values() {
+    for (label, branch) in best_by_vertex.into_values() {
         if within_bin_range(branch, bin_range, state_model)? {
             results.push((label, branch));
         }
@@ -237,6 +219,7 @@ mod tests {
             cost: TraversalCost {
                 edge_cost: Cost::new(minutes),
                 objective_cost: Cost::new(minutes),
+                total_cost: Cost::new(minutes),
             },
             result_state: vec![StateVariable(minutes)],
         }
