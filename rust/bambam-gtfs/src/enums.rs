@@ -4,7 +4,7 @@ use serde::de::{Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 
 /// All the objects type from the GTFS specification that this library reads
-#[derive(Debug, Serialize, Eq, PartialEq, Hash)]
+#[derive(Debug, Serialize, Eq, PartialEq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum ObjectType {
     /// Agency <https://gtfs.org/reference/static/#agencytxt>
     Agency,
@@ -27,7 +27,10 @@ pub enum ObjectType {
 }
 
 /// Describes the kind of Stop. See <https://gtfs.org/reference/static/#stopstxt> `location_type`
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum LocationType {
     /// Stop (or Platform). A location where passengers board or disembark from a transit vehicle. Is called a platform when defined within a parent_station
     #[default]
@@ -85,6 +88,49 @@ impl Serialize for LocationType {
                 LocationType::Unknown(i) => *i,
             },
         )
+    }
+}
+
+/// `rkyv::with` wrapper that serializes `ExtendedRouteType` as its `i16` discriminant.
+pub struct RkyvExtendedRouteType;
+
+impl rkyv::with::ArchiveWith<ExtendedRouteType> for RkyvExtendedRouteType {
+    type Archived = rkyv::rend::i16_le;
+    type Resolver = ();
+
+    #[inline]
+    fn resolve_with(
+        field: &ExtendedRouteType,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let code = *field as i16;
+        rkyv::Archive::resolve(&code, resolver, out);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<ExtendedRouteType, S>
+    for RkyvExtendedRouteType
+{
+    #[inline]
+    fn serialize_with(
+        field: &ExtendedRouteType,
+        serializer: &mut S,
+    ) -> Result<Self::Resolver, S::Error> {
+        let code = *field as i16;
+        rkyv::Serialize::serialize(&code, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::with::DeserializeWith<rkyv::rend::i16_le, ExtendedRouteType, D> for RkyvExtendedRouteType
+{
+    #[inline]
+    fn deserialize_with(
+        field: &rkyv::rend::i16_le,
+        _deserializer: &mut D,
+    ) -> Result<ExtendedRouteType, D::Error> {
+        Ok(ExtendedRouteType::try_from(field.to_native()).unwrap_or(ExtendedRouteType::Bus))
     }
 }
 
@@ -271,7 +317,10 @@ pub enum ExtendedRouteType {
 /// Describes the kind of Route. See <https://gtfs.org/reference/static/#routestxt> `route_type`
 ///
 /// Some route types are extended GTFS (<https://developers.google.com/transit/gtfs/reference/extended-route-types>)
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum RouteType {
     /// Tram, Streetcar, Light rail. Any light rail or street level system within a metropolitan area
     Tramway,
@@ -291,7 +340,7 @@ pub enum RouteType {
     /// Any rail system designed for steep inclines
     Funicular,
     /// Google Transit extended route types <https://developers.google.com/transit/gtfs/reference/extended-route-types>
-    Extended(ExtendedRouteType),
+    Extended(#[rkyv(with = RkyvExtendedRouteType)] ExtendedRouteType),
     /// Any other value
     Other(i16),
 }
@@ -360,7 +409,10 @@ impl Serialize for RouteType {
 }
 
 /// Describes if and how a traveller can board or alight the vehicle. See <https://gtfs.org/reference/static/#stop_timestxt> `pickup_type` and `dropoff_type`
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum PickupDropOffType {
     /// Regularly scheduled pickup or drop off (default when empty).
     #[default]
@@ -416,7 +468,10 @@ impl Serialize for PickupDropOffType {
 /// Indicates whether a rider can board the transit vehicle anywhere along the vehicle’s travel path
 ///
 /// Those values are only defined on <https://developers.google.com/transit/gtfs/reference#routestxt,> not on <https://gtfs.org/reference/static/#routestxt>
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum ContinuousPickupDropOff {
     /// Continuous stopping pickup or drop off.
     Continuous,
@@ -470,7 +525,10 @@ impl<'de> Deserialize<'de> for ContinuousPickupDropOff {
 }
 
 /// Describes if the stop time is exact or not. See <https://gtfs.org/reference/static/#stop_timestxt> `timepoint`
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum TimepointType {
     /// Times are considered approximate
     Approximate = 0,
@@ -511,7 +569,10 @@ impl<'de> Deserialize<'de> for TimepointType {
 }
 
 /// Generic enum to define if a service (like wheelchair boarding) is available
-#[derive(Debug, Default, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(
+    Debug, Default, PartialEq, Eq, Hash, Clone, Copy,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum Availability {
     /// No information if the service is available
     #[default]
@@ -561,7 +622,10 @@ impl Serialize for Availability {
 }
 
 /// Defines if a CalendarDate is added or deleted from a Calendar
-#[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(
+    Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum Exception {
     /// There will be a service on that day
     #[serde(rename = "1")]
@@ -572,7 +636,10 @@ pub enum Exception {
 }
 
 /// Defines the direction of a Trip, only for display, not for routing. See <https://gtfs.org/reference/static/#tripstxt> `direction_id`
-#[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum DirectionType {
     /// Travel in one direction (e.g. outbound travel).
     #[serde(rename = "0")]
@@ -583,7 +650,10 @@ pub enum DirectionType {
 }
 
 /// Is the Trip accessible with a bike. See <https://gtfs.org/reference/static/#tripstxt> `bikes_allowed`
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum BikesAllowedType {
     /// No bike information for the trip
     #[default]
@@ -633,7 +703,10 @@ impl Serialize for BikesAllowedType {
 }
 
 /// Is the Trip accessible with a car. See <https://gtfs.org/reference/static/#tripstxt> `cars_allowed`
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum CarsAllowedType {
     /// No car transport information for the trip
     #[default]
@@ -683,7 +756,10 @@ impl Serialize for CarsAllowedType {
 }
 
 /// Defines where a FareAttribute can be paid
-#[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum PaymentMethod {
     /// Fare is paid on board
     #[serde(rename = "0")]
@@ -694,7 +770,10 @@ pub enum PaymentMethod {
 }
 
 /// Defines if the Frequency is exact (the vehicle runs exactly every n minutes) or not
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum ExactTimes {
     /// Frequency-based trips
     FrequencyBased = 0,
@@ -736,7 +815,10 @@ impl<'de> Deserialize<'de> for ExactTimes {
 }
 
 /// Defines how many transfers can be done with on FareAttribute
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum Transfers {
     /// Unlimited transfers are permitted
     #[default]
@@ -783,7 +865,10 @@ impl Serialize for Transfers {
 }
 
 /// Defines the type of a StopTransfer
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum TransferType {
     /// Recommended transfer point between routes
     #[default]
@@ -843,7 +928,10 @@ impl<'de> Deserialize<'de> for TransferType {
 }
 
 /// Type of pathway between `from_stop_id` and `to_stop_id`
-#[derive(Debug, Serialize, Deserialize, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Serialize, Deserialize, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum PathwayMode {
     /// A walkway
     #[serde(rename = "1")]
@@ -872,7 +960,10 @@ pub enum PathwayMode {
 }
 
 /// Indicates in which direction the pathway can be used
-#[derive(Debug, Serialize, Deserialize, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Serialize, Deserialize, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum PathwayDirectionType {
     /// Unidirectional pathway, it can only be used from `from_stop_id` to `to_stop_id`.
     #[serde(rename = "0")]
@@ -884,7 +975,10 @@ pub enum PathwayDirectionType {
 }
 
 /// Defines the type of a FareMedia
-#[derive(Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq)]
+#[derive(
+    Debug, Deserialize, Serialize, Copy, Clone, PartialEq, Eq,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum FareMediaType {
     /// Used when there is no fare media involved in purchasing or validating a fare product
     #[serde(rename = "0")]
@@ -904,7 +998,10 @@ pub enum FareMediaType {
 }
 
 /// Specifies if an entry in rider_categories.txt should be considered the default category
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum DefaultFareCategory {
     /// Category is not considered the default.
     NotDefault = 0,
@@ -946,7 +1043,10 @@ impl<'de> Deserialize<'de> for DefaultFareCategory {
 }
 
 /// Specifies whether tickets can be bought for this item
-#[derive(Debug, Default, Deserialize, Serialize, Copy, Clone, PartialEq, Eq)]
+#[derive(
+    Debug, Default, Deserialize, Serialize, Copy, Clone, PartialEq, Eq,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum TicketingType {
     /// If a ticketing_deep_link_id is set, tickets are available
     #[default]
@@ -959,7 +1059,10 @@ pub enum TicketingType {
 
 /// Describes the type of booking for on-demand services. See <https://gtfs.org/community/extensions/flex/>
 #[cfg(feature = "gtfs-flex")]
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(
+    Debug, Default, Copy, Clone, PartialEq, Eq, Hash,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum BookingType {
     /// Real-time booking
     #[default]

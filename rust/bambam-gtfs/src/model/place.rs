@@ -11,7 +11,10 @@ use std::sync::Arc;
 use crate::raw::{RawFlexGeometry, RawFlexLocation};
 
 /// A validated stop-to-stop transfer rule (`transfers.txt`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct StopTransfer {
     /// Destination stop ID.
     pub to_stop_id: StopId,
@@ -32,7 +35,10 @@ impl From<RawTransfer> for StopTransfer {
 }
 
 /// A validated station pathway edge (`pathways.txt`).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct Pathway {
     /// Unique pathway identifier.
     pub id: String,
@@ -62,7 +68,10 @@ impl From<RawPathway> for Pathway {
 }
 
 /// A physical stop, station, entrance, or node from `stops.txt`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct Stop {
     /// Unique identifier of the stop.
     pub id: StopId,
@@ -145,7 +154,10 @@ impl Spatial for Stop {
 
 /// Validated GeoJSON flexible service zone from `locations.geojson` (GTFS-Flex).
 #[cfg(feature = "gtfs-flex")]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct FlexLocation {
     /// Unique identifier of the flexible service zone.
     pub id: LocationId,
@@ -229,7 +241,10 @@ impl Spatial for FlexLocation {
 }
 
 /// Member of a [`LocationGroup`] or [`StopArea`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum PlaceMember {
     /// A fixed stop from `stops.txt`.
     Stop(Arc<Stop>),
@@ -258,7 +273,10 @@ impl Spatial for PlaceMember {
 
 /// Validated GTFS-Flex location group combining `location_groups.txt` and `location_group_stops.txt`.
 #[cfg(feature = "gtfs-flex")]
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct LocationGroup {
     /// Unique identifier of the location group.
     pub id: LocationGroupId,
@@ -324,7 +342,10 @@ impl Spatial for LocationGroup {
 }
 
 /// Validated stop area (`stop_areas.txt`) grouping stops and/or flexible locations under an `AreaId`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct StopArea {
     /// Area identifier.
     pub id: AreaId,
@@ -336,7 +357,10 @@ pub struct StopArea {
 ///
 /// Using [`StopPlace`] ensures that `StopTime::place` has a single, consistent type
 /// whether `gtfs-flex` is enabled or disabled—preserving Cargo feature additivity!
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum StopPlace {
     /// A fixed physical stop from `stops.txt`.
     Stop(Arc<Stop>),

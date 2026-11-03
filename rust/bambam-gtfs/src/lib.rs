@@ -34,9 +34,9 @@ pub use model::{DroppedEntityCounts, ValidatedFeed, ValidationPolicy, Validation
 pub use primitives::{BoundingBox, Coord, GtfsTime, PrimitiveError, TimeWindow};
 pub use raw::{CsvRowIter, GtfsArchive, GtfsTable, RawFeed, RawFeedReader, TableBundle};
 pub use routing::{
-    ActiveServiceWindow, BoardableDeparture, CompactStopTime, FeedMetadata, FullyQualifiedPlaceId,
-    FullyQualifiedRouteId, FullyQualifiedTripId, PlaceIdKind, PlaceSpatialEntry, RoutingTimetable,
-    RoutingTimetableBuilder,
+    ActiveServiceWindow, ArchivedRoutingTimetable, BoardableDeparture, CompactStopTime,
+    FeedMetadata, FullyQualifiedPlaceId, FullyQualifiedRouteId, FullyQualifiedTripId, PlaceIdKind,
+    PlaceSpatialEntry, RoutingTimetable, RoutingTimetableBuilder,
 };
 pub use traits::{Identifiable, Spatial, TemporalStopTime};
 

@@ -682,17 +682,17 @@ fn test_timezone_and_overnight_service_day_normalization() {
 }
 
 #[test]
-fn test_bincode_snapshot_roundtrip() {
+fn test_rkyv_snapshot_roundtrip() {
     let feed = ValidatedFeed::from_path(fixture_path("fixtures/basic")).unwrap();
     let original = RoutingTimetable::try_from(feed).unwrap();
 
     let bytes = original
-        .to_bincode_bytes()
-        .expect("should serialize RoutingTimetable to bincode");
+        .to_rkyv_bytes()
+        .expect("should serialize RoutingTimetable to rkyv");
     assert!(!bytes.is_empty());
 
-    let restored = RoutingTimetable::from_bincode_bytes(&bytes)
-        .expect("should deserialize RoutingTimetable from bincode");
+    let restored = RoutingTimetable::from_rkyv_bytes(&bytes)
+        .expect("should deserialize RoutingTimetable from rkyv");
 
     assert_eq!(restored.feeds, original.feeds);
     assert_eq!(restored.places, original.places);
@@ -702,7 +702,7 @@ fn test_bincode_snapshot_roundtrip() {
     assert_eq!(restored.trips, original.trips);
     assert_eq!(restored.stop_times, original.stop_times);
 
-    // Ensure the rebuilt R-tree spatial index works after bincode deserialization
+    // Ensure the rebuilt R-tree spatial index works after rkyv deserialization
     let stop1_coord = restored.places[restored.stop_id_to_place[&StopId::new("stop1")].index()]
         .representative_coord()
         .unwrap();

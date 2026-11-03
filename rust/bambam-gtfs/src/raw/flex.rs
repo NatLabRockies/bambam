@@ -70,11 +70,14 @@ pub struct RawLocationGroupStop {
     pub stop_id: String,
 }
 
-/// Validatedpolygon or multipolygon rings parsed from `locations.geojson` (GTFS-Flex).
+/// Validated polygon or multipolygon rings parsed from `locations.geojson` (GTFS-Flex).
 ///
 /// Unlike an untagged enum wrapping `geojson::Geometry` in both variants, this enum
 /// holds the strongly-typed coordinate rings directly and serializes/deserializes cleanly.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum RawFlexGeometry {
     /// A single polygon (exterior ring followed by zero or more interior hole rings).
     Polygon(Vec<Vec<Coord>>),

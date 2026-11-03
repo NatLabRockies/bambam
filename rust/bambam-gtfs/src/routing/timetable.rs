@@ -26,7 +26,10 @@ use std::sync::Arc;
 use crate::model::FlexDurationParams;
 
 /// Interpolated or flexible timing at a single stop event in the Phase 3 [`RoutingTimetable`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum RoutableStopTiming {
     /// Fixed or interpolated arrival and departure timestamps (`arrival <= departure`).
     Fixed {
@@ -52,7 +55,10 @@ const NO_FLEX_DURATION_IDX: u16 = u16::MAX;
 /// - Because every trip belonging to a [`RoutePattern`] visits the exact same sequence of places,
 ///   storing `place_idx` on every stop time is redundant with `pattern.stops[offset].place_idx`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct CompactStopTime {
     /// Scheduled/interpolated arrival time in seconds since midnight, or flex window `start` when `FLAG_IS_FLEX_WINDOW` is set.
     pub arrival_or_start_secs: u32,
@@ -191,7 +197,10 @@ impl TemporalStopTime for CompactStopTime {
 }
 
 /// Stop-level boarding and alighting profile entry within a [`RoutePattern`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct PatternStopProfile {
     /// Contiguous index of the visited place (`Stop`, `FlexZone`, or `LocationGroup`).
     pub place_idx: PlaceIdx,
@@ -202,7 +211,10 @@ pub struct PatternStopProfile {
 }
 
 /// A unique sequence of [`PatternStopProfile`]s served by one or more trips on a [`Route`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct RoutePattern {
     /// Contiguous index of this pattern.
     pub idx: PatternIdx,
@@ -218,7 +230,10 @@ pub struct RoutePattern {
 
 /// A validated, interpolated trip in the [`RoutingTimetable`] referencing a contiguous slice
 /// of [`CompactStopTime`]s in [`RoutingTimetable::stop_times`].
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct RoutableTrip {
     /// Contiguous index of this trip.
     pub idx: TripIdx,
@@ -255,7 +270,10 @@ impl RoutableTrip {
 
 /// Reverse-index entry mapping a [`PlaceIdx`] to a [`PatternIdx`] and its 0-based position
 /// within `pattern.stops`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct PlacePatternOccurrence {
     /// Pattern visiting the place.
     pub pattern_idx: PatternIdx,
@@ -264,7 +282,10 @@ pub struct PlacePatternOccurrence {
 }
 
 /// Pre-indexed stop-to-stop transfer or pathway edge between two [`PlaceIdx`]s.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct IndexedTransfer {
     /// Origin place index.
     pub from_place: PlaceIdx,
@@ -279,7 +300,10 @@ pub struct IndexedTransfer {
 }
 
 /// Spatial index entry associating a [`PlaceIdx`] with its WGS84 bounding box inside an [`rstar::RTree`].
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct PlaceSpatialEntry {
     /// Contiguous index of the indexed [`StopPlace`].
     pub place_idx: PlaceIdx,
@@ -301,15 +325,20 @@ impl RTreeObject for PlaceSpatialEntry {
 
 /// Active service evaluation window for a local `(date, time_of_day)` query, supporting both
 /// current-day schedules and previous-day overnight trips (`>= 24:00:00` on `date - 1`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct ActiveServiceWindow {
     /// Local calendar date of the query.
+    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub date: NaiveDate,
     /// Local time of day on `date` (`0..86_400` seconds).
     pub time_of_day: GtfsTime,
     /// Boolean mask indexed by [`ServiceIdx`] indicating services active on `date`.
     pub today_active: Vec<bool>,
     /// Previous calendar date (`date - 1 day`).
+    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub yesterday_date: NaiveDate,
     /// Query time expressed on `yesterday_date`'s service clock (`time_of_day + 86_400` seconds).
     pub yesterday_overnight_time: GtfsTime,
@@ -319,7 +348,10 @@ pub struct ActiveServiceWindow {
 
 /// Earliest boardable trip or frequency/flex departure returned by
 /// [`RoutingTimetable::earliest_boardable_trip`] or [`RoutingTimetable::earliest_boardable_trip_with_overnight`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct BoardableDeparture {
     /// Contiguous index of the matched [`RoutableTrip`].
     pub trip_idx: TripIdx,
@@ -355,7 +387,10 @@ impl BoardableDeparture {
 }
 
 /// Metadata and contiguous index spans for a single GTFS archive inside a merged [`RoutingTimetable`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct FeedMetadata {
     /// Contiguous index of this feed (`0..feeds.len()`).
     pub idx: FeedIdx,
@@ -369,6 +404,7 @@ pub struct FeedMetadata {
         deserialize_with = "crate::model::agency::deserialize_option_timezone",
         default
     )]
+    #[rkyv(with = crate::model::agency::RkyvOptionTimeZone)]
     pub primary_timezone: Option<TimeZone>,
     /// Contiguous range of [`PlaceIdx`]s belonging to this feed.
     pub places_span: Range<u32>,
@@ -491,9 +527,63 @@ fn deserialize_spatial_index<'de, D: serde::Deserializer<'de>>(
     Ok(RTree::bulk_load(entries))
 }
 
+/// `rkyv::with` wrapper that serializes `rstar::RTree<PlaceSpatialEntry>` as a sorted `Vec<PlaceSpatialEntry>`
+/// and bulk-loads the R-tree on deserialization.
+pub struct RkyvSpatialIndex;
+
+impl rkyv::with::ArchiveWith<RTree<PlaceSpatialEntry>> for RkyvSpatialIndex {
+    type Archived = rkyv::vec::ArchivedVec<ArchivedPlaceSpatialEntry>;
+    type Resolver = rkyv::vec::VecResolver;
+
+    fn resolve_with(
+        field: &RTree<PlaceSpatialEntry>,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let mut entries: Vec<PlaceSpatialEntry> = field.iter().copied().collect();
+        entries.sort_by_key(|e| e.place_idx);
+        rkyv::vec::ArchivedVec::resolve_from_slice(&entries, resolver, out);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized>
+    rkyv::with::SerializeWith<RTree<PlaceSpatialEntry>, S> for RkyvSpatialIndex
+{
+    fn serialize_with(
+        field: &RTree<PlaceSpatialEntry>,
+        serializer: &mut S,
+    ) -> Result<Self::Resolver, S::Error> {
+        let mut entries: Vec<PlaceSpatialEntry> = field.iter().copied().collect();
+        entries.sort_by_key(|e| e.place_idx);
+        rkyv::vec::ArchivedVec::serialize_from_slice(&entries, serializer)
+    }
+}
+
+impl<D>
+    rkyv::with::DeserializeWith<
+        rkyv::vec::ArchivedVec<ArchivedPlaceSpatialEntry>,
+        RTree<PlaceSpatialEntry>,
+        D,
+    > for RkyvSpatialIndex
+where
+    D: rkyv::rancor::Fallible + ?Sized,
+    D::Error: rkyv::rancor::Source,
+{
+    fn deserialize_with(
+        field: &rkyv::vec::ArchivedVec<ArchivedPlaceSpatialEntry>,
+        deserializer: &mut D,
+    ) -> Result<RTree<PlaceSpatialEntry>, D::Error> {
+        let entries: Vec<PlaceSpatialEntry> = rkyv::Deserialize::deserialize(field, deserializer)?;
+        Ok(RTree::bulk_load(entries))
+    }
+}
+
 /// Phase 3: RAPTOR-style contiguous CSR timetable, multi-feed archive registry, and spatial/shape
 /// index ready for continental-scale vectorized multimodal A* graph search.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, Default, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct RoutingTimetable {
     /// Metadata and index ranges for every merged GTFS archive, indexed by [`FeedIdx`].
     pub feeds: Vec<FeedMetadata>,
@@ -509,6 +599,7 @@ pub struct RoutingTimetable {
         deserialize_with = "deserialize_spatial_index",
         default
     )]
+    #[rkyv(with = RkyvSpatialIndex)]
     pub place_spatial_index: RTree<PlaceSpatialEntry>,
 
     /// Dense table of all routes, indexed by [`RouteIdx`].
@@ -1088,40 +1179,61 @@ impl RoutingTimetable {
         matches
     }
 
-    // --- Binary Snapshot Serialization (`bincode`) for Instant HPC Cold-Starts ---
+    // --- Binary Snapshot Serialization (`rkyv`) for Instant HPC Cold-Starts ---
 
-    /// Serializes this [`RoutingTimetable`] into a compact `bincode` byte vector.
-    pub fn to_bincode_bytes(&self) -> Result<Vec<u8>, RoutingError> {
-        Ok(bincode::serialize(self)?)
+    /// Serializes this [`RoutingTimetable`] into a compact `rkyv` byte vector.
+    pub fn to_rkyv_bytes(&self) -> Result<Vec<u8>, RoutingError> {
+        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
+            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
+        Ok(aligned.into_vec())
     }
 
-    /// Deserializes a [`RoutingTimetable`] from a `bincode` byte slice.
-    pub fn from_bincode_bytes(bytes: &[u8]) -> Result<Self, RoutingError> {
-        Ok(bincode::deserialize(bytes)?)
+    /// Validates and returns a zero-copy [`ArchivedRoutingTimetable`] reference directly from a
+    /// 16-byte-aligned `rkyv` byte slice (such as an [`rkyv::util::AlignedVec`] or memory-mapped buffer)
+    /// without allocating or copying the timetable's vectors.
+    pub fn access_rkyv_bytes(bytes: &[u8]) -> Result<&ArchivedRoutingTimetable, RoutingError> {
+        rkyv::access::<ArchivedRoutingTimetable, rkyv::rancor::Error>(bytes)
+            .map_err(|e| RoutingError::Snapshot(e.to_string()))
     }
 
-    /// Writes this [`RoutingTimetable`] as a binary `bincode` snapshot to `writer`.
-    pub fn write_bincode<W: Write>(&self, writer: W) -> Result<(), RoutingError> {
-        Ok(bincode::serialize_into(writer, self)?)
+    /// Deserializes a [`RoutingTimetable`] from an `rkyv` byte slice (validating the archive via `bytecheck`).
+    pub fn from_rkyv_bytes(bytes: &[u8]) -> Result<Self, RoutingError> {
+        let mut aligned = rkyv::util::AlignedVec::<16>::with_capacity(bytes.len());
+        aligned.extend_from_slice(bytes);
+        rkyv::from_bytes::<Self, rkyv::rancor::Error>(&aligned)
+            .map_err(|e| RoutingError::Snapshot(e.to_string()))
     }
 
-    /// Reads a [`RoutingTimetable`] from a binary `bincode` snapshot `reader`.
-    pub fn read_bincode<R: Read>(reader: R) -> Result<Self, RoutingError> {
-        Ok(bincode::deserialize_from(reader)?)
+    /// Writes this [`RoutingTimetable`] as a binary `rkyv` snapshot to `writer`.
+    pub fn write_rkyv<W: Write>(&self, mut writer: W) -> Result<(), RoutingError> {
+        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
+            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
+        writer
+            .write_all(&aligned)
+            .map_err(|e| RoutingError::Snapshot(e.to_string()))
     }
 
-    /// Saves this [`RoutingTimetable`] to a file on disk in `bincode` format.
-    pub fn save_bincode(&self, path: impl AsRef<Path>) -> Result<(), RoutingError> {
-        let file = File::create(path).map_err(|e| Box::new(bincode::ErrorKind::Io(e)))?;
+    /// Reads a [`RoutingTimetable`] from a binary `rkyv` snapshot `reader`.
+    pub fn read_rkyv<R: Read>(mut reader: R) -> Result<Self, RoutingError> {
+        let mut bytes = Vec::new();
+        reader
+            .read_to_end(&mut bytes)
+            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
+        Self::from_rkyv_bytes(&bytes)
+    }
+
+    /// Saves this [`RoutingTimetable`] to a file on disk in `rkyv` format.
+    pub fn save_rkyv(&self, path: impl AsRef<Path>) -> Result<(), RoutingError> {
+        let file = File::create(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
         let writer = BufWriter::new(file);
-        self.write_bincode(writer)
+        self.write_rkyv(writer)
     }
 
-    /// Loads a [`RoutingTimetable`] from a `bincode` snapshot file on disk.
-    pub fn load_bincode(path: impl AsRef<Path>) -> Result<Self, RoutingError> {
-        let file = File::open(path).map_err(|e| Box::new(bincode::ErrorKind::Io(e)))?;
+    /// Loads a [`RoutingTimetable`] from an `rkyv` snapshot file on disk.
+    pub fn load_rkyv(path: impl AsRef<Path>) -> Result<Self, RoutingError> {
+        let file = File::open(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
         let reader = BufReader::new(file);
-        Self::read_bincode(reader)
+        Self::read_rkyv(reader)
     }
 
     /// Reconstructs the geographic linestring (`Vec<Coord>`) for a transit traversal along `trip_idx`

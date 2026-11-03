@@ -7,7 +7,10 @@ use crate::raw::RawBookingRule;
 use crate::traits::Identifiable;
 
 /// Type-safe representation of when a rider must book an on-demand trip (`booking_rules.txt`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum BookingNotice {
     /// Real-time booking (`booking_type = 0`).
     RealTime,
@@ -36,7 +39,10 @@ pub enum BookingNotice {
 }
 
 /// A validated booking rule from `booking_rules.txt` (GTFS-Flex).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct BookingRule {
     /// Unique identifier for the booking rule.
     pub id: BookingRuleId,
@@ -97,7 +103,10 @@ impl Identifiable for BookingRule {
 
 /// Optional duration scaling and offset parameters on a GTFS-Flex `StopTime`
 /// used by routers to adjust travel time estimates inside demand-responsive zones.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct FlexDurationParams {
     /// Factor applied to base travel duration to estimate mean travel time.
     pub mean_duration_factor: Option<f64>,

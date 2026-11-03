@@ -39,7 +39,7 @@ pub enum RoutingError {
         num_stops: usize,
     },
 
-    /// Binary snapshot serialization or deserialization error (`bincode` / I/O).
+    /// Binary snapshot serialization or deserialization error (`rkyv` / I/O).
     #[error("timetable binary snapshot error: {0}")]
-    Snapshot(#[from] Box<bincode::ErrorKind>),
+    Snapshot(String),
 }

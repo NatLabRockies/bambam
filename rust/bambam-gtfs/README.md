@@ -15,5 +15,5 @@ GTFS Schedule and GTFS-Flex data structures, phased validation pipeline, and RAP
    - Unified departure queries via `earliest_boardable_trip` and `earliest_boardable_trip_with_overnight` (supporting fixed schedules via `partition_point`, `frequencies.txt` headways, and GTFS-Flex windows, plus optional frequency trip materialization).
    - Exact ray-casting point-in-polygon (`contains_coord`) on `FlexLocation` and an `rstar::RTree` spatial index (`places_near`, `places_in_bbox`) for $O(\log N)$ multimodal street-network linking.
    - Timezone and overnight service-day normalization (`active_services_at_time`, `active_services_for_feed_at_timestamp`).
-   - Instant HPC cold-start binary snapshot serialization via `bincode` (`to_bincode_bytes`, `from_bincode_bytes`, `save_bincode`, `load_bincode`).
+   - Instant HPC cold-start binary snapshot serialization via `rkyv` (`to_rkyv_bytes`, `from_rkyv_bytes`, `save_rkyv`, `load_rkyv`).
 

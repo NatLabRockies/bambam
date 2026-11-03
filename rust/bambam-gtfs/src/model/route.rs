@@ -7,7 +7,10 @@ use crate::traits::Identifiable;
 use rgb::RGB8;
 
 /// A validated commercial transit line (`routes.txt`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct Route {
     /// Unique identifier for the route.
     pub id: RouteId,
@@ -26,8 +29,10 @@ pub struct Route {
     /// Optional presentation sort order.
     pub order: Option<u32>,
     /// Route display color (defaults to white `#FFFFFF` when omitted in GTFS).
+    #[rkyv(with = crate::primitives::RkyvRgb8)]
     pub color: RGB8,
     /// Route text color (defaults to black `#000000` when omitted in GTFS).
+    #[rkyv(with = crate::primitives::RkyvRgb8)]
     pub text_color: RGB8,
     /// Continuous pickup policy along the route.
     pub continuous_pickup: ContinuousPickupDropOff,

@@ -35,7 +35,10 @@ use std::time::Duration;
 /// handle real-world "dirty GTFS" minor specification violations (such as trips with 0 or 1 stops,
 /// non-monotonic stop timestamps, missing boundary timestamps, duplicate `stop_sequence` numbers,
 /// or broken foreign keys on individual trips/rows).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum ValidationPolicy {
     /// Fail immediately on the first relational or timing violation.
     #[default]
@@ -47,7 +50,10 @@ pub enum ValidationPolicy {
 
 /// Structured warning emitted when a GTFS entity or row is dropped or repaired under
 /// [`ValidationPolicy::DropInvalidTripsWithWarning`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub enum ValidationWarning {
     /// A trip was dropped during Phase 2 or Phase 3 validation.
     DroppedTrip {
@@ -84,7 +90,10 @@ pub enum ValidationWarning {
 
 /// Summary counts of dropped or deduplicated GTFS entities when loading with
 /// [`ValidationPolicy::DropInvalidTripsWithWarning`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct DroppedEntityCounts {
     /// Number of trips dropped because they had 0 stops in `stop_times.txt`.
     pub empty_trips: usize,

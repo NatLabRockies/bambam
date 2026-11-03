@@ -34,7 +34,6 @@ bamcensus = { version = "0.1.0" }
 bamcensus-acs = { version = "0.1.0" }
 bamcensus-core = { version = "0.1.0" }
 bamcensus-lehd = { version = "0.1.0" }
-bincode = "1.3.3"
 chrono = { version = "0.4.42", features = ["serde"] }
 clap = { version = "4.5.52", features = ["derive", "env"] }
 config = "0.15.19"
@@ -75,6 +74,7 @@ rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
 rgb = { version = "0.8", features = ["serde"] }
+rkyv = "0.8"
 routee-compass = { version = "0.19.5", default-features = false, git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
 routee-compass-core = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66", features = ["accumulated_cost"] }
 routee-compass-macros = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }

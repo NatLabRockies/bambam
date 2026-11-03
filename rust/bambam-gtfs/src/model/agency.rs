@@ -28,8 +28,68 @@ pub(crate) fn deserialize_option_timezone<'de, D: Deserializer<'de>>(
     }
 }
 
+/// `rkyv::with` wrapper that serializes `Option<jiff::tz::TimeZone>` via its IANA timezone name string.
+pub struct RkyvOptionTimeZone;
+
+impl rkyv::with::ArchiveWith<Option<TimeZone>> for RkyvOptionTimeZone {
+    type Archived = rkyv::option::ArchivedOption<rkyv::string::ArchivedString>;
+    type Resolver = Option<rkyv::string::StringResolver>;
+
+    #[inline]
+    fn resolve_with(
+        field: &Option<TimeZone>,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let name: Option<String> = field
+            .as_ref()
+            .and_then(|t| t.iana_name())
+            .map(str::to_owned);
+        rkyv::Archive::resolve(&name, resolver, out);
+    }
+}
+
+impl<S> rkyv::with::SerializeWith<Option<TimeZone>, S> for RkyvOptionTimeZone
+where
+    S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized,
+    S::Error: rkyv::rancor::Source,
+{
+    #[inline]
+    fn serialize_with(
+        field: &Option<TimeZone>,
+        serializer: &mut S,
+    ) -> Result<Self::Resolver, S::Error> {
+        let name: Option<String> = field
+            .as_ref()
+            .and_then(|t| t.iana_name())
+            .map(str::to_owned);
+        rkyv::Serialize::serialize(&name, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::with::DeserializeWith<
+        rkyv::option::ArchivedOption<rkyv::string::ArchivedString>,
+        Option<TimeZone>,
+        D,
+    > for RkyvOptionTimeZone
+{
+    #[inline]
+    fn deserialize_with(
+        field: &rkyv::option::ArchivedOption<rkyv::string::ArchivedString>,
+        _deserializer: &mut D,
+    ) -> Result<Option<TimeZone>, D::Error> {
+        Ok(field
+            .as_ref()
+            .and_then(|s| TimeZone::get(s.as_str().trim()).ok()))
+    }
+}
+
 /// A validated transit agency (`agency.txt`).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct Agency {
     /// Optional unique agency identifier (mandatory when multiple agencies exist).
     pub id: Option<AgencyId>,
@@ -45,6 +105,7 @@ pub struct Agency {
         deserialize_with = "deserialize_option_timezone",
         default
     )]
+    #[rkyv(with = RkyvOptionTimeZone)]
     pub parsed_timezone: Option<TimeZone>,
     /// Primary language used by this transit agency.
     pub lang: Option<String>,

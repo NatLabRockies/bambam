@@ -11,7 +11,10 @@ use crate::traits::{Identifiable, Spatial};
 ///
 /// Using `f32` (~1 cm geographic precision and ~1 mm arc-length precision over 100 km) reduces
 /// 80 million continental US shape points from `~2.6 GB` down to `~960 MB`.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct ShapeVertex {
     /// Longitude in WGS84 decimal degrees.
     pub lon: f32,
@@ -30,7 +33,10 @@ impl ShapeVertex {
 }
 
 /// A linear position along a [`ShapePolyline`] resolved for a specific stop or point along a trip.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct ShapeLinearRef {
     /// Cumulative Haversine arc length in meters from the first vertex of the [`ShapePolyline`].
     pub arc_meters: f64,
@@ -44,7 +50,10 @@ pub struct ShapeLinearRef {
 /// - projecting geographic coordinates onto the polyline,
 /// - resolving `shape_dist_traveled` values into exact arc-length positions, and
 /// - slicing exact sub-segment linestrings `Vec<Coord>` between any two linear references.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct ShapePolyline {
     /// Unique shape identifier.
     pub id: ShapeId,

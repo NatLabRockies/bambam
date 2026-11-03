@@ -11,7 +11,11 @@ use std::ops::Deref;
 macro_rules! define_gtfs_id {
     ($(#[$meta:meta])* $vis:vis struct $name:ident;) => {
         $(#[$meta])*
-        #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[derive(
+            Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+            rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+        )]
+        #[rkyv(derive(PartialEq, Eq, PartialOrd, Ord, Hash))]
         #[serde(transparent)]
         $vis struct $name(pub String);
 
@@ -92,7 +96,11 @@ macro_rules! define_gtfs_id {
 macro_rules! define_gtfs_index {
     ($(#[$meta:meta])* $vis:vis struct $name:ident;) => {
         $(#[$meta])*
-        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[derive(
+            Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize,
+            Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+        )]
+        #[rkyv(derive(PartialEq, Eq, PartialOrd, Ord, Hash))]
         #[serde(transparent)]
         $vis struct $name(pub u32);
 
@@ -263,7 +271,10 @@ define_gtfs_index! {
 
 /// A GTFS identifier scoped to a specific archive ([`FeedId`]), preventing cross-feed ID collisions
 /// when merging hundreds or thousands of GTFS archives into a single [`RoutingTimetable`](crate::routing::RoutingTimetable).
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct ScopedId<Id> {
     /// Archive / feed identifier.
     pub feed_id: FeedId,

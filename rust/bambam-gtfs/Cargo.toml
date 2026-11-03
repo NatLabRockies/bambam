@@ -16,7 +16,6 @@ default = ["gtfs-flex"]
 gtfs-flex = ["dep:geojson"]
 
 [dependencies]
-bincode = { workspace = true }
 chrono = { workspace = true }
 csv = { workspace = true }
 derive_more = { workspace = true }
@@ -24,6 +23,7 @@ flate2 = { workspace = true }
 geojson = { workspace = true, optional = true }
 jiff = { workspace = true }
 rgb = { workspace = true }
+rkyv = { workspace = true }
 rstar = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

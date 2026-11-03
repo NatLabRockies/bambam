@@ -8,13 +8,18 @@ use chrono::{Datelike, NaiveDate, Weekday};
 use std::collections::HashSet;
 
 /// Recurring weekly operating pattern from `calendar.txt`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct WeeklyPattern {
     /// Bitmask of active weekdays (`bit 0 = Monday` .. `bit 6 = Sunday`).
     pub weekday_mask: u8,
     /// First date of the service interval (inclusive).
+    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub start_date: NaiveDate,
     /// Last date of the service interval (inclusive).
+    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub end_date: NaiveDate,
 }
 
@@ -68,15 +73,20 @@ impl From<&RawCalendar> for WeeklyPattern {
 }
 
 /// Unified service schedule for a `ServiceId` combining `calendar.txt` and `calendar_dates.txt`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
+    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct ServiceCalendar {
     /// Unique service identifier.
     pub id: ServiceId,
     /// Optional base weekly pattern from `calendar.txt`.
     pub weekly: Option<WeeklyPattern>,
     /// Specific dates added via `calendar_dates.txt` (`exception_type = 1`).
+    #[rkyv(with = crate::primitives::RkyvNaiveDateSet)]
     pub added_dates: HashSet<NaiveDate>,
     /// Specific dates removed via `calendar_dates.txt` (`exception_type = 2`).
+    #[rkyv(with = crate::primitives::RkyvNaiveDateSet)]
     pub removed_dates: HashSet<NaiveDate>,
 }
 
