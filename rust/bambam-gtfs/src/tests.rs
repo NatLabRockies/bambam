@@ -12,6 +12,11 @@ use crate::traits::TemporalStopTime;
 use crate::traits::{Identifiable, Spatial};
 use chrono::NaiveDate;
 use std::convert::TryFrom;
+use std::path::PathBuf;
+
+fn fixture_path(rel_path: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel_path)
+}
 
 #[test]
 fn test_id_newtypes_and_indices() {
@@ -28,7 +33,8 @@ fn test_id_newtypes_and_indices() {
 #[test]
 fn test_phased_pipeline_basic_fixture() {
     // Phase 1: RawFeed
-    let mut raw = RawFeed::from_path("fixtures/basic").expect("Phase 1 RawFeed should succeed");
+    let mut raw =
+        RawFeed::from_path(fixture_path("fixtures/basic")).expect("Phase 1 RawFeed should succeed");
     assert_eq!(raw.agencies.len(), 2);
     assert_eq!(raw.stops.len(), 6);
     assert_eq!(raw.routes.len(), 3);
@@ -83,7 +89,7 @@ fn test_phased_pipeline_basic_fixture() {
 #[test]
 fn test_interpolated_stop_times_in_phase_3() {
     // Notice: this single test compiles and passes both WITH and WITHOUT `--features gtfs-flex`!
-    let validated = ValidatedFeed::from_path("fixtures/interpolated_stop_times")
+    let validated = ValidatedFeed::from_path(fixture_path("fixtures/interpolated_stop_times"))
         .expect("Phase 2 should accept uninterpolated intermediate stop times");
     let trip1 = &validated.trips[&TripId::new("trip1")];
     assert!(matches!(
@@ -158,8 +164,8 @@ fn test_shape_linear_referencing_and_subsegment_slicing() {
 
 #[test]
 fn test_zip_archive_reading() {
-    let timetable =
-        RoutingTimetable::from_path("fixtures/zips/gtfs.zip").expect("should read zip archive");
+    let timetable = RoutingTimetable::from_path(fixture_path("fixtures/zips/gtfs.zip"))
+        .expect("should read zip archive");
     assert_eq!(timetable.places.len(), 5);
     assert!(!timetable.routes.is_empty());
     assert_eq!(timetable.trips.len(), 1);
@@ -173,7 +179,8 @@ fn test_zip_archive_reading() {
 #[test]
 fn test_selective_table_loading_and_streaming() {
     // 1. Selective tuple loading from a zip archive (never touches stop_times.txt or shapes.txt!)
-    let mut archive = GtfsArchive::open("fixtures/zips/gtfs.zip").expect("should open zip archive");
+    let mut archive =
+        GtfsArchive::open(fixture_path("fixtures/zips/gtfs.zip")).expect("should open zip archive");
     assert!(archive.contains_file("routes.txt"));
     assert!(!archive.contains_file("nonexistent_table.txt"));
 
@@ -205,7 +212,7 @@ fn test_selective_table_loading_and_streaming() {
     crate::impl_gtfs_csv_table!(CustomLicenseRow, "licenses.txt", mandatory = false);
 
     let mut dir_archive =
-        GtfsArchive::open("fixtures/basic").expect("should open directory archive");
+        GtfsArchive::open(fixture_path("fixtures/basic")).expect("should open directory archive");
     let licenses: Option<Vec<CustomLicenseRow>> = dir_archive
         .load()
         .expect("should load custom extension table");
@@ -233,8 +240,9 @@ fn test_compact_memory_layout_and_multi_feed_merger() {
     );
 
     // 2. Merge two feeds that have overlapping local IDs ("stop1", "stop2", "route1", "trip1")
-    let feed_a = ValidatedFeed::from_path("fixtures/basic").expect("load feed A");
-    let feed_b = ValidatedFeed::from_path("fixtures/interpolated_stop_times").expect("load feed B");
+    let feed_a = ValidatedFeed::from_path(fixture_path("fixtures/basic")).expect("load feed A");
+    let feed_b = ValidatedFeed::from_path(fixture_path("fixtures/interpolated_stop_times"))
+        .expect("load feed B");
 
     let mut builder = RoutingTimetable::builder();
     let fidx_a = builder
@@ -295,7 +303,8 @@ fn test_compact_memory_layout_and_multi_feed_merger() {
 #[test]
 fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     // 0. Standalone FlexTables bundle loading without loading the rest of the feed
-    let mut flex_archive = GtfsArchive::open("fixtures/flex").expect("open flex archive");
+    let mut flex_archive =
+        GtfsArchive::open(fixture_path("fixtures/flex")).expect("open flex archive");
     let flex_only: FlexTables = flex_archive
         .load()
         .expect("should load standalone FlexTables bundle");
@@ -303,7 +312,7 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     assert_eq!(flex_only.booking_rules.as_ref().map(Vec::len), Some(1));
 
     // 1. Read the existing fixtures/flex feed through all 3 phases
-    let timetable = RoutingTimetable::from_path("fixtures/flex")
+    let timetable = RoutingTimetable::from_path(fixture_path("fixtures/flex"))
         .expect("fixtures/flex should pass Phases 1, 2, and 3");
     assert_eq!(timetable.location_id_to_place.len(), 2);
     assert!(!timetable.trips.is_empty());
@@ -322,7 +331,7 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     assert!((flex_dur.estimate_mean_seconds(600.0) - 2400.0).abs() < 1e-6);
 
     // 2. Construct a synthetic RawFeed exercising LocationGroup, MultiPolygon, BookingRule, and Spatial traits
-    let mut raw = RawFeed::from_path("fixtures/flex").unwrap();
+    let mut raw = RawFeed::from_path(fixture_path("fixtures/flex")).unwrap();
     raw.location_groups = Some(vec![RawLocationGroup {
         location_group_id: LocationGroupId::new("lg_1"),
         location_group_name: Some("Downtown & Area 708 Group".to_owned()),
@@ -361,7 +370,7 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
 #[test]
 fn test_gtfs_flex_validation_errors() {
     // 1. Namespace collision between stops.txt and locations.geojson
-    let mut raw = RawFeed::from_path("fixtures/flex").unwrap();
+    let mut raw = RawFeed::from_path(fixture_path("fixtures/flex")).unwrap();
     raw.stops.push(RawStop {
         id: StopId::new("area_708"),
         name: Some("Conflicting Stop".to_owned()),
@@ -371,7 +380,7 @@ fn test_gtfs_flex_validation_errors() {
     assert!(matches!(err, ModelError::NamespaceCollision { id } if id == "area_708"));
 
     // 2. Mutually exclusive stop_id and location_id on the same stop_time
-    let mut raw2 = RawFeed::from_path("fixtures/flex").unwrap();
+    let mut raw2 = RawFeed::from_path(fixture_path("fixtures/flex")).unwrap();
     raw2.stops.push(RawStop {
         id: StopId::new("valid_stop_1"),
         ..Default::default()
