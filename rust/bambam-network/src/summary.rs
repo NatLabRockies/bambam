@@ -53,13 +53,12 @@ impl NetworkGraphSource {
 
 /// Writes `summary.toml` into `output_directory`.
 pub fn write_summary(
-    output_directory: &Path,
+    summary_path: &Path,
     summary: &NetworkGraphSummary,
 ) -> Result<(), NetworkImportError> {
     let summary_toml = toml::to_string_pretty(summary).map_err(|e| {
         NetworkImportError::InternalError(format!("failure serializing summary TOML: {e}"))
     })?;
-    let summary_path = output_directory.join("summary.toml");
     std::fs::write(&summary_path, &summary_toml).map_err(|e| {
         NetworkImportError::CsvWriteError(format!(
             "failed to write '{}': {e}",
