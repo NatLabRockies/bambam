@@ -640,11 +640,11 @@ fn map_match(
     let src_stop = src
         .place
         .as_stop()
-        .ok_or_else(|| ScheduleError::StopTimeMissingStop)?;
+        .ok_or(ScheduleError::StopTimeMissingStop)?;
     let dst_stop = dst
         .place
         .as_stop()
-        .ok_or_else(|| ScheduleError::StopTimeMissingStop)?;
+        .ok_or(ScheduleError::StopTimeMissingStop)?;
 
     // Since `stop_locations` is computed from `gtfs.stops`, this should never fail
     let maybe_src = stop_locations.get(src_stop.id.as_str()).ok_or_else(|| {

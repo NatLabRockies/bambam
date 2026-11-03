@@ -335,12 +335,12 @@ fn summarize(rows: &Vec<GtfsProvider>) {
                             let src_stop = pair[0]
                                 .place
                                 .as_stop()
-                                .ok_or_else(|| ScheduleError::StopTimeMissingStop)
+                                .ok_or(ScheduleError::StopTimeMissingStop)
                                 .unwrap();
                             let dst_stop = pair[1]
                                 .place
                                 .as_stop()
-                                .ok_or_else(|| ScheduleError::StopTimeMissingStop)
+                                .ok_or(ScheduleError::StopTimeMissingStop)
                                 .unwrap();
                             leg_ods.insert((src_stop.id.as_str(), dst_stop.id.as_str()));
                         }

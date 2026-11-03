@@ -81,7 +81,7 @@ pub fn find_in_calendar(
     if within_service_date_range {
         Ok(*target)
     } else {
-        let msg = error_msg_suffix(target, &start, &end);
+        let msg = error_msg_suffix(target, start, end);
         Err(ScheduleError::InvalidData(format!(
             "no calendar.txt dates match {msg}"
         )))
