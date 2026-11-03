@@ -1,31 +1,28 @@
-use crate::model::{feature::highway::Highway, osm::overpass::FilterQuery};
+use crate::model::feature::highway::Highway;
 use bambam_network::{MatchBehavior, NetworkEdgeListConfiguration, SegmentClass, TravelModeFilter};
 use osmpbf::{Element, Way};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, str::FromStr};
 
+/// Pre-filters PBF elements during initial ingestion based on structural road criteria
+/// and the union of [`Highway`] tags included across configured [`NetworkEdgeListConfiguration`]s.
 #[derive(Default, Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case", tag = "type")]
-pub enum ElementFilter {
-    #[default]
-    NoFilter,
-    OsmnxAllPublic,
-    HighwayTags {
-        tags: HashSet<Highway>,
-    },
-    OverpassQueries {
-        queries: Vec<FilterQuery>,
-    },
+pub struct ElementFilter {
+    pub tags: Option<HashSet<Highway>>,
 }
 
 impl ElementFilter {
     pub fn accept(&self, element: &Element) -> bool {
-        use ElementFilter as F;
-        match self {
-            F::NoFilter => true,
-            F::OsmnxAllPublic => osmnx_all_public_filter(element),
-            F::HighwayTags { tags } => custom_highway_tag_filter(element, tags),
-            F::OverpassQueries { queries } => custom_overpass_queries_filter(element, queries),
+        match element {
+            Element::Way(way) => match get_highway_tag(way) {
+                Some(highway) => {
+                    passes_structural_way_checks(way, &highway)
+                        && self.tags.as_ref().is_none_or(|t| t.contains(&highway))
+                }
+                None => false,
+            },
+            Element::Relation(_) => false,
+            _ => true,
         }
     }
 
@@ -33,7 +30,7 @@ impl ElementFilter {
     /// the union of all included [`SegmentClass`] values across the configured travel modes.
     pub fn from_edge_list_configs(configs: &[NetworkEdgeListConfiguration]) -> Self {
         if configs.is_empty() {
-            return Self::OsmnxAllPublic;
+            return Self { tags: None };
         }
         let mut tags = HashSet::new();
         for cfg in configs {
@@ -64,31 +61,14 @@ impl ElementFilter {
                 }
             }
             if !mode_has_include {
-                return Self::OsmnxAllPublic;
+                return Self { tags: None };
             }
         }
         if tags.is_empty() {
-            Self::OsmnxAllPublic
+            Self { tags: None }
         } else {
-            Self::HighwayTags { tags }
+            Self { tags: Some(tags) }
         }
-    }
-
-    /// Returns a built-in `ElementFilter` matching the requested travel mode names
-    /// (`"walk"`, `"bike"`, `"drive"`), or `ElementFilter::OsmnxAllPublic` if `None` or empty.
-    pub fn default_for_modes(modes: Option<&[String]>) -> Self {
-        let Some(mode_list) = modes.filter(|m| !m.is_empty()) else {
-            return Self::OsmnxAllPublic;
-        };
-
-        let mut configs = Vec::new();
-        for mode in mode_list {
-            match NetworkEdgeListConfiguration::default_for_mode(mode) {
-                Ok(cfg) => configs.push(cfg),
-                Err(_) => return Self::OsmnxAllPublic,
-            }
-        }
-        Self::from_edge_list_configs(&configs)
     }
 }
 
@@ -115,94 +95,20 @@ fn segment_class_to_highways(cls: &SegmentClass) -> Vec<Highway> {
     }
 }
 
-/// filters ways that do not have a highway tag present in the tags argument,
-/// or that fail public-road checks (`area=yes`, `access=private`, `service=private`).
-/// has no effect on Relation/Node/DenseNode Elements.
-///
-/// # Arguments
-///
-/// * `element` - OSM element to test filtering
-/// * `tags` - list of [`Highway`] tags that are accepted
-///
-/// # Returns
-///
-/// true if the [`Element`] is a [`Way`] with a valid [`Highway`] tag, or is not a [`Way`]
-fn custom_highway_tag_filter(element: &Element, tags: &HashSet<Highway>) -> bool {
-    match element {
-        Element::Way(way) => {
-            if !osmnx_all_public_filter(element) {
-                return false;
-            }
-            match get_highway_tag(way) {
-                Some(highway) => tags.contains(&highway),
-                None => false, // throw out Ways without Highway tags
-            }
-        }
-        Element::Relation(_) => false,
-        _ => true,
-    }
-}
-
-/// applies overpass queries that are filter-type queries
-fn custom_overpass_queries_filter(element: &Element, queries: &[FilterQuery]) -> bool {
-    queries.iter().all(|q| q.filter(element))
-}
-
-/// OSMNX definition:
-/// filters["all_public"] = (
-///     f'["highway"]["area"!~"yes"]{settings.default_access}'
-///     f'["highway"!~"abandoned|construction|no|planned|platform|proposed|raceway|razed"]'
-///     f'["service"!~"private"]'
-/// )
-///
-/// # Return
-///
-/// * true if we accept this Element, false if it does not pass a filter criteria
-fn osmnx_all_public_filter(e: &Element) -> bool {
-    match e {
-        Element::Node(_) => return true,
-        Element::DenseNode(_) => return true,
-        Element::Relation(_) => return false,
-        _ => {}
-    }
-    // ["highway"]
-
-    let highway = match get_tag(e, "highway") {
-        Some(h) => match Highway::from_str(&h) {
-            Err(_) => return false,
-            Ok(highway) => highway,
-        },
-        None => {
-            log::debug!("no 'highway' tag");
-            return false;
-        }
-    };
-
+/// Structural exclusions for OSM ways: rejects `area=yes` polygons and non-active/non-road
+/// `highway` lifecycle tags. Access restrictions (`access=private`, `service=private`, etc.)
+/// are deferred to mode-specific `TravelModeFilter` evaluation so mode-level overrides survive.
+fn passes_structural_way_checks(way: &Way<'_>, highway: &Highway) -> bool {
     // ["area"!~"yes"]
-    if let Some(area_is_yes) = get_tag(e, "area").map(|a| a == "yes") {
-        if area_is_yes {
-            log::debug!("['area'!~'yes']");
-            return false;
-        }
-    }
-    // settings.default_access aka ["access"!~"private"]
-    if let Some(access_private) = get_tag(e, "access").map(|a| a == "private") {
-        if access_private {
-            log::debug!("['access'!~'private']");
-            return false;
-        }
+    if way.tags().any(|(k, v)| k == "area" && v == "yes") {
+        log::debug!("['area'!~'yes']");
+        return false;
     }
 
     // ["highway"!~"abandoned|construction|no|planned|platform|proposed|raceway|razed"]
     let not_in_use = match highway {
-        Highway::Other(s) if s == *"abandoned" => true,
-        Highway::Construction => true,
-        Highway::Other(s) if s == *"no" => true,
-        Highway::Other(s) if s == *"planned" => true,
-        Highway::Platform => true,
-        Highway::Proposed => true,
-        Highway::Raceway => true,
-        Highway::Other(s) if s == *"razed" => true,
+        Highway::Other(s) if matches!(s.as_str(), "abandoned" | "no" | "planned" | "razed") => true,
+        Highway::Construction | Highway::Platform | Highway::Proposed | Highway::Raceway => true,
         _ => false,
     };
 
@@ -213,14 +119,6 @@ fn osmnx_all_public_filter(e: &Element) -> bool {
         return false;
     }
 
-    // ["service"!~"private"]
-    let service_private = matches!(get_tag(e, "service"), Some(service) if service == "private");
-    if service_private {
-        log::debug!("['service'~'private']");
-        return false;
-    }
-
-    // all clear
     true
 }
 
@@ -232,59 +130,3 @@ fn get_highway_tag(way: &Way<'_>) -> Option<Highway> {
         None => None,
     }
 }
-
-/// extract the value associated with a given tag. this operation is
-/// _O(n)_ since it needs to scan the TagsIter of an Element.
-fn get_tag(e: &Element<'_>, tag: &str) -> Option<String> {
-    match e {
-        Element::Node(node) => node
-            .tags()
-            .find(|(k, _)| *k == tag)
-            .map(|(_, v)| String::from(v)),
-        Element::DenseNode(dense_node) => dense_node
-            .tags()
-            .find(|(k, _)| *k == tag)
-            .map(|(_, v)| String::from(v)),
-        Element::Way(way) => way
-            .tags()
-            .find(|(k, _)| *k == tag)
-            .map(|(_, v)| String::from(v)),
-        _ => None,
-    }
-}
-
-// fn deserialize_overpass_queries<'de, D>(d: D) -> Result<ElementFilter, D::Error>
-// where
-//     D: Deserializer<'de>,
-// {
-//     // define a visitor that deserializes
-//     // `ActualData` encoded as json within a string
-//     struct JsonStringVisitor;
-
-//     impl<'de> serde::de::Visitor<'de> for JsonStringVisitor {
-//         type Value = ActualData;
-
-//         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-//             formatter.write_str("a string containing json data")
-//         }
-
-//         fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
-//         where
-//             A: serde::de::MapAccess<'de>,
-//         {
-//             let mut row: Option<(String, Vec<String>)> = map.next_entry()?;
-//             let mut values: Option<Vec<String>> = None;
-//             while row.is_some() {
-//                 match row {
-//                     None => break,
-//                     Some((k, v)) if &k == "queries" => values = Some(v),
-//                     _ => {}
-//                 }
-//                 row = map.next_entry()?;
-//             }
-//         }
-//     }
-
-//     // use our visitor to deserialize an `ActualValue`
-//     deserializer.deserialize_any(JsonStringVisitor)
-// }

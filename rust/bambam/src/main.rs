@@ -36,7 +36,7 @@ mod test {
     };
 
     #[test]
-    fn test_e2e_denver() {
+    fn test_e2e_boulder() {
         let conf_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("test invariant failed: repo 'rust/bambam' dir has no parent")
@@ -50,7 +50,7 @@ mod test {
             .parent()
             .expect("test invariant failed: repo 'rust' dir has no parent")
             .join("query")
-            .join("denver_extent.json");
+            .join("boulder_broadway_and_euclid.json");
         let conf_file = conf_path
             .to_str()
             .expect("test invariant failed: config file path cannot be a string");
@@ -66,7 +66,7 @@ mod test {
             parallelism: None,
             output_directory: None,
         };
-        let expected_grid_size = 48;
+        let expected_grid_size = 4;
 
         match test_run_bambam(args) {
             Ok(rows) => {

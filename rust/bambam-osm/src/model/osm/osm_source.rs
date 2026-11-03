@@ -1,10 +1,7 @@
 use super::{graph::osm_element_filter::ElementFilter, OsmError};
-use crate::{
-    algorithm::truncation::ComponentFilter,
-    model::osm::{
-        graph::OsmGraphVectorized,
-        import_ops::{self, OsmCollection},
-    },
+use crate::model::osm::{
+    graph::OsmGraphVectorized,
+    import_ops::{self, OsmCollection},
 };
 use bambam_network::{
     parse_wkt_str_to_geometry_and_bbox, IslandDetectionAlgorithm, NetworkEdgeListConfiguration,
@@ -19,13 +16,11 @@ pub enum OsmSource {
         pbf_filepath: String,
         #[serde(default)]
         study_region: Option<String>,
-        network_filter: Option<ElementFilter>,
         #[serde(default)]
         edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
         #[serde(default)]
         island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
         extent_filter_filepath: Option<String>,
-        component_filter: Option<ComponentFilter>,
         truncate_by_edge: bool,
         ignore_errors: bool,
         simplify: bool,
@@ -41,7 +36,6 @@ pub enum OsmSource {
         #[serde(default)]
         island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
         extent_filter_filepath: Option<String>,
-        component_filter: Option<ComponentFilter>,
         truncate_by_edge: bool,
         ignore_errors: bool,
         simplify: bool,
@@ -56,11 +50,9 @@ impl OsmSource {
             OsmSource::Pbf {
                 pbf_filepath,
                 study_region,
-                network_filter,
                 edge_lists,
                 island_algorithm_configuration,
                 extent_filter_filepath,
-                component_filter,
                 truncate_by_edge,
                 ignore_errors,
                 simplify,
@@ -70,17 +62,11 @@ impl OsmSource {
                     Some(lists) => lists.clone(),
                     None => NetworkEdgeListConfiguration::default_multimodal(),
                 };
-                let net_ftr = match network_filter {
-                    Some(ElementFilter::NoFilter) | None => {
-                        ElementFilter::from_edge_list_configs(&effective_edge_lists)
-                    }
-                    Some(other) => other.clone(),
-                };
+                let net_ftr = ElementFilter::from_edge_list_configs(&effective_edge_lists);
                 let extent_opt = extent_filter_filepath
                     .as_deref()
                     .map(read_extent_wkt)
                     .transpose()?;
-                let cc_ftr = component_filter.clone().unwrap_or_default();
 
                 log::info!("Reading PBF source and extracting topological Connectors & Segments");
                 let (nodes_map, ways_map) =
@@ -93,7 +79,6 @@ impl OsmSource {
                     ways_map,
                     extent_opt.as_ref(),
                     &effective_edge_lists,
-                    &cc_ftr,
                     island_algorithm_configuration.as_ref(),
                     *truncate_by_edge,
                     *simplify,
@@ -114,7 +99,6 @@ impl OsmSource {
                 edge_lists,
                 island_algorithm_configuration,
                 extent_filter_filepath,
-                component_filter,
                 truncate_by_edge,
                 ignore_errors,
                 simplify,
@@ -128,7 +112,6 @@ impl OsmSource {
                     .as_deref()
                     .map(read_extent_wkt)
                     .transpose()?;
-                let cc_ftr = component_filter.clone().unwrap_or_default();
 
                 log::info!("Reading retained OSM Parquet source from '{local_source}'");
                 let collection = OsmCollection::from_local_source(Path::new(local_source))?;
@@ -141,7 +124,6 @@ impl OsmSource {
                     ways_map,
                     extent_opt.as_ref(),
                     &effective_edge_lists,
-                    &cc_ftr,
                     island_algorithm_configuration.as_ref(),
                     *truncate_by_edge,
                     *simplify,

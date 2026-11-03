@@ -1,15 +1,12 @@
 use std::collections::HashMap;
 
 use super::{OsmNodes, OsmWays, Vertex};
-use crate::{
-    algorithm::truncation::ComponentFilter,
-    model::osm::{
-        import_ops::{
-            extract_osm_connectors_and_segments_with_match_distance, process_osm_segment_splits,
-            OsmCollection, OsmSegmentRecord,
-        },
-        OsmError,
+use crate::model::osm::{
+    import_ops::{
+        extract_osm_connectors_and_segments_with_match_distance, process_osm_segment_splits,
+        OsmCollection, OsmSegmentRecord,
     },
+    OsmError,
 };
 use bambam_network::{
     build_vectorized_network_graph, CliBoundingBox, EdgeListStats, EdgeMappingRecord,
@@ -51,7 +48,6 @@ impl OsmGraphVectorized {
         nodes_map: OsmNodes,
         ways_map: OsmWays,
         extent_opt: Option<&Geometry<f32>>,
-        component_filter: &ComponentFilter,
         island_detection_opt: Option<&IslandDetectionAlgorithm>,
         truncate_by_edge: bool,
         simplify: bool,
@@ -66,7 +62,6 @@ impl OsmGraphVectorized {
             ways_map,
             extent_opt,
             &configs,
-            component_filter,
             island_detection_opt,
             truncate_by_edge,
             simplify,
@@ -84,7 +79,6 @@ impl OsmGraphVectorized {
         nodes_map: OsmNodes,
         ways_map: OsmWays,
         extent_opt: Option<&Geometry<f32>>,
-        component_filter: &ComponentFilter,
         island_detection_opt: Option<&IslandDetectionAlgorithm>,
         truncate_by_edge: bool,
         simplify: bool,
@@ -109,7 +103,6 @@ impl OsmGraphVectorized {
             ways_map,
             extent_opt,
             &configs,
-            component_filter,
             island_detection_opt,
             truncate_by_edge,
             simplify,
@@ -129,7 +122,6 @@ impl OsmGraphVectorized {
         ways_map: OsmWays,
         extent_opt: Option<&Geometry<f32>>,
         configuration: &[NetworkEdgeListConfiguration],
-        _component_filter: &ComponentFilter,
         island_detection_opt: Option<&IslandDetectionAlgorithm>,
         truncate_by_edge: bool,
         simplify: bool,
