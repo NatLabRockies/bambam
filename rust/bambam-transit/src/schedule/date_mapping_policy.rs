@@ -438,36 +438,32 @@ fn pick_nearest_date(
             date_ops::find_nearest_add_exception(target, cd, date_tolerance, match_weekday)
         }
         (Some(c), None) => {
-            let start_date = date_ops::jiff_to_naive_date(&c.start_date)?;
-            let end_date = date_ops::jiff_to_naive_date(&c.end_date)?;
             let matches = date_ops::date_range_intersection(
                 target,
-                &start_date,
-                &end_date,
+                &c.start_date,
+                &c.end_date,
                 date_tolerance,
                 match_weekday,
             )?;
             matches.first().cloned().ok_or_else(|| {
-                let msg = date_ops::error_msg_suffix(target, &start_date, &end_date);
+                let msg = date_ops::error_msg_suffix(target, &c.start_date, &c.end_date);
                 ScheduleError::InvalidData(format!(
                     "could not find nearest (by {date_tolerance} days) date {msg}"
                 ))
             })
         }
         (Some(c), Some(cd)) => {
-            let start_date = date_ops::jiff_to_naive_date(&c.start_date)?;
-            let end_date = date_ops::jiff_to_naive_date(&c.end_date)?;
             // find all matches across calendar.txt and calendar_dates.txt
             let mut matches = date_ops::date_range_intersection(
                 target,
-                &start_date,
-                &end_date,
+                &c.start_date,
+                &c.end_date,
                 date_tolerance,
                 match_weekday,
             )?;
             // apply exceptions in calendar_dates.txt to the matches
             for calendar_date in cd.iter() {
-                let cd_date = date_ops::jiff_to_naive_date(&calendar_date.date)?;
+                let cd_date = calendar_date.date;
                 let matches_date = cd_date == *target;
                 let is_add = calendar_date.exception_type == Exception::Added;
                 let matches_weekday_expectation =
@@ -495,7 +491,7 @@ fn pick_nearest_date(
             min_distance_match.ok_or_else(|| {
                 ScheduleError::InvalidData(format!(
                     "no match found across calendar + calendar_dates {}",
-                    date_ops::error_msg_suffix(target, &start_date, &end_date)
+                    date_ops::error_msg_suffix(target, &c.start_date, &c.end_date)
                 ))
             })
         }
