@@ -11,4 +11,17 @@ description = "GTFS Schedule and GTFS-Flex data structures and reader for BAMBAM
 keywords = ["nlr", "access-model", "accessibility", "gtfs", "transit"]
 categories = ["science", "science::geo"]
 
+[features]
+default = ["gtfs-flex"]
+gtfs-flex = ["dep:geojson"]
+
 [dependencies]
+chrono = { workspace = true }
+csv = { workspace = true }
+derive_more = { workspace = true }
+geojson = { workspace = true, optional = true }
+rgb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+zip = { workspace = true }
