@@ -1,4 +1,4 @@
-use crate::model::{osm::graph::osm_element_filter::ElementFilter, OsmCliError};
+use crate::model::OsmCliError;
 use bambam_network::{
     ComponentsAlgorithmType, IslandDetectionAlgorithm, NetworkEdgeListConfiguration,
 };
@@ -14,8 +14,6 @@ pub struct OsmImportConfiguration {
     pub edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
     #[serde(default)]
     pub island_algorithm_configuration: Option<IslandDetectionAlgorithm>,
-    #[serde(default)]
-    pub element_filter: ElementFilter,
     #[serde(default)]
     pub ignore_osm_parsing_errors: bool,
     #[serde(default = "default_true")]
@@ -46,23 +44,6 @@ impl OsmImportConfiguration {
     pub fn resolved_island_detection(&self) -> Option<IslandDetectionAlgorithm> {
         self.island_algorithm_configuration.clone()
     }
-
-    /// Returns the effective [`ElementFilter`] for PBF reading: uses an explicit
-    /// `element_filter` if set, or derives one from `edge_lists` when `edge_lists` is present.
-    pub fn resolved_element_filter(&self) -> ElementFilter {
-        match &self.element_filter {
-            ElementFilter::NoFilter => {
-                if let Some(ref lists) = self.edge_lists {
-                    ElementFilter::from_edge_list_configs(lists)
-                } else {
-                    ElementFilter::from_edge_list_configs(
-                        &NetworkEdgeListConfiguration::default_multimodal(),
-                    )
-                }
-            }
-            other => other.clone(),
-        }
-    }
 }
 
 impl Default for OsmImportConfiguration {
@@ -74,7 +55,6 @@ impl Default for OsmImportConfiguration {
                 distance_unit: DistanceUnit::Miles,
                 algorithm_type: ComponentsAlgorithmType::Wcc,
             }),
-            element_filter: Default::default(),
             ignore_osm_parsing_errors: true,
             truncate_by_edge: true,
             simplify: true,

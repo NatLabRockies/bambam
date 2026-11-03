@@ -16,11 +16,7 @@ mod tests {
     };
     use bambam_osm::{
         app::{OsmNetworkArgs, OsmOperation},
-        model::osm::{
-            graph::{osm_element_filter::ElementFilter, CompassWriter},
-            import_ops::OsmCollection,
-            OsmSource,
-        },
+        model::osm::{graph::CompassWriter, import_ops::OsmCollection, OsmSource},
     };
     use routee_compass_core::{model::network::EdgeConfig, util::fs::read_utils};
 
@@ -111,7 +107,6 @@ mod tests {
         let simplified_source = OsmSource::Pbf {
             pbf_filepath: pbf_file.to_string(),
             study_region: Some("schaan_simplified".to_string()),
-            network_filter: Some(ElementFilter::OsmnxAllPublic),
             edge_lists: None,
             island_algorithm_configuration: None,
             extent_filter_filepath: Some(extent_file.to_string()),

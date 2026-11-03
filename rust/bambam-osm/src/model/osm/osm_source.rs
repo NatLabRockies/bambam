@@ -16,7 +16,6 @@ pub enum OsmSource {
         pbf_filepath: String,
         #[serde(default)]
         study_region: Option<String>,
-        network_filter: Option<ElementFilter>,
         #[serde(default)]
         edge_lists: Option<Vec<NetworkEdgeListConfiguration>>,
         #[serde(default)]
@@ -51,7 +50,6 @@ impl OsmSource {
             OsmSource::Pbf {
                 pbf_filepath,
                 study_region,
-                network_filter,
                 edge_lists,
                 island_algorithm_configuration,
                 extent_filter_filepath,
@@ -64,12 +62,7 @@ impl OsmSource {
                     Some(lists) => lists.clone(),
                     None => NetworkEdgeListConfiguration::default_multimodal(),
                 };
-                let net_ftr = match network_filter {
-                    Some(ElementFilter::NoFilter) | None => {
-                        ElementFilter::from_edge_list_configs(&effective_edge_lists)
-                    }
-                    Some(other) => other.clone(),
-                };
+                let net_ftr = ElementFilter::from_edge_list_configs(&effective_edge_lists);
                 let extent_opt = extent_filter_filepath
                     .as_deref()
                     .map(read_extent_wkt)

@@ -3,32 +3,3 @@ truncate_by_edge = true
 simplify = true
 overwrite = true
 infrastructure_match_distance_meters = 15.0
-
-[element_filter]
-type = "highway_tags"
-tags = [
-    'footway',
-    'cycleway',
-    'tertiary_link',
-    'trunk_link',
-    'elevator',
-    'secondary',
-    'residential',
-    'motorway',
-    'trunk',
-    'primary_link',
-    'corridor',
-    'primary',
-    'living_street',
-    'service',
-    'steps',
-    'track',
-    'path',
-    'trailhead',
-    'pedestrian',
-    'motorway_link',
-    'unclassified',
-    'road',
-    'secondary_link',
-    'tertiary',
-]
