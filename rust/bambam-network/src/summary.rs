@@ -59,7 +59,7 @@ pub fn write_summary(
     let summary_toml = toml::to_string_pretty(summary).map_err(|e| {
         NetworkImportError::InternalError(format!("failure serializing summary TOML: {e}"))
     })?;
-    std::fs::write(&summary_path, &summary_toml).map_err(|e| {
+    std::fs::write(summary_path, &summary_toml).map_err(|e| {
         NetworkImportError::CsvWriteError(format!(
             "failed to write '{}': {e}",
             summary_path.display()
