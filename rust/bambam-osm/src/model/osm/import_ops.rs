@@ -957,4 +957,76 @@ mod tests {
         assert_eq!(seg_road.full_type.as_str(), "road-primary-link");
         assert_eq!(seg_sw.full_type.as_str(), "road-footway-sidewalk");
     }
+
+    #[test]
+    fn test_reverse_oneway_retains_segment_and_emits_backward_splits() {
+        let mut nodes_map = HashMap::new();
+        nodes_map.insert(
+            OsmNodeId(1),
+            OsmNodeData {
+                osmid: OsmNodeId(1),
+                x: -105.0000,
+                y: 39.7500,
+                ..Default::default()
+            },
+        );
+        nodes_map.insert(
+            OsmNodeId(2),
+            OsmNodeData {
+                osmid: OsmNodeId(2),
+                x: -104.9990,
+                y: 39.7500,
+                ..Default::default()
+            },
+        );
+
+        let mut ways_map = HashMap::new();
+        ways_map.insert(
+            OsmWayId(300),
+            OsmWayData {
+                osmid: OsmWayId(300),
+                nodes: vec![OsmNodeId(1), OsmNodeId(2)],
+                highway: Some("residential".to_string()),
+                oneway: Some("-1".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let (_, _, segments) = extract_osm_connectors_and_segments_with_match_distance(
+            &nodes_map,
+            &ways_map,
+            None,
+            true,
+            true,
+            true,
+            Some(15.0),
+        )
+        .unwrap();
+        assert_eq!(segments.len(), 1);
+        let seg = &segments[0];
+
+        for cfg in [
+            bambam_network::NetworkEdgeListConfiguration::default_drive(),
+            bambam_network::NetworkEdgeListConfiguration::default_bike(),
+        ] {
+            // Segment must be retained by the mode filter since Backward heading is allowed
+            assert!(
+                cfg.filter.iter().all(|f| f.matches_filter(seg)),
+                "reverse oneway segment should pass {} mode filter",
+                cfg.mode
+            );
+
+            // Split generation should reject Forward and produce only Backward
+            let mut when_fwd: SegmentAccessRestrictionWhen = (&cfg).into();
+            when_fwd.heading = Some(SegmentHeading::Forward);
+            let fwd_splits = process_osm_segment_splits(seg, Some(&when_fwd)).unwrap();
+            assert!(fwd_splits.is_empty());
+
+            let mut when_bwd: SegmentAccessRestrictionWhen = (&cfg).into();
+            when_bwd.heading = Some(SegmentHeading::Backward);
+            let bwd_splits = process_osm_segment_splits(seg, Some(&when_bwd)).unwrap();
+            assert_eq!(bwd_splits.len(), 1);
+            assert_eq!(bwd_splits[0].heading, SegmentHeading::Backward);
+        }
+    }
 }
