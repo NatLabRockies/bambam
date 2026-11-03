@@ -189,6 +189,23 @@ impl From<RawFlexLocation> for FlexLocation {
 }
 
 #[cfg(feature = "gtfs-flex")]
+impl FlexLocation {
+    /// Returns `true` if `coord` lies inside or on the boundary of this flexible service zone.
+    ///
+    /// Performs a fast bounding-box check followed by exact ray-casting over the exterior
+    /// and interior hole rings of `self.geometry`.
+    #[inline]
+    pub fn contains_coord(&self, coord: Coord) -> bool {
+        if let Some(bbox) = &self.bbox {
+            if !bbox.contains(coord) {
+                return false;
+            }
+        }
+        self.geometry.contains_coord(coord)
+    }
+}
+
+#[cfg(feature = "gtfs-flex")]
 impl Identifiable for FlexLocation {
     type Id = LocationId;
 
@@ -267,6 +284,19 @@ impl LocationGroup {
             members,
             bbox,
         }
+    }
+
+    /// Returns `true` if `coord` lies inside any member `FlexZone` or matches a member `Stop` coordinate.
+    pub fn contains_coord(&self, coord: Coord) -> bool {
+        if let Some(bbox) = &self.bbox {
+            if !bbox.contains(coord) {
+                return false;
+            }
+        }
+        self.members.iter().any(|m| match m {
+            PlaceMember::Stop(s) => s.coord == Some(coord),
+            PlaceMember::FlexZone(z) => z.contains_coord(coord),
+        })
     }
 }
 
@@ -357,6 +387,18 @@ impl StopPlace {
             StopPlace::FlexZone(z) => z.id.as_str(),
             #[cfg(feature = "gtfs-flex")]
             StopPlace::LocationGroup(g) => g.id.as_str(),
+        }
+    }
+
+    /// Returns `true` if `coord` lies inside this `StopPlace` (exact point-in-polygon for `FlexZone`
+    /// or `LocationGroup`, or exact coordinate match for `Stop`).
+    pub fn contains_coord(&self, coord: Coord) -> bool {
+        match self {
+            StopPlace::Stop(s) => s.coord == Some(coord),
+            #[cfg(feature = "gtfs-flex")]
+            StopPlace::FlexZone(z) => z.contains_coord(coord),
+            #[cfg(feature = "gtfs-flex")]
+            StopPlace::LocationGroup(g) => g.contains_coord(coord),
         }
     }
 }

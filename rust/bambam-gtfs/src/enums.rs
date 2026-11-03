@@ -53,8 +53,8 @@ impl<'de> Deserialize<'de> for LocationType {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => LocationType::StopPoint,
             "1" => LocationType::StopArea,
             "2" => LocationType::StationEntrance,
@@ -380,8 +380,8 @@ impl<'de> Deserialize<'de> for PickupDropOffType {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => PickupDropOffType::Regular,
             "1" => PickupDropOffType::NotAvailable,
             "2" => PickupDropOffType::ArrangeByPhone,
@@ -454,8 +454,8 @@ impl<'de> Deserialize<'de> for ContinuousPickupDropOff {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "0" => ContinuousPickupDropOff::Continuous,
             "" | "1" => ContinuousPickupDropOff::NotAvailable,
             "2" => ContinuousPickupDropOff::ArrangeByPhone,
@@ -470,15 +470,28 @@ impl<'de> Deserialize<'de> for ContinuousPickupDropOff {
 }
 
 /// Describes if the stop time is exact or not. See <https://gtfs.org/reference/static/#stop_timestxt> `timepoint`
-#[derive(Debug, Default, Serialize, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TimepointType {
     /// Times are considered approximate
-    #[serde(rename = "0")]
     Approximate = 0,
     /// Times are considered exact
     #[default]
-    #[serde(rename = "1")]
     Exact = 1,
+}
+
+impl Serialize for TimepointType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serialize_i16_as_str(
+            serializer,
+            match self {
+                TimepointType::Approximate => 0,
+                TimepointType::Exact => 1,
+            },
+        )
+    }
 }
 
 impl<'de> Deserialize<'de> for TimepointType {
@@ -486,8 +499,8 @@ impl<'de> Deserialize<'de> for TimepointType {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        match s.as_ref() {
             "" | "1" => Ok(Self::Exact),
             "0" => Ok(Self::Approximate),
             v => Err(serde::de::Error::custom(format!(
@@ -516,8 +529,8 @@ impl<'de> Deserialize<'de> for Availability {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => Availability::InformationNotAvailable,
             "1" => Availability::Available,
             "2" => Availability::NotAvailable,
@@ -588,8 +601,8 @@ impl<'de> Deserialize<'de> for BikesAllowedType {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => BikesAllowedType::NoBikeInfo,
             "1" => BikesAllowedType::AtLeastOneBike,
             "2" => BikesAllowedType::NoBikesAllowed,
@@ -638,8 +651,8 @@ impl<'de> Deserialize<'de> for CarsAllowedType {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => CarsAllowedType::NoCarInfo,
             "1" => CarsAllowedType::AtLeastOneCar,
             "2" => CarsAllowedType::NoCarsAllowed,
@@ -681,7 +694,7 @@ pub enum PaymentMethod {
 }
 
 /// Defines if the Frequency is exact (the vehicle runs exactly every n minutes) or not
-#[derive(Debug, Serialize, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ExactTimes {
     /// Frequency-based trips
     FrequencyBased = 0,
@@ -689,13 +702,28 @@ pub enum ExactTimes {
     ScheduleBased = 1,
 }
 
+impl Serialize for ExactTimes {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serialize_i16_as_str(
+            serializer,
+            match self {
+                ExactTimes::FrequencyBased => 0,
+                ExactTimes::ScheduleBased => 1,
+            },
+        )
+    }
+}
+
 impl<'de> Deserialize<'de> for ExactTimes {
     fn deserialize<D>(deserializer: D) -> Result<ExactTimes, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => ExactTimes::FrequencyBased,
             "1" => ExactTimes::ScheduleBased,
             &_ => {
@@ -755,28 +783,41 @@ impl Serialize for Transfers {
 }
 
 /// Defines the type of a StopTransfer
-#[derive(Debug, Serialize, Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TransferType {
     /// Recommended transfer point between routes
-    #[serde(rename = "0")]
     #[default]
     Recommended,
     /// Departing vehicle waits for arriving one
-    #[serde(rename = "1")]
     Timed,
     /// Transfer requires a minimum amount of time between arrival and departure to ensure a connection.
-    #[serde(rename = "2")]
     MinTime,
     /// Transfer is not possible at this location
-    #[serde(rename = "3")]
     Impossible,
     /// Passengers can stay onboard the same vehicle to transfer from one trip to another
-    #[serde(rename = "4")]
     StayOnBoard,
     /// In-seat transfers aren't allowed between sequential trips.
     /// The passenger must alight from the vehicle and re-board.
-    #[serde(rename = "5")]
     MustAlight,
+}
+
+impl Serialize for TransferType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serialize_i16_as_str(
+            serializer,
+            match self {
+                TransferType::Recommended => 0,
+                TransferType::Timed => 1,
+                TransferType::MinTime => 2,
+                TransferType::Impossible => 3,
+                TransferType::StayOnBoard => 4,
+                TransferType::MustAlight => 5,
+            },
+        )
+    }
 }
 
 impl<'de> Deserialize<'de> for TransferType {
@@ -784,8 +825,8 @@ impl<'de> Deserialize<'de> for TransferType {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => TransferType::Recommended,
             "1" => TransferType::Timed,
             "2" => TransferType::MinTime,
@@ -863,7 +904,7 @@ pub enum FareMediaType {
 }
 
 /// Specifies if an entry in rider_categories.txt should be considered the default category
-#[derive(Debug, Serialize, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum DefaultFareCategory {
     /// Category is not considered the default.
     NotDefault = 0,
@@ -871,13 +912,28 @@ pub enum DefaultFareCategory {
     Default = 1,
 }
 
+impl Serialize for DefaultFareCategory {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serialize_i16_as_str(
+            serializer,
+            match self {
+                DefaultFareCategory::NotDefault => 0,
+                DefaultFareCategory::Default => 1,
+            },
+        )
+    }
+}
+
 impl<'de> Deserialize<'de> for DefaultFareCategory {
     fn deserialize<D>(deserializer: D) -> Result<DefaultFareCategory, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => DefaultFareCategory::NotDefault,
             "1" => DefaultFareCategory::Default,
             &_ => {
@@ -922,8 +978,8 @@ impl<'de> Deserialize<'de> for BookingType {
     where
         D: Deserializer<'de>,
     {
-        let s = <&str>::deserialize(deserializer)?;
-        Ok(match s {
+        let s = std::borrow::Cow::<str>::deserialize(deserializer)?;
+        Ok(match s.as_ref() {
             "" | "0" => BookingType::RealTime,
             "1" => BookingType::SameDayWithAdvanceNotice,
             "2" => BookingType::PriorDays,

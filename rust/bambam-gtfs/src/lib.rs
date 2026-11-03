@@ -30,25 +30,35 @@ mod tests;
 pub use enums::*;
 pub use error::Gtfs2Error;
 pub use ids::*;
-pub use model::ValidatedFeed;
+pub use model::{DroppedEntityCounts, ValidatedFeed, ValidationPolicy, ValidationWarning};
 pub use primitives::{BoundingBox, Coord, GtfsTime, PrimitiveError, TimeWindow};
 pub use raw::{CsvRowIter, GtfsArchive, GtfsTable, RawFeed, RawFeedReader, TableBundle};
 pub use routing::{
-    CompactStopTime, FeedMetadata, FullyQualifiedPlaceId, FullyQualifiedRouteId,
-    FullyQualifiedTripId, PlaceIdKind, RoutingTimetable, RoutingTimetableBuilder,
+    ActiveServiceWindow, BoardableDeparture, CompactStopTime, FeedMetadata, FullyQualifiedPlaceId,
+    FullyQualifiedRouteId, FullyQualifiedTripId, PlaceIdKind, PlaceSpatialEntry, RoutingTimetable,
+    RoutingTimetableBuilder,
 };
 pub use traits::{Identifiable, Spatial, TemporalStopTime};
 
-use std::convert::TryFrom;
 use std::path::Path;
 use std::time::Instant;
 
 impl ValidatedFeed {
-    /// Reads and validates a [`ValidatedFeed`] (Phase 1 -> Phase 2) from a directory or `.zip` path.
+    /// Reads and validates a [`ValidatedFeed`] (Phase 1 -> Phase 2) from a directory or `.zip` path
+    /// using [`ValidationPolicy::Strict`].
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Gtfs2Error> {
+        Self::from_path_with_policy(path, ValidationPolicy::Strict)
+    }
+
+    /// Reads and validates a [`ValidatedFeed`] (Phase 1 -> Phase 2) from a directory or `.zip` path
+    /// using the specified [`ValidationPolicy`].
+    pub fn from_path_with_policy(
+        path: impl AsRef<Path>,
+        policy: ValidationPolicy,
+    ) -> Result<Self, Gtfs2Error> {
         let start = Instant::now();
         let raw = RawFeed::from_path(path)?;
-        let mut validated = Self::try_from(raw)?;
+        let mut validated = Self::from_raw_with_policy(raw, policy)?;
         validated.read_duration = start.elapsed();
         Ok(validated)
     }
@@ -56,10 +66,20 @@ impl ValidatedFeed {
 
 impl RoutingTimetable {
     /// Reads, validates, and indexes a [`RoutingTimetable`] (Phase 1 -> Phase 2 -> Phase 3)
-    /// from a directory or `.zip` path.
+    /// from a directory or `.zip` path using [`ValidationPolicy::Strict`].
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Gtfs2Error> {
-        let raw = RawFeed::from_path(path)?;
-        let validated = ValidatedFeed::try_from(raw)?;
-        Ok(Self::try_from(validated)?)
+        Self::from_path_with_policy(path, ValidationPolicy::Strict)
+    }
+
+    /// Reads, validates, and indexes a [`RoutingTimetable`] (Phase 1 -> Phase 2 -> Phase 3)
+    /// from a directory or `.zip` path using the specified [`ValidationPolicy`].
+    pub fn from_path_with_policy(
+        path: impl AsRef<Path>,
+        policy: ValidationPolicy,
+    ) -> Result<Self, Gtfs2Error> {
+        let validated = ValidatedFeed::from_path_with_policy(path, policy)?;
+        let mut builder = RoutingTimetableBuilder::new().with_validation_policy(policy);
+        builder.add_feed(FeedId::new("default"), validated)?;
+        Ok(builder.build())
     }
 }

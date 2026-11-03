@@ -56,6 +56,25 @@ impl GtfsTime {
         self.0
     }
 
+    /// Returns a new `GtfsTime` shifted forward by `delta_seconds`.
+    #[inline]
+    pub const fn add_seconds(self, delta_seconds: u32) -> Self {
+        Self(self.0.saturating_add(delta_seconds))
+    }
+
+    /// Returns a new `GtfsTime` shifted by a signed `delta_seconds` (clamped at 0).
+    #[inline]
+    pub const fn add_signed_seconds(self, delta_seconds: i64) -> Self {
+        let sum = self.0 as i64 + delta_seconds;
+        if sum <= 0 {
+            Self(0)
+        } else if sum > u32::MAX as i64 {
+            Self(u32::MAX)
+        } else {
+            Self(sum as u32)
+        }
+    }
+
     /// Linearly interpolates between `start` and `end` by ratio `t` in `[0.0, 1.0]`.
     #[inline]
     pub fn lerp(start: Self, end: Self, t: f64) -> Self {
@@ -102,8 +121,8 @@ impl fmt::Display for GtfsTime {
 
 impl<'de> Deserialize<'de> for GtfsTime {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let s: &str = Deserialize::deserialize(deserializer)?;
-        Self::parse(s).map_err(de::Error::custom)
+        let s: std::borrow::Cow<'de, str> = Deserialize::deserialize(deserializer)?;
+        Self::parse(&s).map_err(de::Error::custom)
     }
 }
 
@@ -258,6 +277,15 @@ impl BoundingBox {
             && c.lat >= self.min_lat
             && c.lat <= self.max_lat
     }
+
+    /// Returns true if `self` and `other` intersect (share at least one point).
+    #[inline]
+    pub fn intersects(&self, other: &Self) -> bool {
+        self.min_lon <= other.max_lon
+            && self.max_lon >= other.min_lon
+            && self.min_lat <= other.max_lat
+            && self.max_lat >= other.min_lat
+    }
 }
 
 // --- Serde helper functions for CSV fields ---
@@ -265,11 +293,11 @@ impl BoundingBox {
 pub(crate) fn deserialize_optional_time<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<GtfsTime>, D::Error> {
-    let opt: Option<&str> = Deserialize::deserialize(deserializer)?;
+    let opt: Option<std::borrow::Cow<'de, str>> = Deserialize::deserialize(deserializer)?;
     match opt {
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
-        Some(s) => GtfsTime::parse(s).map(Some).map_err(de::Error::custom),
+        Some(s) => GtfsTime::parse(&s).map(Some).map_err(de::Error::custom),
     }
 }
 
@@ -279,16 +307,16 @@ pub(crate) fn serialize_optional_time<S: Serializer>(
 ) -> Result<S::Ok, S::Error> {
     match time {
         None => serializer.serialize_none(),
-        Some(t) => t.serialize(serializer),
+        Some(t) => serializer.serialize_some(t),
     }
 }
 
 pub(crate) fn deserialize_date<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<NaiveDate, D::Error> {
-    let s: &str = Deserialize::deserialize(deserializer)?;
+    let s: std::borrow::Cow<'de, str> = Deserialize::deserialize(deserializer)?;
     NaiveDate::parse_from_str(s.trim(), "%Y%m%d")
-        .map_err(|_| de::Error::custom(PrimitiveError::InvalidDate(s.to_owned())))
+        .map_err(|_| de::Error::custom(PrimitiveError::InvalidDate(s.into_owned())))
 }
 
 pub(crate) fn serialize_date<S: Serializer>(
@@ -301,13 +329,13 @@ pub(crate) fn serialize_date<S: Serializer>(
 pub(crate) fn deserialize_option_date<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<NaiveDate>, D::Error> {
-    let opt: Option<&str> = Deserialize::deserialize(deserializer)?;
+    let opt: Option<std::borrow::Cow<'de, str>> = Deserialize::deserialize(deserializer)?;
     match opt {
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
         Some(s) => NaiveDate::parse_from_str(s.trim(), "%Y%m%d")
             .map(Some)
-            .map_err(|_| de::Error::custom(PrimitiveError::InvalidDate(s.to_owned()))),
+            .map_err(|_| de::Error::custom(PrimitiveError::InvalidDate(s.into_owned()))),
     }
 }
 
@@ -317,14 +345,14 @@ pub(crate) fn serialize_option_date<S: Serializer>(
 ) -> Result<S::Ok, S::Error> {
     match date {
         None => serializer.serialize_none(),
-        Some(d) => serialize_date(d, serializer),
+        Some(d) => serializer.serialize_some(&d.format("%Y%m%d").to_string()),
     }
 }
 
 pub(crate) fn deserialize_bool<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<bool, D::Error> {
-    let s: &str = Deserialize::deserialize(deserializer)?;
+    let s: std::borrow::Cow<'de, str> = Deserialize::deserialize(deserializer)?;
     match s.trim() {
         "0" => Ok(false),
         "1" => Ok(true),
@@ -341,7 +369,7 @@ pub(crate) fn serialize_bool<S: Serializer>(b: &bool, serializer: S) -> Result<S
 pub(crate) fn de_with_optional_float<'de, D: Deserializer<'de>>(
     de: D,
 ) -> Result<Option<f64>, D::Error> {
-    let s = Option::<&str>::deserialize(de)?;
+    let s = Option::<std::borrow::Cow<'de, str>>::deserialize(de)?;
     match s {
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
@@ -354,8 +382,8 @@ pub(crate) fn serialize_float_as_str<S: Serializer>(
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
     match float {
-        None => serializer.serialize_str(""),
-        Some(f) => serializer.serialize_str(&f.to_string()),
+        None => serializer.serialize_none(),
+        Some(f) => serializer.serialize_some(&f.to_string()),
     }
 }
 
@@ -376,11 +404,11 @@ pub(crate) fn parse_color(s: &str) -> Result<RGB8, PrimitiveError> {
 pub(crate) fn deserialize_optional_color<'de, D: Deserializer<'de>>(
     de: D,
 ) -> Result<Option<RGB8>, D::Error> {
-    let opt = Option::<&str>::deserialize(de)?;
+    let opt = Option::<std::borrow::Cow<'de, str>>::deserialize(de)?;
     match opt {
         None => Ok(None),
         Some(s) if s.trim().is_empty() => Ok(None),
-        Some(s) => parse_color(s).map(Some).map_err(de::Error::custom),
+        Some(s) => parse_color(&s).map(Some).map_err(de::Error::custom),
     }
 }
 
@@ -389,7 +417,7 @@ pub(crate) fn serialize_optional_color<S: Serializer>(
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
     match color {
-        Some(c) => serializer.serialize_str(&format!("{:02X}{:02X}{:02X}", c.r, c.g, c.b)),
+        Some(c) => serializer.serialize_some(&format!("{:02X}{:02X}{:02X}", c.r, c.g, c.b)),
         None => serializer.serialize_none(),
     }
 }

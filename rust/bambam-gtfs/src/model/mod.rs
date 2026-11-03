@@ -1,6 +1,6 @@
 //! Phase 2: Relationally validated GTFS + GTFS-Flex domain model (`ValidatedFeed`).
 
-mod agency;
+pub(crate) mod agency;
 mod calendar;
 mod error;
 #[cfg(feature = "gtfs-flex")]
@@ -10,7 +10,7 @@ mod route;
 mod shape;
 mod trip;
 
-pub use agency::Agency;
+    pub use agency::Agency;
 pub use calendar::{ServiceCalendar, WeeklyPattern};
 pub use error::ModelError;
 #[cfg(feature = "gtfs-flex")]
@@ -31,10 +31,88 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Policy governing how Phase 2 ([`ValidatedFeed`]) and Phase 3 ([`crate::routing::RoutingTimetableBuilder`])
+/// handle real-world "dirty GTFS" minor specification violations (such as trips with 0 or 1 stops,
+/// non-monotonic stop timestamps, missing boundary timestamps, duplicate `stop_sequence` numbers,
+/// or broken foreign keys on individual trips/rows).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ValidationPolicy {
+    /// Fail immediately on the first relational or timing violation.
+    #[default]
+    Strict,
+    /// Drop malformed trips, stop times, or dangling secondary rows while recording
+    /// structured [`ValidationWarning`]s and [`DroppedEntityCounts`].
+    DropInvalidTripsWithWarning,
+}
+
+/// Structured warning emitted when a GTFS entity or row is dropped or repaired under
+/// [`ValidationPolicy::DropInvalidTripsWithWarning`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ValidationWarning {
+    /// A trip was dropped during Phase 2 or Phase 3 validation.
+    DroppedTrip {
+        /// Identifier of the dropped trip.
+        trip_id: String,
+        /// Reason the trip was dropped.
+        reason: String,
+    },
+    /// Duplicate `stop_sequence` numbers were found on a trip and deduplicated.
+    DuplicateStopSequence {
+        /// Trip identifier.
+        trip_id: String,
+        /// Duplicate `stop_sequence` value.
+        stop_sequence: u32,
+    },
+    /// An orphan `stop_times.txt` row referencing a non-existent `trip_id` was skipped.
+    DroppedOrphanStopTime {
+        /// Missing `trip_id`.
+        trip_id: String,
+        /// `stop_sequence` on the orphan row.
+        stop_sequence: u32,
+    },
+    /// A secondary entity row (`transfers.txt`, `pathways.txt`, `frequencies.txt`, `shapes.txt`, etc.)
+    /// was dropped due to a broken reference or invalid domain value.
+    DroppedEntity {
+        /// Source file name.
+        file_name: String,
+        /// Identifier of the dropped row/entity.
+        id: String,
+        /// Reason for dropping.
+        reason: String,
+    },
+}
+
+/// Summary counts of dropped or deduplicated GTFS entities when loading with
+/// [`ValidationPolicy::DropInvalidTripsWithWarning`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DroppedEntityCounts {
+    /// Number of trips dropped because they had 0 stops in `stop_times.txt`.
+    pub empty_trips: usize,
+    /// Number of trips dropped because they had only 1 stop in `stop_times.txt`.
+    pub single_stop_trips: usize,
+    /// Number of trips dropped due to invalid timing, decreasing stop times, missing boundary times,
+    /// non-monotonic shape distances, or unresolvable stop places.
+    pub malformed_trips: usize,
+    /// Number of duplicate `stop_sequence` rows deduplicated within trips.
+    pub duplicate_stop_sequences: usize,
+    /// Number of orphan `stop_times.txt` rows referencing unknown `trip_id`s.
+    pub orphan_stop_times: usize,
+    /// Number of invalid `shapes.txt`, `frequencies.txt`, `transfers.txt`, or `pathways.txt` rows dropped.
+    pub dropped_secondary_rows: usize,
+}
+
+impl DroppedEntityCounts {
+    /// Total number of trips dropped across all categories.
+    #[inline]
+    pub const fn total_dropped_trips(&self) -> usize {
+        self.empty_trips + self.single_stop_trips + self.malformed_trips
+    }
+}
+
 /// Phase 2: Relationally validated GTFS feed where all foreign keys are resolved,
 /// mutually exclusive fields are collapsed into strict enums (`StopPlace`, `StopTimeTiming`),
 /// and `ShapePolyline` linear references are attached to stop times.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ValidatedFeed {
     /// Validated agencies (`agency.txt`).
     pub agencies: Vec<Agency>,
@@ -58,6 +136,10 @@ pub struct ValidatedFeed {
     pub trips: HashMap<TripId, Trip>,
     /// Validated stop areas (`stop_areas.txt`).
     pub stop_areas: Vec<StopArea>,
+    /// Structured warnings recorded during validation when using [`ValidationPolicy::DropInvalidTripsWithWarning`].
+    pub warnings: Vec<ValidationWarning>,
+    /// Summary counts of dropped or repaired entities during validation.
+    pub dropped_counts: DroppedEntityCounts,
 
     /// Validated booking rules by `BookingRuleId` (`booking_rules.txt`, GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
@@ -132,12 +214,21 @@ impl ValidatedFeed {
             .collect();
         Some(coords)
     }
-}
 
-impl TryFrom<RawFeed> for ValidatedFeed {
-    type Error = ModelError;
+    /// Validates a [`RawFeed`] into a [`ValidatedFeed`] using the specified [`ValidationPolicy`].
+    ///
+    /// - Under [`ValidationPolicy::Strict`], returns `Err(ModelError)` on the first broken
+    ///   foreign key, non-monotonic shape distance, or invalid stop-time timing.
+    /// - Under [`ValidationPolicy::DropInvalidTripsWithWarning`], drops malformed trips
+    ///   (including trips with 0 or 1 stops, duplicate `stop_sequence` numbers, or broken stop/timing rows)
+    ///   and records structured [`ValidationWarning`]s and [`DroppedEntityCounts`].
+    pub fn from_raw_with_policy(
+        raw: RawFeed,
+        policy: ValidationPolicy,
+    ) -> Result<Self, ModelError> {
+        let mut warnings: Vec<ValidationWarning> = Vec::new();
+        let mut dropped_counts = DroppedEntityCounts::default();
 
-    fn try_from(raw: RawFeed) -> Result<Self, Self::Error> {
         // 1. Agencies
         let agencies: Vec<Agency> = raw.agencies.into_iter().map(Agency::from).collect();
 
@@ -154,21 +245,47 @@ impl TryFrom<RawFeed> for ValidatedFeed {
         if let Some(transfers) = raw.transfers {
             for tr in transfers {
                 if !stop_map.contains_key(&tr.to_stop_id) {
-                    return Err(ModelError::MissingReference {
-                        source_file: "transfers.txt",
-                        field_name: "to_stop_id",
-                        id: tr.to_stop_id.to_string(),
-                        target_file: "stops.txt",
-                    });
-                }
-                let from_stop = stop_map.get_mut(&tr.from_stop_id).ok_or_else(|| {
-                    ModelError::MissingReference {
-                        source_file: "transfers.txt",
-                        field_name: "from_stop_id",
-                        id: tr.from_stop_id.to_string(),
-                        target_file: "stops.txt",
+                    match policy {
+                        ValidationPolicy::Strict => {
+                            return Err(ModelError::MissingReference {
+                                source_file: "transfers.txt",
+                                field_name: "to_stop_id",
+                                id: tr.to_stop_id.to_string(),
+                                target_file: "stops.txt",
+                            });
+                        }
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "transfers.txt".to_owned(),
+                                id: format!("{}->{}", tr.from_stop_id, tr.to_stop_id),
+                                reason: format!("missing to_stop_id '{}'", tr.to_stop_id),
+                            });
+                            continue;
+                        }
                     }
-                })?;
+                }
+                let Some(from_stop) = stop_map.get_mut(&tr.from_stop_id) else {
+                    match policy {
+                        ValidationPolicy::Strict => {
+                            return Err(ModelError::MissingReference {
+                                source_file: "transfers.txt",
+                                field_name: "from_stop_id",
+                                id: tr.from_stop_id.to_string(),
+                                target_file: "stops.txt",
+                            });
+                        }
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "transfers.txt".to_owned(),
+                                id: format!("{}->{}", tr.from_stop_id, tr.to_stop_id),
+                                reason: format!("missing from_stop_id '{}'", tr.from_stop_id),
+                            });
+                            continue;
+                        }
+                    }
+                };
                 from_stop.transfers.push(StopTransfer::from(tr));
             }
         }
@@ -176,21 +293,47 @@ impl TryFrom<RawFeed> for ValidatedFeed {
         if let Some(pathways) = raw.pathways {
             for pw in pathways {
                 if !stop_map.contains_key(&pw.to_stop_id) {
-                    return Err(ModelError::MissingReference {
-                        source_file: "pathways.txt",
-                        field_name: "to_stop_id",
-                        id: pw.to_stop_id.to_string(),
-                        target_file: "stops.txt",
-                    });
-                }
-                let from_stop = stop_map.get_mut(&pw.from_stop_id).ok_or_else(|| {
-                    ModelError::MissingReference {
-                        source_file: "pathways.txt",
-                        field_name: "from_stop_id",
-                        id: pw.from_stop_id.to_string(),
-                        target_file: "stops.txt",
+                    match policy {
+                        ValidationPolicy::Strict => {
+                            return Err(ModelError::MissingReference {
+                                source_file: "pathways.txt",
+                                field_name: "to_stop_id",
+                                id: pw.to_stop_id.to_string(),
+                                target_file: "stops.txt",
+                            });
+                        }
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "pathways.txt".to_owned(),
+                                id: pw.id.clone(),
+                                reason: format!("missing to_stop_id '{}'", pw.to_stop_id),
+                            });
+                            continue;
+                        }
                     }
-                })?;
+                }
+                let Some(from_stop) = stop_map.get_mut(&pw.from_stop_id) else {
+                    match policy {
+                        ValidationPolicy::Strict => {
+                            return Err(ModelError::MissingReference {
+                                source_file: "pathways.txt",
+                                field_name: "from_stop_id",
+                                id: pw.from_stop_id.to_string(),
+                                target_file: "stops.txt",
+                            });
+                        }
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "pathways.txt".to_owned(),
+                                id: pw.id.clone(),
+                                reason: format!("missing from_stop_id '{}'", pw.from_stop_id),
+                            });
+                            continue;
+                        }
+                    }
+                };
                 from_stop.pathways.push(Pathway::from(pw));
             }
         }
@@ -205,11 +348,23 @@ impl TryFrom<RawFeed> for ValidatedFeed {
         let locations: HashMap<LocationId, Arc<FlexLocation>> = {
             let mut map = HashMap::new();
             for raw_loc in raw.locations.unwrap_or_default() {
-                // Global check: ID cannot exist in both stops.txt and locations.geojson
                 if stops.contains_key(raw_loc.id.as_str()) {
-                    return Err(ModelError::NamespaceCollision {
-                        id: raw_loc.id.to_string(),
-                    });
+                    match policy {
+                        ValidationPolicy::Strict => {
+                            return Err(ModelError::NamespaceCollision {
+                                id: raw_loc.id.to_string(),
+                            });
+                        }
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "locations.geojson".to_owned(),
+                                id: raw_loc.id.to_string(),
+                                reason: "namespace collision with stops.txt".to_owned(),
+                            });
+                            continue;
+                        }
+                    }
                 }
                 let loc = FlexLocation::from(raw_loc);
                 map.insert(loc.id.clone(), Arc::new(loc));
@@ -223,6 +378,9 @@ impl TryFrom<RawFeed> for ValidatedFeed {
             raw.location_group_stops.unwrap_or_default(),
             &stops,
             &locations,
+            policy,
+            &mut warnings,
+            &mut dropped_counts,
         )?;
 
         #[cfg(feature = "gtfs-flex")]
@@ -280,15 +438,28 @@ impl TryFrom<RawFeed> for ValidatedFeed {
                 grouped.entry(pt.id.clone()).or_default().push(pt);
             }
             for (shape_id, pts) in grouped {
-                let poly = ShapePolyline::from_raw_points(shape_id.clone(), pts)?;
-                shapes.insert(shape_id, Arc::new(poly));
+                match ShapePolyline::from_raw_points(shape_id.clone(), pts) {
+                    Ok(poly) => {
+                        shapes.insert(shape_id, Arc::new(poly));
+                    }
+                    Err(err) => match policy {
+                        ValidationPolicy::Strict => return Err(err),
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "shapes.txt".to_owned(),
+                                id: shape_id.to_string(),
+                                reason: err.to_string(),
+                            });
+                        }
+                    },
+                }
             }
         }
 
         // 7. Trips, StopTimes, and Frequencies
         let mut trips: HashMap<TripId, Trip> = HashMap::with_capacity(raw.trips.len());
         for rt in raw.trips {
-            // Ensure route_id is present in routes map (some real-world/test fixtures omit a route row)
             routes.entry(rt.route_id.clone()).or_insert_with(|| Route {
                 id: rt.route_id.clone(),
                 short_name: None,
@@ -327,12 +498,24 @@ impl TryFrom<RawFeed> for ValidatedFeed {
         let mut raw_st_by_trip: HashMap<TripId, Vec<RawStopTime>> = HashMap::new();
         for st in raw.stop_times {
             if !trips.contains_key(&st.trip_id) {
-                return Err(ModelError::MissingReference {
-                    source_file: "stop_times.txt",
-                    field_name: "trip_id",
-                    id: st.trip_id.to_string(),
-                    target_file: "trips.txt",
-                });
+                match policy {
+                    ValidationPolicy::Strict => {
+                        return Err(ModelError::MissingReference {
+                            source_file: "stop_times.txt",
+                            field_name: "trip_id",
+                            id: st.trip_id.to_string(),
+                            target_file: "trips.txt",
+                        });
+                    }
+                    ValidationPolicy::DropInvalidTripsWithWarning => {
+                        dropped_counts.orphan_stop_times += 1;
+                        warnings.push(ValidationWarning::DroppedOrphanStopTime {
+                            trip_id: st.trip_id.to_string(),
+                            stop_sequence: st.stop_sequence,
+                        });
+                        continue;
+                    }
+                }
             }
             raw_st_by_trip
                 .entry(st.trip_id.clone())
@@ -340,8 +523,29 @@ impl TryFrom<RawFeed> for ValidatedFeed {
                 .push(st);
         }
 
+        let mut malformed_trip_ids: Vec<(TripId, String)> = Vec::new();
+
         for (trip_id, mut raw_sts) in raw_st_by_trip {
             raw_sts.sort_by_key(|s| s.stop_sequence);
+
+            if policy == ValidationPolicy::DropInvalidTripsWithWarning {
+                let before_len = raw_sts.len();
+                let mut seen_seq: Option<u32> = None;
+                raw_sts.retain(|st| {
+                    if seen_seq == Some(st.stop_sequence) {
+                        warnings.push(ValidationWarning::DuplicateStopSequence {
+                            trip_id: trip_id.to_string(),
+                            stop_sequence: st.stop_sequence,
+                        });
+                        false
+                    } else {
+                        seen_seq = Some(st.stop_sequence);
+                        true
+                    }
+                });
+                dropped_counts.duplicate_stop_sequences += before_len - raw_sts.len();
+            }
+
             let trip = trips.get_mut(&trip_id).expect("trip checked above");
             let trip_shape = trip
                 .shape_id
@@ -353,33 +557,48 @@ impl TryFrom<RawFeed> for ValidatedFeed {
             let mut prev_arc_meters: f64 = 0.0;
 
             let mut validated_sts = Vec::with_capacity(raw_sts.len());
+            let mut trip_err: Option<ModelError> = None;
+
             for raw_st in raw_sts {
                 if let Some(d) = raw_st.shape_dist_traveled {
                     if let Some(prev_d) = prev_shape_dist {
                         if d < prev_d {
-                            return Err(ModelError::NonMonotonicShapeDistance {
+                            trip_err = Some(ModelError::NonMonotonicShapeDistance {
                                 file_name: "stop_times.txt",
                                 id: trip_id.to_string(),
                                 previous: prev_d,
                                 current: d,
                             });
+                            break;
                         }
                     }
                     prev_shape_dist = Some(d);
                 }
 
-                let place = resolve_stop_place(
+                let place = match resolve_stop_place(
                     &raw_st,
                     &stops,
                     #[cfg(feature = "gtfs-flex")]
                     &locations,
                     #[cfg(feature = "gtfs-flex")]
                     &location_groups,
-                )?;
+                ) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        trip_err = Some(e);
+                        break;
+                    }
+                };
 
-                let timing = resolve_stop_time_timing(&raw_st)?;
+                let timing = match resolve_stop_time_timing(&raw_st) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        trip_err = Some(e);
+                        break;
+                    }
+                };
 
-                let pickup = resolve_boarding_policy(
+                let pickup = match resolve_boarding_policy(
                     raw_st.pickup_type,
                     raw_st.continuous_pickup,
                     #[cfg(feature = "gtfs-flex")]
@@ -388,9 +607,15 @@ impl TryFrom<RawFeed> for ValidatedFeed {
                     "pickup_booking_rule_id",
                     #[cfg(feature = "gtfs-flex")]
                     &booking_rules,
-                )?;
+                ) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        trip_err = Some(e);
+                        break;
+                    }
+                };
 
-                let drop_off = resolve_boarding_policy(
+                let drop_off = match resolve_boarding_policy(
                     raw_st.drop_off_type,
                     raw_st.continuous_drop_off,
                     #[cfg(feature = "gtfs-flex")]
@@ -399,9 +624,14 @@ impl TryFrom<RawFeed> for ValidatedFeed {
                     "drop_off_booking_rule_id",
                     #[cfg(feature = "gtfs-flex")]
                     &booking_rules,
-                )?;
+                ) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        trip_err = Some(e);
+                        break;
+                    }
+                };
 
-                // Compute linear reference onto the trip's shape if available
                 let shape_ref = if let Some(poly) = &trip_shape {
                     let resolved = if let Some(raw_dist) = raw_st.shape_dist_traveled {
                         poly.resolve_raw_dist(raw_dist)
@@ -440,26 +670,98 @@ impl TryFrom<RawFeed> for ValidatedFeed {
                 });
             }
 
+            if let Some(err) = trip_err {
+                match policy {
+                    ValidationPolicy::Strict => return Err(err),
+                    ValidationPolicy::DropInvalidTripsWithWarning => {
+                        malformed_trip_ids.push((trip_id, err.to_string()));
+                        continue;
+                    }
+                }
+            }
+
             trip.stop_times = validated_sts;
+        }
+
+        for (bad_tid, reason) in malformed_trip_ids {
+            trips.remove(&bad_tid);
+            dropped_counts.malformed_trips += 1;
+            warnings.push(ValidationWarning::DroppedTrip {
+                trip_id: bad_tid.to_string(),
+                reason,
+            });
+        }
+
+        if policy == ValidationPolicy::DropInvalidTripsWithWarning {
+            let mut empty_or_single: Vec<(TripId, usize)> = Vec::new();
+            for (tid, trip) in &trips {
+                if trip.stop_times.len() < 2 {
+                    empty_or_single.push((tid.clone(), trip.stop_times.len()));
+                }
+            }
+            // Sort by trip_id for deterministic warning order
+            empty_or_single.sort_by(|a, b| a.0.cmp(&b.0));
+            for (tid, len) in empty_or_single {
+                trips.remove(&tid);
+                if len == 0 {
+                    dropped_counts.empty_trips += 1;
+                    warnings.push(ValidationWarning::DroppedTrip {
+                        trip_id: tid.to_string(),
+                        reason: "trip has 0 stop_times rows".to_owned(),
+                    });
+                } else {
+                    dropped_counts.single_stop_trips += 1;
+                    warnings.push(ValidationWarning::DroppedTrip {
+                        trip_id: tid.to_string(),
+                        reason: "trip has only 1 stop_times row".to_owned(),
+                    });
+                }
+            }
         }
 
         if let Some(raw_freqs) = raw.frequencies {
             for rf in raw_freqs {
-                let trip =
-                    trips
-                        .get_mut(&rf.trip_id)
-                        .ok_or_else(|| ModelError::MissingReference {
-                            source_file: "frequencies.txt",
-                            field_name: "trip_id",
-                            id: rf.trip_id.to_string(),
-                            target_file: "trips.txt",
-                        })?;
-                let window = TimeWindow::new(rf.start_time, rf.end_time)?;
-                trip.frequencies.push(FrequencyWindow {
-                    window,
-                    headway_secs: rf.headway_secs,
-                    exact_times: rf.exact_times,
-                });
+                let Some(trip) = trips.get_mut(&rf.trip_id) else {
+                    match policy {
+                        ValidationPolicy::Strict => {
+                            return Err(ModelError::MissingReference {
+                                source_file: "frequencies.txt",
+                                field_name: "trip_id",
+                                id: rf.trip_id.to_string(),
+                                target_file: "trips.txt",
+                            });
+                        }
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "frequencies.txt".to_owned(),
+                                id: rf.trip_id.to_string(),
+                                reason: format!("missing or dropped trip_id '{}'", rf.trip_id),
+                            });
+                            continue;
+                        }
+                    }
+                };
+                match TimeWindow::new(rf.start_time, rf.end_time) {
+                    Ok(window) => {
+                        trip.frequencies.push(FrequencyWindow {
+                            window,
+                            headway_secs: rf.headway_secs,
+                            exact_times: rf.exact_times,
+                        });
+                    }
+                    Err(err) => match policy {
+                        ValidationPolicy::Strict => return Err(ModelError::Primitive(err)),
+                        ValidationPolicy::DropInvalidTripsWithWarning => {
+                            dropped_counts.dropped_secondary_rows += 1;
+                            warnings.push(ValidationWarning::DroppedEntity {
+                                file_name: "frequencies.txt".to_owned(),
+                                id: rf.trip_id.to_string(),
+                                reason: err.to_string(),
+                            });
+                        }
+                    },
+                }
             }
         }
 
@@ -483,6 +785,8 @@ impl TryFrom<RawFeed> for ValidatedFeed {
             shapes,
             trips,
             stop_areas,
+            warnings,
+            dropped_counts,
             #[cfg(feature = "gtfs-flex")]
             booking_rules,
             #[cfg(feature = "gtfs-flex")]
@@ -493,12 +797,23 @@ impl TryFrom<RawFeed> for ValidatedFeed {
     }
 }
 
+impl TryFrom<RawFeed> for ValidatedFeed {
+    type Error = ModelError;
+
+    fn try_from(raw: RawFeed) -> Result<Self, Self::Error> {
+        Self::from_raw_with_policy(raw, ValidationPolicy::Strict)
+    }
+}
+
 #[cfg(feature = "gtfs-flex")]
 fn build_location_groups(
     raw_groups: Vec<crate::raw::RawLocationGroup>,
     raw_group_stops: Vec<crate::raw::RawLocationGroupStop>,
     stops: &HashMap<StopId, Arc<Stop>>,
     locations: &HashMap<LocationId, Arc<FlexLocation>>,
+    policy: ValidationPolicy,
+    warnings: &mut Vec<ValidationWarning>,
+    dropped_counts: &mut DroppedEntityCounts,
 ) -> Result<HashMap<LocationGroupId, Arc<LocationGroup>>, ModelError> {
     // Preserve all groups defined in location_groups.txt, even if they have 0 stop rows
     let mut group_names: HashMap<LocationGroupId, Option<String>> = HashMap::new();
@@ -515,12 +830,25 @@ fn build_location_groups(
         } else if let Some(loc) = locations.get(rgs.stop_id.as_str()) {
             PlaceMember::FlexZone(Arc::clone(loc))
         } else {
-            return Err(ModelError::MissingReference {
-                source_file: "location_group_stops.txt",
-                field_name: "stop_id",
-                id: rgs.stop_id,
-                target_file: "stops.txt or locations.geojson",
-            });
+            match policy {
+                ValidationPolicy::Strict => {
+                    return Err(ModelError::MissingReference {
+                        source_file: "location_group_stops.txt",
+                        field_name: "stop_id",
+                        id: rgs.stop_id,
+                        target_file: "stops.txt or locations.geojson",
+                    });
+                }
+                ValidationPolicy::DropInvalidTripsWithWarning => {
+                    dropped_counts.dropped_secondary_rows += 1;
+                    warnings.push(ValidationWarning::DroppedEntity {
+                        file_name: "location_group_stops.txt".to_owned(),
+                        id: format!("{}:{}", rgs.location_group_id, rgs.stop_id),
+                        reason: format!("missing stop_id '{}'", rgs.stop_id),
+                    });
+                    continue;
+                }
+            }
         };
 
         members_by_group
@@ -549,6 +877,7 @@ fn build_stop_areas(
     let mut seen_set: HashSet<AreaId> = HashSet::new();
 
     for ra in raw_areas {
+        #[allow(clippy::manual_map)]
         let member = if let Some(stop) = stops.get(ra.stop_id.as_str()) {
             Some(PlaceMember::Stop(Arc::clone(stop)))
         } else {

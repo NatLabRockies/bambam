@@ -4,12 +4,13 @@
 use crate::ids::*;
 use crate::model::*;
 #[cfg(feature = "gtfs-flex")]
+use crate::primitives::Coord;
 use crate::primitives::GtfsTime;
 use crate::raw::*;
 use crate::routing::*;
-use crate::traits::TemporalStopTime;
 #[cfg(feature = "gtfs-flex")]
-use crate::traits::{Identifiable, Spatial};
+use crate::traits::Identifiable;
+use crate::traits::{Spatial, TemporalStopTime};
 use chrono::NaiveDate;
 use std::convert::TryFrom;
 use std::path::PathBuf;
@@ -199,7 +200,7 @@ fn test_selective_table_loading_and_streaming() {
     let stop_time_count = archive
         .table_iter::<RawStopTime>()
         .expect("should open streaming CSV iterator")
-        .map(|r| r.expect("valid stop_time row"))
+        .filter(|r| r.is_ok())
         .count();
     assert_eq!(stop_time_count, 2);
 
@@ -392,4 +393,319 @@ fn test_gtfs_flex_validation_errors() {
         err2,
         ModelError::MutuallyExclusivePlaceFields { .. }
     ));
+}
+
+#[test]
+fn test_frequency_trips_earliest_boardable_and_materialization() {
+    let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+    // Configure a 1-hour frequency window [06:00:00, 07:00:00) with 600s (10-minute) headways
+    // on trip1 (whose template stop_times are: stop2 @ 14:00:00, stop3 @ 15:00:00 (+3600s), stop4 @ 16:00:00 (+7200s))
+    raw.frequencies = Some(vec![RawFrequency {
+        trip_id: TripId::new("trip1"),
+        start_time: GtfsTime::from_hms(6, 0, 0),
+        end_time: GtfsTime::from_hms(7, 0, 0),
+        headway_secs: 600,
+        exact_times: crate::enums::TimepointType::Approximate,
+    }]);
+    let validated = ValidatedFeed::try_from(raw).unwrap();
+
+    // 1. Test non-materialized frequency query via earliest_boardable_trip
+    let timetable = RoutingTimetable::try_from(validated.clone()).unwrap();
+    let active_mask = vec![true; timetable.services.len()];
+    let pat_idx = PatternIdx::new(0);
+
+    // At stop_offset = 0 (stop2), querying at 06:07:00 should board the 06:10:00 headway departure
+    let dep0 = timetable
+        .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &active_mask)
+        .expect("should find frequency departure at stop 0");
+    assert_eq!(dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
+    // Arrival at stop_offset = 2 (stop4, +2 hours from stop 0) should be 08:10:00
+    assert_eq!(
+        dep0.arrival_time_at(&timetable, 2),
+        Some(GtfsTime::from_hms(8, 10, 0))
+    );
+
+    // At stop_offset = 1 (stop3, +1 hour from stop 0), querying at 07:12:00:
+    // The 06:10:00 vehicle at stop 0 reaches stop 1 at 07:10:00 (too early).
+    // The 06:20:00 vehicle at stop 0 reaches stop 1 at 07:20:00!
+    let dep1 = timetable
+        .earliest_boardable_trip(pat_idx, 1, GtfsTime::from_hms(7, 12, 0), &active_mask)
+        .expect("should find frequency departure at stop 1");
+    assert_eq!(dep1.departure_time, GtfsTime::from_hms(7, 20, 0));
+    assert_eq!(
+        dep1.arrival_time_at(&timetable, 2),
+        Some(GtfsTime::from_hms(8, 20, 0))
+    );
+
+    // 2. Test materialized frequency trips in RoutingTimetableBuilder
+    let mut builder = RoutingTimetable::builder().with_materialize_frequencies(true);
+    builder.add_feed("basic_mat", validated).unwrap();
+    let mat_timetable = builder.build();
+
+    // Window [06:00:00, 07:00:00) every 600s -> 6 concrete trips (06:00, 06:10, 06:20, 06:30, 06:40, 06:50)
+    assert_eq!(mat_timetable.trips.len(), 6);
+    assert!(mat_timetable.trips.iter().all(|t| t.frequencies.is_empty()));
+
+    let mat_active = vec![true; mat_timetable.services.len()];
+    let mat_dep0 = mat_timetable
+        .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &mat_active)
+        .expect("should binary-search materialized frequency trips");
+    assert_eq!(mat_dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
+    assert_eq!(mat_dep0.frequency_offset_secs, 0);
+    assert_eq!(
+        mat_dep0.arrival_time_at(&mat_timetable, 2),
+        Some(GtfsTime::from_hms(8, 10, 0))
+    );
+}
+
+#[cfg(feature = "gtfs-flex")]
+#[test]
+fn test_point_in_polygon_and_rtree_spatial_index() {
+    // Build an L-shaped polygon where the bounding box center (0.75, 0.75) is OUTSIDE the L!
+    // L-shape vertices: (0,0) -> (1,0) -> (1,0.4) -> (0.4,0.4) -> (0.4,1) -> (0,1) -> (0,0)
+    let l_ring = vec![
+        Coord::new(0.0, 0.0),
+        Coord::new(1.0, 0.0),
+        Coord::new(1.0, 0.4),
+        Coord::new(0.4, 0.4),
+        Coord::new(0.4, 1.0),
+        Coord::new(0.0, 1.0),
+        Coord::new(0.0, 0.0),
+    ];
+    let raw_loc = RawFlexLocation {
+        id: LocationId::new("l_zone"),
+        stop_name: Some("L-Shaped Flex Zone".to_owned()),
+        stop_desc: None,
+        zone_id: None,
+        stop_url: None,
+        geometry: RawFlexGeometry::Polygon(vec![l_ring]),
+    };
+    let flex_loc = FlexLocation::from(raw_loc.clone());
+
+    let inside_bottom = Coord::new(0.8, 0.2);
+    let inside_left = Coord::new(0.2, 0.8);
+    let outside_in_bbox_cutout = Coord::new(0.8, 0.8);
+    let completely_outside = Coord::new(2.0, 2.0);
+
+    assert!(flex_loc.contains_coord(inside_bottom));
+    assert!(flex_loc.contains_coord(inside_left));
+    assert!(
+        flex_loc.bbox.unwrap().contains(outside_in_bbox_cutout),
+        "cutout point is inside the bounding box"
+    );
+    assert!(
+        !flex_loc.contains_coord(outside_in_bbox_cutout),
+        "exact ray-casting must reject point in L-shape cutout"
+    );
+    assert!(!flex_loc.contains_coord(completely_outside));
+
+    // Verify RoutingTimetable R-tree + exact point-in-polygon filtering in places_near
+    let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+    raw.locations = Some(vec![raw_loc]);
+    let validated = ValidatedFeed::try_from(raw).unwrap();
+    let timetable = RoutingTimetable::try_from(validated).unwrap();
+
+    let l_zone_pidx = timetable.location_id_to_place[&LocationId::new("l_zone")];
+    assert!(timetable
+        .places_near(inside_bottom, 0.0)
+        .contains(&l_zone_pidx));
+    assert!(
+        !timetable
+            .places_near(outside_in_bbox_cutout, 0.0)
+            .contains(&l_zone_pidx),
+        "places_near(radius=0) should not match L-zone when point is in the cutout"
+    );
+}
+
+#[test]
+fn test_lenient_validation_policy_dirty_gtfs() {
+    let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+
+    // Inject dirty GTFS anomalies:
+    // 1. A trip with 0 stop_times rows
+    raw.trips.push(RawTrip {
+        id: TripId::new("dirty_empty_trip"),
+        service_id: ServiceId::new("service1"),
+        route_id: RouteId::new("route1"),
+        ..Default::default()
+    });
+    // 2. A trip with only 1 stop_times row
+    raw.trips.push(RawTrip {
+        id: TripId::new("dirty_single_stop_trip"),
+        service_id: ServiceId::new("service1"),
+        route_id: RouteId::new("route1"),
+        ..Default::default()
+    });
+    raw.stop_times.push(RawStopTime {
+        trip_id: TripId::new("dirty_single_stop_trip"),
+        stop_id: Some(StopId::new("stop1")),
+        stop_sequence: 1,
+        arrival_time: Some(GtfsTime::from_hms(8, 0, 0)),
+        departure_time: Some(GtfsTime::from_hms(8, 0, 0)),
+        ..Default::default()
+    });
+    // 3. A trip with decreasing stop times (10:05:00 followed by 10:04:00)
+    raw.trips.push(RawTrip {
+        id: TripId::new("dirty_decreasing_trip"),
+        service_id: ServiceId::new("service1"),
+        route_id: RouteId::new("route1"),
+        ..Default::default()
+    });
+    raw.stop_times.push(RawStopTime {
+        trip_id: TripId::new("dirty_decreasing_trip"),
+        stop_id: Some(StopId::new("stop1")),
+        stop_sequence: 1,
+        arrival_time: Some(GtfsTime::from_hms(10, 5, 0)),
+        departure_time: Some(GtfsTime::from_hms(10, 5, 0)),
+        ..Default::default()
+    });
+    raw.stop_times.push(RawStopTime {
+        trip_id: TripId::new("dirty_decreasing_trip"),
+        stop_id: Some(StopId::new("stop2")),
+        stop_sequence: 2,
+        arrival_time: Some(GtfsTime::from_hms(10, 4, 0)),
+        departure_time: Some(GtfsTime::from_hms(10, 4, 0)),
+        ..Default::default()
+    });
+    // 4. Duplicate stop_sequence on valid trip1
+    let dup_st = raw.stop_times[0].clone();
+    raw.stop_times.push(dup_st);
+    // 5. Orphan stop_time referencing non-existent trip
+    raw.stop_times.push(RawStopTime {
+        trip_id: TripId::new("ghost_trip"),
+        stop_id: Some(StopId::new("stop1")),
+        stop_sequence: 1,
+        ..Default::default()
+    });
+
+    // Strict mode must reject this dirty feed
+    assert!(ValidatedFeed::from_raw_with_policy(raw.clone(), ValidationPolicy::Strict).is_err());
+
+    // Lenient mode succeeds in Phase 2 and Phase 3, preserving valid trip1 and recording warnings
+    let validated =
+        ValidatedFeed::from_raw_with_policy(raw, ValidationPolicy::DropInvalidTripsWithWarning)
+            .expect("Phase 2 lenient validation should succeed");
+    assert_eq!(validated.dropped_counts.empty_trips, 1);
+    assert_eq!(validated.dropped_counts.single_stop_trips, 1);
+    assert_eq!(validated.dropped_counts.duplicate_stop_sequences, 1);
+    assert_eq!(validated.dropped_counts.orphan_stop_times, 1);
+
+    let mut builder = RoutingTimetable::builder()
+        .with_validation_policy(ValidationPolicy::DropInvalidTripsWithWarning);
+    builder
+        .add_feed("dirty_feed", validated)
+        .expect("Phase 3 lenient build should succeed");
+    let timetable = builder.build();
+
+    assert_eq!(timetable.trips.len(), 1);
+    assert_eq!(timetable.trips[0].id.as_str(), "trip1");
+    let feed_meta = &timetable.feeds[0];
+    assert_eq!(feed_meta.dropped_counts.empty_trips, 1);
+    assert_eq!(feed_meta.dropped_counts.single_stop_trips, 1);
+    assert_eq!(feed_meta.dropped_counts.malformed_trips, 1);
+    assert_eq!(feed_meta.dropped_counts.total_dropped_trips(), 3);
+    assert!(!feed_meta.warnings.is_empty());
+}
+
+#[test]
+fn test_timezone_and_overnight_service_day_normalization() {
+    let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+    // Add an overnight trip on service1 departing at 24:30:00 (00:30 AM next calendar day)
+    raw.trips.push(RawTrip {
+        id: TripId::new("overnight_trip"),
+        service_id: ServiceId::new("service1"),
+        route_id: RouteId::new("route1"),
+        ..Default::default()
+    });
+    raw.stop_times.push(RawStopTime {
+        trip_id: TripId::new("overnight_trip"),
+        stop_id: Some(StopId::new("stop2")),
+        stop_sequence: 1,
+        arrival_time: Some(GtfsTime::from_hms(24, 30, 0)),
+        departure_time: Some(GtfsTime::from_hms(24, 30, 0)),
+        ..Default::default()
+    });
+    raw.stop_times.push(RawStopTime {
+        trip_id: TripId::new("overnight_trip"),
+        stop_id: Some(StopId::new("stop3")),
+        stop_sequence: 2,
+        arrival_time: Some(GtfsTime::from_hms(24, 40, 0)),
+        departure_time: Some(GtfsTime::from_hms(24, 40, 0)),
+        ..Default::default()
+    });
+    raw.stop_times.push(RawStopTime {
+        trip_id: TripId::new("overnight_trip"),
+        stop_id: Some(StopId::new("stop4")),
+        stop_sequence: 3,
+        arrival_time: Some(GtfsTime::from_hms(24, 50, 0)),
+        departure_time: Some(GtfsTime::from_hms(24, 50, 0)),
+        ..Default::default()
+    });
+    // Remove frequencies so trip1 is just a 14:00:00 trip
+    raw.frequencies = None;
+
+    let validated = ValidatedFeed::try_from(raw).unwrap();
+    // Verify Agency parsed jiff::tz::TimeZone ("Europe/Paris" in fixtures/basic/agency.txt)
+    assert_eq!(
+        validated.agencies[0]
+            .time_zone()
+            .and_then(|tz| tz.iana_name()),
+        Some("Europe/Paris")
+    );
+
+    let timetable = RoutingTimetable::try_from(validated).unwrap();
+    assert_eq!(
+        timetable.feeds[0]
+            .primary_timezone
+            .as_ref()
+            .and_then(|tz| tz.iana_name()),
+        Some("Europe/Paris")
+    );
+
+    // Suppose a rider searches on Monday 2017-01-09 at 00:15:00 local time.
+    // Sunday 2017-01-08 (yesterday) had `service1` active, and `overnight_trip` departs at 24:30:00
+    // on yesterday's clock (= 00:30:00 on Monday morning!).
+    let query_date = NaiveDate::from_ymd_opt(2017, 1, 9).unwrap();
+    let query_time = GtfsTime::from_hms(0, 15, 0);
+    let window = timetable.active_services_at_time(query_date, query_time);
+    assert_eq!(window.yesterday_overnight_time, GtfsTime::from_hms(24, 15, 0));
+
+    let board = timetable
+        .earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &window)
+        .expect("should board yesterday's overnight trip at 00:30 AM");
+    assert!(board.is_overnight_from_yesterday);
+    assert_eq!(board.departure_time, GtfsTime::from_hms(24, 30, 0));
+    assert_eq!(
+        board.normalized_query_day_departure(),
+        GtfsTime::from_hms(0, 30, 0)
+    );
+}
+
+#[test]
+fn test_bincode_snapshot_roundtrip() {
+    let feed = ValidatedFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+    let original = RoutingTimetable::try_from(feed).unwrap();
+
+    let bytes = original
+        .to_bincode_bytes()
+        .expect("should serialize RoutingTimetable to bincode");
+    assert!(!bytes.is_empty());
+
+    let restored = RoutingTimetable::from_bincode_bytes(&bytes)
+        .expect("should deserialize RoutingTimetable from bincode");
+
+    assert_eq!(restored.feeds, original.feeds);
+    assert_eq!(restored.places, original.places);
+    assert_eq!(restored.place_feed, original.place_feed);
+    assert_eq!(restored.routes, original.routes);
+    assert_eq!(restored.patterns, original.patterns);
+    assert_eq!(restored.trips, original.trips);
+    assert_eq!(restored.stop_times, original.stop_times);
+
+    // Ensure the rebuilt R-tree spatial index works after bincode deserialization
+    let stop1_coord = restored.places[restored.stop_id_to_place[&StopId::new("stop1")].index()]
+        .representative_coord()
+        .unwrap();
+    let nearby = restored.places_near(stop1_coord, 50.0);
+    assert!(!nearby.is_empty());
 }

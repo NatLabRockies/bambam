@@ -4,16 +4,22 @@
 use crate::enums::TransferType;
 use crate::ids::*;
 use crate::model::{
-    Agency, BoardingPolicy, FrequencyWindow, Route, ServiceCalendar, ShapePolyline, StopPlace,
-    StopTime, StopTimeTiming, Trip, ValidatedFeed,
+    Agency, BoardingPolicy, DroppedEntityCounts, FrequencyWindow, Route, ServiceCalendar,
+    ShapePolyline, StopPlace, StopTime, StopTimeTiming, Trip, ValidatedFeed, ValidationPolicy,
+    ValidationWarning,
 };
 use crate::primitives::{BoundingBox, Coord, GtfsTime, TimeWindow};
 use crate::routing::RoutingError;
 use crate::traits::{Spatial, TemporalStopTime};
-use chrono::NaiveDate;
+use chrono::{Days, NaiveDate};
+use jiff::tz::TimeZone;
+use rstar::{RTree, RTreeObject, AABB};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::fs::File;
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::ops::Range;
+use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(feature = "gtfs-flex")]
@@ -46,7 +52,7 @@ const NO_FLEX_DURATION_IDX: u16 = u16::MAX;
 /// - Because every trip belonging to a [`RoutePattern`] visits the exact same sequence of places,
 ///   storing `place_idx` on every stop time is redundant with `pattern.stops[offset].place_idx`.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct CompactStopTime {
     /// Scheduled/interpolated arrival time in seconds since midnight, or flex window `start` when `FLAG_IS_FLEX_WINDOW` is set.
     pub arrival_or_start_secs: u32,
@@ -59,6 +65,20 @@ pub struct CompactStopTime {
     /// Bitflags (`bit 0` = `FLAG_IS_FLEX_WINDOW`).
     pub flags: u16,
 }
+
+impl PartialEq for CompactStopTime {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.arrival_or_start_secs == other.arrival_or_start_secs
+            && self.departure_or_end_secs == other.departure_or_end_secs
+            && ((self.shape_arc_meters.is_nan() && other.shape_arc_meters.is_nan())
+                || self.shape_arc_meters == other.shape_arc_meters)
+            && self.flex_duration_idx == other.flex_duration_idx
+            && self.flags == other.flags
+    }
+}
+
+impl Eq for CompactStopTime {}
 
 impl CompactStopTime {
     /// Creates a fixed (or interpolated) `CompactStopTime`.
@@ -258,8 +278,84 @@ pub struct IndexedTransfer {
     pub distance_meters: Option<f32>,
 }
 
+/// Spatial index entry associating a [`PlaceIdx`] with its WGS84 bounding box inside an [`rstar::RTree`].
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PlaceSpatialEntry {
+    /// Contiguous index of the indexed [`StopPlace`].
+    pub place_idx: PlaceIdx,
+    /// Bounding box of the place (`[min_lon, min_lat]` to `[max_lon, max_lat]`).
+    pub bbox: BoundingBox,
+}
+
+impl RTreeObject for PlaceSpatialEntry {
+    type Envelope = AABB<[f64; 2]>;
+
+    #[inline]
+    fn envelope(&self) -> Self::Envelope {
+        AABB::from_corners(
+            [self.bbox.min_lon, self.bbox.min_lat],
+            [self.bbox.max_lon, self.bbox.max_lat],
+        )
+    }
+}
+
+/// Active service evaluation window for a local `(date, time_of_day)` query, supporting both
+/// current-day schedules and previous-day overnight trips (`>= 24:00:00` on `date - 1`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActiveServiceWindow {
+    /// Local calendar date of the query.
+    pub date: NaiveDate,
+    /// Local time of day on `date` (`0..86_400` seconds).
+    pub time_of_day: GtfsTime,
+    /// Boolean mask indexed by [`ServiceIdx`] indicating services active on `date`.
+    pub today_active: Vec<bool>,
+    /// Previous calendar date (`date - 1 day`).
+    pub yesterday_date: NaiveDate,
+    /// Query time expressed on `yesterday_date`'s service clock (`time_of_day + 86_400` seconds).
+    pub yesterday_overnight_time: GtfsTime,
+    /// Boolean mask indexed by [`ServiceIdx`] indicating services active on `yesterday_date`.
+    pub yesterday_active: Vec<bool>,
+}
+
+/// Earliest boardable trip or frequency/flex departure returned by
+/// [`RoutingTimetable::earliest_boardable_trip`] or [`RoutingTimetable::earliest_boardable_trip_with_overnight`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BoardableDeparture {
+    /// Contiguous index of the matched [`RoutableTrip`].
+    pub trip_idx: TripIdx,
+    /// Earliest time the rider can board at `stop_offset` (in the service day's `GtfsTime` clock).
+    pub departure_time: GtfsTime,
+    /// Signed offset in seconds relative to the template trip's stop times:
+    /// - `0` for fixed-schedule trips, materialized frequency trips, or flex windows,
+    /// - `> 0` (or `< 0`) when boarding a non-materialized `frequencies.txt` headway departure.
+    pub frequency_offset_secs: i64,
+    /// `true` if this departure belongs to yesterday's service day (`date - 1` with GTFS time `>= 24:00:00`).
+    pub is_overnight_from_yesterday: bool,
+}
+
+impl BoardableDeparture {
+    /// Computes the arrival time at a downstream `to_stop_offset` along the same trip,
+    /// automatically applying `self.frequency_offset_secs`.
+    pub fn arrival_time_at(&self, timetable: &RoutingTimetable, to_stop_offset: usize) -> Option<GtfsTime> {
+        let st = timetable.trip_stop_times(self.trip_idx).get(to_stop_offset)?;
+        let base = st.earliest_time()?;
+        Some(base.add_signed_seconds(self.frequency_offset_secs))
+    }
+
+    /// Normalizes `self.departure_time` back to the current calendar day's clock
+    /// (subtracting `86_400` seconds when `self.is_overnight_from_yesterday` is `true`).
+    #[inline]
+    pub const fn normalized_query_day_departure(&self) -> GtfsTime {
+        if self.is_overnight_from_yesterday {
+            GtfsTime(self.departure_time.0.saturating_sub(86_400))
+        } else {
+            self.departure_time
+        }
+    }
+}
+
 /// Metadata and contiguous index spans for a single GTFS archive inside a merged [`RoutingTimetable`].
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FeedMetadata {
     /// Contiguous index of this feed (`0..feeds.len()`).
     pub idx: FeedIdx,
@@ -267,6 +363,13 @@ pub struct FeedMetadata {
     pub id: FeedId,
     /// Agencies defined in this archive's `agency.txt`.
     pub agencies: Vec<Agency>,
+    /// Primary parsed IANA [`jiff::tz::TimeZone`] for this feed (derived from the first agency with a valid timezone).
+    #[serde(
+        serialize_with = "crate::model::agency::serialize_option_timezone",
+        deserialize_with = "crate::model::agency::deserialize_option_timezone",
+        default
+    )]
+    pub primary_timezone: Option<TimeZone>,
     /// Contiguous range of [`PlaceIdx`]s belonging to this feed.
     pub places_span: Range<u32>,
     /// Contiguous range of [`RouteIdx`]s belonging to this feed.
@@ -279,6 +382,10 @@ pub struct FeedMetadata {
     pub services_span: Range<u32>,
     /// Contiguous range of [`ShapeIdx`]s belonging to this feed.
     pub shapes_span: Range<u32>,
+    /// Structured warnings emitted during Phase 2 and Phase 3 validation for this feed.
+    pub warnings: Vec<ValidationWarning>,
+    /// Summary counts of dropped or repaired entities for this feed.
+    pub dropped_counts: DroppedEntityCounts,
 }
 
 /// Borrowed view of the complete, globally unambiguous lineage of a [`TripIdx`]:
@@ -352,9 +459,41 @@ pub struct FullyQualifiedPlaceId<'a> {
     pub place_id: PlaceIdKind<'a>,
 }
 
+fn build_place_spatial_index(places: &[StopPlace]) -> RTree<PlaceSpatialEntry> {
+    let entries: Vec<PlaceSpatialEntry> = places
+        .iter()
+        .enumerate()
+        .filter_map(|(i, p)| {
+            p.bounding_box().map(|bbox| PlaceSpatialEntry {
+                place_idx: PlaceIdx::from_usize(i),
+                bbox,
+            })
+        })
+        .collect();
+    RTree::bulk_load(entries)
+}
+
+fn serialize_spatial_index<S: serde::Serializer>(
+    tree: &RTree<PlaceSpatialEntry>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use serde::Serialize;
+    let mut entries: Vec<PlaceSpatialEntry> = tree.iter().copied().collect();
+    entries.sort_by_key(|e| e.place_idx);
+    entries.serialize(serializer)
+}
+
+fn deserialize_spatial_index<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<RTree<PlaceSpatialEntry>, D::Error> {
+    use serde::Deserialize;
+    let entries = Vec::<PlaceSpatialEntry>::deserialize(deserializer)?;
+    Ok(RTree::bulk_load(entries))
+}
+
 /// Phase 3: RAPTOR-style contiguous CSR timetable, multi-feed archive registry, and spatial/shape
 /// index ready for continental-scale vectorized multimodal A* graph search.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RoutingTimetable {
     /// Metadata and index ranges for every merged GTFS archive, indexed by [`FeedIdx`].
     pub feeds: Vec<FeedMetadata>,
@@ -363,6 +502,14 @@ pub struct RoutingTimetable {
     pub places: Vec<StopPlace>,
     /// For each [`PlaceIdx`], the owning [`FeedIdx`].
     pub place_feed: Vec<FeedIdx>,
+
+    /// R*-tree spatial index over [`PlaceSpatialEntry`] for $O(\log N)$ bounding-box and radius queries.
+    #[serde(
+        serialize_with = "serialize_spatial_index",
+        deserialize_with = "deserialize_spatial_index",
+        default
+    )]
+    pub place_spatial_index: RTree<PlaceSpatialEntry>,
 
     /// Dense table of all routes, indexed by [`RouteIdx`].
     pub routes: Vec<Route>,
@@ -602,6 +749,251 @@ impl RoutingTimetable {
         self.services.iter().map(|s| s.is_active_on(date)).collect()
     }
 
+    /// Evaluates active services for a local `(date, time_of_day)` query, including previous-day
+    /// (`date - 1`) services that may still be running overnight with GTFS timestamps `>= 24:00:00`
+    /// (`time_of_day + 86_400` seconds).
+    pub fn active_services_at_time(
+        &self,
+        date: NaiveDate,
+        time_of_day: GtfsTime,
+    ) -> ActiveServiceWindow {
+        let today_active = self.active_services_mask(date);
+        let yesterday_date = date.checked_sub_days(Days::new(1)).unwrap_or(date);
+        let yesterday_active = self.active_services_mask(yesterday_date);
+        let yesterday_overnight_time = time_of_day.add_seconds(86_400);
+        ActiveServiceWindow {
+            date,
+            time_of_day,
+            today_active,
+            yesterday_date,
+            yesterday_overnight_time,
+            yesterday_active,
+        }
+    }
+
+    /// Evaluates active services for `feed_idx` at a unified UTC [`jiff::Timestamp`] by converting
+    /// the instant into the feed's primary IANA [`jiff::tz::TimeZone`] (from `agency.txt`).
+    pub fn active_services_for_feed_at_timestamp(
+        &self,
+        feed_idx: FeedIdx,
+        timestamp: jiff::Timestamp,
+    ) -> Option<ActiveServiceWindow> {
+        let feed = self.feeds.get(feed_idx.index())?;
+        let tz = feed.primary_timezone.as_ref()?;
+        let zdt = timestamp.to_zoned(tz.clone());
+        let date = NaiveDate::from_ymd_opt(
+            i32::from(zdt.year()),
+            u32::try_from(zdt.month()).ok()?,
+            u32::try_from(zdt.day()).ok()?,
+        )?;
+        let time_of_day = GtfsTime::from_hms(
+            u32::try_from(zdt.hour()).ok()?,
+            u32::try_from(zdt.minute()).ok()?,
+            u32::try_from(zdt.second()).ok()?,
+        );
+        Some(self.active_services_at_time(date, time_of_day))
+    }
+
+    /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` departing at or after `after_time`
+    /// among trips whose `service_idx` is enabled in `active_services`.
+    ///
+    /// Seamlessly handles:
+    /// 1. **Fixed-schedule trips** (and materialized frequency trips) via `partition_point` binary search
+    ///    when the pattern consists purely of non-frequency fixed-schedule trips,
+    /// 2. **Headway-based `frequencies.txt` trips** by computing the first headway departure `>= after_time`
+    ///    within each `FrequencyWindow`, and
+    /// 3. **GTFS-Flex `FlexWindow` trips** where `after_time <= window.end` (boarding at `max(after_time, window.start)`).
+    pub fn earliest_boardable_trip(
+        &self,
+        pattern_idx: PatternIdx,
+        stop_offset: usize,
+        after_time: GtfsTime,
+        active_services: &[bool],
+    ) -> Option<BoardableDeparture> {
+        let pattern = self.patterns.get(pattern_idx.index())?;
+        let stop_prof = pattern.stops.get(stop_offset)?;
+        if !stop_prof.pickup.is_allowed() || pattern.trips.is_empty() {
+            return None;
+        }
+
+        // Fast path: if no trip on this pattern has unexpanded frequency windows or flex windows,
+        // `pattern.trips` is monotonically sorted by stop times, so we can binary-search with `partition_point`.
+        let has_freq_or_flex = pattern.trips.iter().any(|&tidx| {
+            let t = &self.trips[tidx.index()];
+            !t.frequencies.is_empty()
+                || self.stop_times[t.stop_times_offset as usize + stop_offset].is_flex_window()
+        });
+
+        if !has_freq_or_flex {
+            let start_pos = pattern.trips.partition_point(|&tidx| {
+                let t = &self.trips[tidx.index()];
+                let st = self.stop_times[t.stop_times_offset as usize + stop_offset];
+                st.departure_or_end_secs < after_time.0
+            });
+
+            for &tidx in &pattern.trips[start_pos..] {
+                let t = &self.trips[tidx.index()];
+                if !active_services
+                    .get(t.service_idx.index())
+                    .copied()
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                let st = self.stop_times[t.stop_times_offset as usize + stop_offset];
+                if st.departure_or_end_secs >= after_time.0 {
+                    return Some(BoardableDeparture {
+                        trip_idx: tidx,
+                        departure_time: GtfsTime(st.departure_or_end_secs),
+                        frequency_offset_secs: 0,
+                        is_overnight_from_yesterday: false,
+                    });
+                }
+            }
+            return None;
+        }
+
+        let mut best: Option<BoardableDeparture> = None;
+
+        for &tidx in &pattern.trips {
+            let trip = &self.trips[tidx.index()];
+            if !active_services
+                .get(trip.service_idx.index())
+                .copied()
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            let st_slice = &self.stop_times[trip.stop_times_range()];
+            let st = st_slice[stop_offset];
+
+            if trip.frequencies.is_empty() {
+                let candidate = if st.is_flex_window() {
+                    if after_time.0 <= st.departure_or_end_secs {
+                        Some(BoardableDeparture {
+                            trip_idx: tidx,
+                            departure_time: GtfsTime(after_time.0.max(st.arrival_or_start_secs)),
+                            frequency_offset_secs: 0,
+                            is_overnight_from_yesterday: false,
+                        })
+                    } else {
+                        None
+                    }
+                } else if st.departure_or_end_secs >= after_time.0 {
+                    Some(BoardableDeparture {
+                        trip_idx: tidx,
+                        departure_time: GtfsTime(st.departure_or_end_secs),
+                        frequency_offset_secs: 0,
+                        is_overnight_from_yesterday: false,
+                    })
+                } else {
+                    None
+                };
+
+                if let Some(cand) = candidate {
+                    if best
+                        .as_ref()
+                        .is_none_or(|b| cand.departure_time < b.departure_time)
+                    {
+                        best = Some(cand);
+                    }
+                }
+            } else {
+                // Frequency-based template trip:
+                // Let `t0` be the template trip's departure at stop 0, and `ts` be its departure at `stop_offset`.
+                let t0_secs = st_slice[0].departure_or_end_secs as i64;
+                let ts_secs = st.departure_or_end_secs as i64;
+                let travel_offset_from_start = ts_secs - t0_secs;
+
+                for freq in &trip.frequencies {
+                    if freq.headway_secs == 0 {
+                        continue;
+                    }
+                    let win_start = freq.window.start.0 as i64;
+                    let win_end = freq.window.end.0 as i64;
+                    let headway = freq.headway_secs as i64;
+
+                    // First vehicle departure at `stop_offset` occurs at `win_start + travel_offset_from_start`.
+                    let first_dep_at_stop = win_start + travel_offset_from_start;
+                    let target = after_time.0 as i64;
+
+                    let k = if target <= first_dep_at_stop {
+                        0
+                    } else {
+                        (target - first_dep_at_stop + headway - 1) / headway
+                    };
+
+                    let vehicle_start_at_stop0 = win_start + k * headway;
+                    // Per GTFS frequencies.txt spec, `end_time` is the time at which service changes or ceases at the first stop.
+                    if vehicle_start_at_stop0 < win_end
+                        || (k == 0 && win_start == win_end && vehicle_start_at_stop0 == win_end)
+                    {
+                        let actual_dep_at_stop = vehicle_start_at_stop0 + travel_offset_from_start;
+                        if actual_dep_at_stop >= 0 {
+                            let dep_time = GtfsTime(actual_dep_at_stop as u32);
+                            let freq_offset = vehicle_start_at_stop0 - t0_secs;
+                            let cand = BoardableDeparture {
+                                trip_idx: tidx,
+                                departure_time: dep_time,
+                                frequency_offset_secs: freq_offset,
+                                is_overnight_from_yesterday: false,
+                            };
+                            if best
+                                .as_ref()
+                                .is_none_or(|b| cand.departure_time < b.departure_time)
+                            {
+                                best = Some(cand);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        best
+    }
+
+    /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` using an [`ActiveServiceWindow`],
+    /// checking both today's schedule (`after_time = window.time_of_day`) and yesterday's overnight
+    /// trips (`after_time = window.time_of_day + 86_400`) and returning whichever boards earlier.
+    pub fn earliest_boardable_trip_with_overnight(
+        &self,
+        pattern_idx: PatternIdx,
+        stop_offset: usize,
+        window: &ActiveServiceWindow,
+    ) -> Option<BoardableDeparture> {
+        let today_cand = self.earliest_boardable_trip(
+            pattern_idx,
+            stop_offset,
+            window.time_of_day,
+            &window.today_active,
+        );
+        let overnight_cand = self
+            .earliest_boardable_trip(
+                pattern_idx,
+                stop_offset,
+                window.yesterday_overnight_time,
+                &window.yesterday_active,
+            )
+            .map(|mut c| {
+                c.is_overnight_from_yesterday = true;
+                c
+            });
+
+        match (today_cand, overnight_cand) {
+            (Some(t), Some(o)) => {
+                if o.normalized_query_day_departure() <= t.normalized_query_day_departure() {
+                    Some(o)
+                } else {
+                    Some(t)
+                }
+            }
+            (Some(t), None) => Some(t),
+            (None, Some(o)) => Some(o),
+            (None, None) => None,
+        }
+    }
+
     /// Returns all [`PlacePatternOccurrence`]s visiting `place_idx` (including any `LocationGroup`
     /// patterns that contain `place_idx` as a member).
     pub fn patterns_serving_place(&self, place_idx: PlaceIdx) -> &[PlacePatternOccurrence] {
@@ -611,9 +1003,40 @@ impl RoutingTimetable {
             .unwrap_or(&[])
     }
 
-    /// Finds all [`PlaceIdx`]s whose bounding box intersects or is within `radius_meters` of `coord`.
+    /// Finds all [`PlaceIdx`]s whose bounding box intersects `bbox` in $O(\log N + K)$ time
+    /// using the [`rstar::RTree`] spatial index.
+    pub fn places_in_bbox(&self, bbox: BoundingBox) -> Vec<PlaceIdx> {
+        if self.place_spatial_index.size() > 0 {
+            let envelope =
+                AABB::from_corners([bbox.min_lon, bbox.min_lat], [bbox.max_lon, bbox.max_lat]);
+            let mut results: Vec<PlaceIdx> = self
+                .place_spatial_index
+                .locate_in_envelope_intersecting(&envelope)
+                .map(|e| e.place_idx)
+                .collect();
+            results.sort_unstable();
+            results
+        } else {
+            self.places
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| {
+                    p.bounding_box()
+                        .filter(|b| b.intersects(&bbox))
+                        .map(|_| PlaceIdx::from_usize(i))
+                })
+                .collect()
+        }
+    }
+
+    /// Finds all [`PlaceIdx`]s whose geometry contains `coord` (for `FlexZone` / `LocationGroup`
+    /// via exact ray-casting when `radius_meters == 0.0`, or within `radius_meters` of `coord`).
+    ///
+    /// Uses the [`rstar::RTree`] spatial index for $O(\log N)$ broad-phase filtering followed by:
+    /// - exact Haversine distance check (`<= radius_meters`) for fixed `Stop`s, and
+    /// - exact point-in-polygon (`contains_coord`) or polygon boundary proximity for `FlexZone`s and `LocationGroup`s.
     pub fn places_near(&self, coord: Coord, radius_meters: f64) -> Vec<PlaceIdx> {
-        let lat_deg = radius_meters / 111_111.0;
+        let lat_deg = radius_meters.max(0.0) / 111_111.0;
         let lon_deg = lat_deg / coord.lat.to_radians().cos().abs().max(1e-4);
         let query_bbox = BoundingBox {
             min_lon: coord.lon - lon_deg,
@@ -622,27 +1045,83 @@ impl RoutingTimetable {
             max_lat: coord.lat + lat_deg,
         };
 
+        let candidates = self.places_in_bbox(query_bbox);
         let mut matches = Vec::new();
-        for (i, place) in self.places.iter().enumerate() {
-            if let Some(bbox) = place.bounding_box() {
-                let overlaps = bbox.min_lon <= query_bbox.max_lon
-                    && bbox.max_lon >= query_bbox.min_lon
-                    && bbox.min_lat <= query_bbox.max_lat
-                    && bbox.max_lat >= query_bbox.min_lat;
-                if overlaps {
-                    if let Some(s) = place.as_stop() {
-                        if let Some(sc) = s.coord {
-                            if sc.haversine_meters(coord) <= radius_meters {
-                                matches.push(PlaceIdx::from_usize(i));
-                            }
+        for pidx in candidates {
+            let Some(place) = self.places.get(pidx.index()) else {
+                continue;
+            };
+            match place {
+                StopPlace::Stop(s) => {
+                    if let Some(sc) = s.coord {
+                        if sc.haversine_meters(coord) <= radius_meters {
+                            matches.push(pidx);
                         }
-                    } else {
-                        matches.push(PlaceIdx::from_usize(i));
+                    }
+                }
+                #[cfg(feature = "gtfs-flex")]
+                StopPlace::FlexZone(z) => {
+                    if z.contains_coord(coord)
+                        || (radius_meters > 0.0 && flex_zone_within_radius(z, coord, radius_meters))
+                    {
+                        matches.push(pidx);
+                    }
+                }
+                #[cfg(feature = "gtfs-flex")]
+                StopPlace::LocationGroup(g) => {
+                    if g.contains_coord(coord)
+                        || (radius_meters > 0.0
+                            && g.members.iter().any(|m| match m {
+                                crate::model::PlaceMember::Stop(s) => s
+                                    .coord
+                                    .is_some_and(|sc| sc.haversine_meters(coord) <= radius_meters),
+                                crate::model::PlaceMember::FlexZone(z) => {
+                                    flex_zone_within_radius(z, coord, radius_meters)
+                                }
+                            }))
+                    {
+                        matches.push(pidx);
                     }
                 }
             }
         }
         matches
+    }
+
+    // --- Binary Snapshot Serialization (`bincode`) for Instant HPC Cold-Starts ---
+
+    /// Serializes this [`RoutingTimetable`] into a compact `bincode` byte vector.
+    pub fn to_bincode_bytes(&self) -> Result<Vec<u8>, RoutingError> {
+        Ok(bincode::serialize(self)?)
+    }
+
+    /// Deserializes a [`RoutingTimetable`] from a `bincode` byte slice.
+    pub fn from_bincode_bytes(bytes: &[u8]) -> Result<Self, RoutingError> {
+        Ok(bincode::deserialize(bytes)?)
+    }
+
+    /// Writes this [`RoutingTimetable`] as a binary `bincode` snapshot to `writer`.
+    pub fn write_bincode<W: Write>(&self, writer: W) -> Result<(), RoutingError> {
+        Ok(bincode::serialize_into(writer, self)?)
+    }
+
+    /// Reads a [`RoutingTimetable`] from a binary `bincode` snapshot `reader`.
+    pub fn read_bincode<R: Read>(reader: R) -> Result<Self, RoutingError> {
+        Ok(bincode::deserialize_from(reader)?)
+    }
+
+    /// Saves this [`RoutingTimetable`] to a file on disk in `bincode` format.
+    pub fn save_bincode(&self, path: impl AsRef<Path>) -> Result<(), RoutingError> {
+        let file = File::create(path).map_err(|e| Box::new(bincode::ErrorKind::Io(e)))?;
+        let writer = BufWriter::new(file);
+        self.write_bincode(writer)
+    }
+
+    /// Loads a [`RoutingTimetable`] from a `bincode` snapshot file on disk.
+    pub fn load_bincode(path: impl AsRef<Path>) -> Result<Self, RoutingError> {
+        let file = File::open(path).map_err(|e| Box::new(bincode::ErrorKind::Io(e)))?;
+        let reader = BufReader::new(file);
+        Self::read_bincode(reader)
     }
 
     /// Reconstructs the geographic linestring (`Vec<Coord>`) for a transit traversal along `trip_idx`
@@ -701,6 +1180,47 @@ impl RoutingTimetable {
     }
 }
 
+#[cfg(feature = "gtfs-flex")]
+fn flex_zone_within_radius(
+    zone: &crate::model::FlexLocation,
+    target: Coord,
+    radius_meters: f64,
+) -> bool {
+    let check_ring = |ring: &[Coord]| -> bool {
+        if ring.iter().any(|&v| v.haversine_meters(target) <= radius_meters) {
+            return true;
+        }
+        let cos_lat = target.lat.to_radians().cos().max(1e-6);
+        for seg in ring.windows(2) {
+            let (a, b) = (seg[0], seg[1]);
+            let ax = (a.lon - target.lon) * cos_lat;
+            let ay = a.lat - target.lat;
+            let bx = (b.lon - target.lon) * cos_lat;
+            let by = b.lat - target.lat;
+            let dx = bx - ax;
+            let dy = by - ay;
+            let len_sq = dx * dx + dy * dy;
+            let t = if len_sq > 0.0 {
+                (-(ax * dx + ay * dy) / len_sq).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let closest = Coord::lerp(a, b, t);
+            if closest.haversine_meters(target) <= radius_meters {
+                return true;
+            }
+        }
+        false
+    };
+
+    match &zone.geometry {
+        crate::raw::RawFlexGeometry::Polygon(rings) => rings.iter().any(|r| check_ring(r)),
+        crate::raw::RawFlexGeometry::MultiPolygon(polys) => {
+            polys.iter().any(|rings| rings.iter().any(|r| check_ring(r)))
+        }
+    }
+}
+
 fn resolve_route_agency<'a>(
     route: &'a Route,
     agencies: &'a [Agency],
@@ -746,6 +1266,8 @@ fn pickup_code(p: &BoardingPolicy) -> i16 {
 pub struct RoutingTimetableBuilder {
     timetable: RoutingTimetable,
     pattern_lookup: HashMap<PatternKey, PatternIdx>,
+    validation_policy: ValidationPolicy,
+    materialize_frequency_trips: bool,
     #[cfg(feature = "gtfs-flex")]
     flex_duration_lookup: HashMap<[u64; 4], u16>,
 }
@@ -756,12 +1278,34 @@ impl RoutingTimetableBuilder {
         Self::default()
     }
 
+    /// Sets the [`ValidationPolicy`] used when interpolating and packing trips in Phase 3.
+    ///
+    /// When set to [`ValidationPolicy::DropInvalidTripsWithWarning`], trips with 0 or 1 stops,
+    /// missing boundary timestamps (`UninterpolatableTripBoundary`), or decreasing stop times
+    /// (`DecreasingStopTimes`) are dropped and recorded on [`FeedMetadata::warnings`] and
+    /// [`FeedMetadata::dropped_counts`] instead of aborting the build.
+    pub fn with_validation_policy(mut self, policy: ValidationPolicy) -> Self {
+        self.validation_policy = policy;
+        self
+    }
+
+    /// Configures whether headway-based `frequencies.txt` trips should be materialized into concrete
+    /// [`RoutableTrip`] instances (with `CompactStopTime` entries shifted for each headway departure
+    /// and `frequencies` cleared on the expanded trips).
+    ///
+    /// Note that [`RoutingTimetable::earliest_boardable_trip`] supports both materialized and
+    /// unexpanded frequency trips automatically.
+    pub fn with_materialize_frequencies(mut self, materialize: bool) -> Self {
+        self.materialize_frequency_trips = materialize;
+        self
+    }
+
     /// Appends a [`ValidatedFeed`] under `feed_id` into the contiguous [`RoutingTimetable`] arena,
     /// returning its assigned [`FeedIdx`].
     pub fn add_feed(
         &mut self,
         feed_id: impl Into<FeedId>,
-        feed: ValidatedFeed,
+        mut feed: ValidatedFeed,
     ) -> Result<FeedIdx, RoutingError> {
         let feed_id = feed_id.into();
         let feed_idx = FeedIdx::from_usize(self.timetable.feeds.len());
@@ -953,6 +1497,25 @@ impl RoutingTimetableBuilder {
         raw_trips.sort_by(|a, b| a.id.cmp(&b.id));
 
         for mut trip in raw_trips {
+            if self.validation_policy == ValidationPolicy::DropInvalidTripsWithWarning {
+                if trip.stop_times.is_empty() {
+                    feed.dropped_counts.empty_trips += 1;
+                    feed.warnings.push(ValidationWarning::DroppedTrip {
+                        trip_id: trip.id.to_string(),
+                        reason: "trip has 0 stop_times rows".to_owned(),
+                    });
+                    continue;
+                }
+                if trip.stop_times.len() == 1 {
+                    feed.dropped_counts.single_stop_trips += 1;
+                    feed.warnings.push(ValidationWarning::DroppedTrip {
+                        trip_id: trip.id.to_string(),
+                        reason: "trip has only 1 stop_times row".to_owned(),
+                    });
+                    continue;
+                }
+            }
+
             let service_idx = match local_service_to_idx.get(&trip.service_id).copied() {
                 Some(idx) => idx,
                 None => {
@@ -978,7 +1541,7 @@ impl RoutingTimetableBuilder {
                 .as_ref()
                 .and_then(|sid| local_shape_to_idx.get(sid).copied());
 
-            let (place_indices, compact_sts) = self.interpolate_and_pack_stop_times(
+            let (place_indices, compact_sts) = match self.interpolate_and_pack_stop_times(
                 &trip.id,
                 &mut trip.stop_times,
                 &local_stop_to_place,
@@ -986,7 +1549,20 @@ impl RoutingTimetableBuilder {
                 &local_loc_to_place,
                 #[cfg(feature = "gtfs-flex")]
                 &local_grp_to_place,
-            )?;
+            ) {
+                Ok(res) => res,
+                Err(err) => match self.validation_policy {
+                    ValidationPolicy::Strict => return Err(err),
+                    ValidationPolicy::DropInvalidTripsWithWarning => {
+                        feed.dropped_counts.malformed_trips += 1;
+                        feed.warnings.push(ValidationWarning::DroppedTrip {
+                            trip_id: trip.id.to_string(),
+                            reason: err.to_string(),
+                        });
+                        continue;
+                    }
+                },
+            };
 
             let key = PatternKey {
                 feed_idx,
@@ -1045,34 +1621,103 @@ impl RoutingTimetableBuilder {
                 }
             };
 
-            let stop_times_offset = self.timetable.stop_times.len() as u32;
-            let stop_count = compact_sts.len() as u16;
-            self.timetable.stop_times.extend(compact_sts);
+            if self.materialize_frequency_trips
+                && !trip.frequencies.is_empty()
+                && !compact_sts.is_empty()
+                && compact_sts.iter().all(|st| !st.is_flex_window())
+            {
+                let t0_secs = compact_sts[0].departure_or_end_secs as i64;
+                let mut instance_counter = 0usize;
+                for freq in &trip.frequencies {
+                    if freq.headway_secs == 0 {
+                        continue;
+                    }
+                    let mut dep0 = freq.window.start.0 as i64;
+                    let end0 = freq.window.end.0 as i64;
+                    let headway = freq.headway_secs as i64;
+                    while dep0 < end0 || (instance_counter == 0 && dep0 == end0) {
+                        let offset_secs = dep0 - t0_secs;
+                        let shifted_sts: Vec<CompactStopTime> = compact_sts
+                            .iter()
+                            .map(|st| CompactStopTime {
+                                arrival_or_start_secs: GtfsTime(st.arrival_or_start_secs)
+                                    .add_signed_seconds(offset_secs)
+                                    .0,
+                                departure_or_end_secs: GtfsTime(st.departure_or_end_secs)
+                                    .add_signed_seconds(offset_secs)
+                                    .0,
+                                ..*st
+                            })
+                            .collect();
 
-            let trip_idx = TripIdx::from_usize(self.timetable.trips.len());
-            self.timetable
-                .scoped_trip_to_idx
-                .insert((feed_idx, trip.id.clone()), trip_idx);
-            self.timetable
-                .trip_id_to_idx
-                .insert(trip.id.clone(), trip_idx);
-            self.timetable.patterns[pattern_idx.index()]
-                .trips
-                .push(trip_idx);
+                        let stop_times_offset = self.timetable.stop_times.len() as u32;
+                        let stop_count = shifted_sts.len() as u16;
+                        self.timetable.stop_times.extend(shifted_sts);
 
-            self.timetable.trips.push(RoutableTrip {
-                idx: trip_idx,
-                feed_idx,
-                id: trip.id,
-                route_idx,
-                pattern_idx,
-                service_idx,
-                shape_idx,
-                headsign: trip.trip_headsign,
-                stop_times_offset,
-                stop_count,
-                frequencies: trip.frequencies,
-            });
+                        let trip_idx = TripIdx::from_usize(self.timetable.trips.len());
+                        let expanded_id = if instance_counter == 0 {
+                            trip.id.clone()
+                        } else {
+                            TripId::new(format!("{}#freq_{}", trip.id, instance_counter))
+                        };
+                        self.timetable
+                            .scoped_trip_to_idx
+                            .insert((feed_idx, expanded_id.clone()), trip_idx);
+                        self.timetable
+                            .trip_id_to_idx
+                            .insert(expanded_id.clone(), trip_idx);
+                        self.timetable.patterns[pattern_idx.index()]
+                            .trips
+                            .push(trip_idx);
+
+                        self.timetable.trips.push(RoutableTrip {
+                            idx: trip_idx,
+                            feed_idx,
+                            id: expanded_id,
+                            route_idx,
+                            pattern_idx,
+                            service_idx,
+                            shape_idx,
+                            headsign: trip.trip_headsign.clone(),
+                            stop_times_offset,
+                            stop_count,
+                            frequencies: Vec::new(),
+                        });
+
+                        instance_counter += 1;
+                        dep0 += headway;
+                    }
+                }
+            } else {
+                let stop_times_offset = self.timetable.stop_times.len() as u32;
+                let stop_count = compact_sts.len() as u16;
+                self.timetable.stop_times.extend(compact_sts);
+
+                let trip_idx = TripIdx::from_usize(self.timetable.trips.len());
+                self.timetable
+                    .scoped_trip_to_idx
+                    .insert((feed_idx, trip.id.clone()), trip_idx);
+                self.timetable
+                    .trip_id_to_idx
+                    .insert(trip.id.clone(), trip_idx);
+                self.timetable.patterns[pattern_idx.index()]
+                    .trips
+                    .push(trip_idx);
+
+                self.timetable.trips.push(RoutableTrip {
+                    idx: trip_idx,
+                    feed_idx,
+                    id: trip.id,
+                    route_idx,
+                    pattern_idx,
+                    service_idx,
+                    shape_idx,
+                    headsign: trip.trip_headsign,
+                    stop_times_offset,
+                    stop_count,
+                    frequencies: trip.frequencies,
+                });
+            }
         }
 
         let patterns_end = self.timetable.patterns.len() as u32;
@@ -1094,27 +1739,37 @@ impl RoutingTimetableBuilder {
             });
         }
 
+        let primary_timezone = feed
+            .agencies
+            .iter()
+            .find_map(|a| a.parsed_timezone.clone());
+
         self.timetable.feeds.push(FeedMetadata {
             idx: feed_idx,
             id: feed_id,
             agencies: feed.agencies,
+            primary_timezone,
             places_span: places_start..places_end,
             routes_span: routes_start..routes_end,
             patterns_span: patterns_start..patterns_end,
             trips_span: trips_start..trips_end,
             services_span: services_start..services_end,
             shapes_span: shapes_start..shapes_end,
+            warnings: feed.warnings,
+            dropped_counts: feed.dropped_counts,
         });
 
         Ok(feed_idx)
     }
 
-    /// Consumes the builder and returns the completed [`RoutingTimetable`].
+    /// Consumes the builder, bulk-loads the [`rstar::RTree`] spatial index over all places,
+    /// and returns the completed [`RoutingTimetable`].
     pub fn build(mut self) -> RoutingTimetable {
         self.timetable.stop_times.shrink_to_fit();
         self.timetable.places.shrink_to_fit();
         self.timetable.trips.shrink_to_fit();
         self.timetable.patterns.shrink_to_fit();
+        self.timetable.place_spatial_index = build_place_spatial_index(&self.timetable.places);
         self.timetable
     }
 

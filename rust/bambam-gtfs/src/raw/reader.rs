@@ -117,13 +117,16 @@ impl<'a, T: DeserializeOwned> Iterator for CsvRowIter<'a, T> {
     type Item = Result<T, RawReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.csv_reader.read_record(&mut self.rec) {
-            Ok(true) => {
-                self.row_number += 1;
-                let res =
-                    self.rec
-                        .deserialize(Some(&self.headers))
-                        .map_err(|source| RawReadError::Csv {
+        loop {
+            match self.csv_reader.read_record(&mut self.rec) {
+                Ok(true) => {
+                    self.row_number += 1;
+                    // Skip trailing or intermediate blank lines where every field is empty/whitespace
+                    if self.rec.iter().all(|f| f.trim().is_empty()) {
+                        continue;
+                    }
+                    let res = self.rec.deserialize(Some(&self.headers)).map_err(|source| {
+                        RawReadError::Csv {
                             file_name: self.file_name.clone(),
                             source,
                             row: Some(CsvRowContext {
@@ -131,15 +134,19 @@ impl<'a, T: DeserializeOwned> Iterator for CsvRowIter<'a, T> {
                                 headers: self.headers.iter().map(String::from).collect(),
                                 values: self.rec.iter().map(String::from).collect(),
                             }),
-                        });
-                Some(res)
+                        }
+                    });
+                    return Some(res);
+                }
+                Ok(false) => return None,
+                Err(source) => {
+                    return Some(Err(RawReadError::Csv {
+                        file_name: self.file_name.clone(),
+                        source,
+                        row: None,
+                    }))
+                }
             }
-            Ok(false) => None,
-            Err(source) => Some(Err(RawReadError::Csv {
-                file_name: self.file_name.clone(),
-                source,
-                row: None,
-            })),
         }
     }
 }

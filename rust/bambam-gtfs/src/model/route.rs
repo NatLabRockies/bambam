@@ -7,7 +7,7 @@ use crate::traits::Identifiable;
 use rgb::RGB8;
 
 /// A validated commercial transit line (`routes.txt`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Route {
     /// Unique identifier for the route.
     pub id: RouteId,

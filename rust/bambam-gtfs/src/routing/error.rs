@@ -5,7 +5,7 @@ use crate::ids::TripIdx;
 use thiserror::Error;
 
 /// Errors occurring during Phase 3 (`RoutingTimetable` construction and routing queries).
-#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug)]
 pub enum RoutingError {
     /// A trip has fixed/interpolated stop times at intermediate stops, but its first or last stop
     /// lacks a scheduled timestamp and cannot be anchored for linear interpolation.
@@ -38,4 +38,8 @@ pub enum RoutingError {
         /// Total number of stops in the trip's pattern.
         num_stops: usize,
     },
+
+    /// Binary snapshot serialization or deserialization error (`bincode` / I/O).
+    #[error("timetable binary snapshot error: {0}")]
+    Snapshot(#[from] Box<bincode::ErrorKind>),
 }

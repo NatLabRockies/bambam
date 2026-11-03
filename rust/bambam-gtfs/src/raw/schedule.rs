@@ -224,19 +224,18 @@ pub struct RawStopTime {
     // --- GTFS-Flex extension columns ---
     /// Identifier referencing a GeoJSON location from `locations.geojson` (GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub location_id: Option<LocationId>,
     /// Identifier referencing a location group from `location_groups.txt` (GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub location_group_id: Option<LocationGroupId>,
     /// Time on-demand service becomes available (GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
     #[serde(
         deserialize_with = "deserialize_optional_time",
         serialize_with = "serialize_optional_time",
-        default,
-        skip_serializing_if = "Option::is_none"
+        default
     )]
     pub start_pickup_drop_off_window: Option<GtfsTime>,
     /// Time on-demand service ends (GTFS-Flex).
@@ -244,25 +243,23 @@ pub struct RawStopTime {
     #[serde(
         deserialize_with = "deserialize_optional_time",
         serialize_with = "serialize_optional_time",
-        default,
-        skip_serializing_if = "Option::is_none"
+        default
     )]
     pub end_pickup_drop_off_window: Option<GtfsTime>,
     /// Booking rule identifier for pickup (`booking_rules.txt`, GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub pickup_booking_rule_id: Option<BookingRuleId>,
     /// Booking rule identifier for drop-off (`booking_rules.txt`, GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub drop_off_booking_rule_id: Option<BookingRuleId>,
     /// Factor for estimating mean travel duration (GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
     #[serde(
         deserialize_with = "de_with_optional_float",
         serialize_with = "serialize_float_as_str",
-        default,
-        skip_serializing_if = "Option::is_none"
+        default
     )]
     pub mean_duration_factor: Option<f64>,
     /// Offset in minutes for estimating mean travel duration (GTFS-Flex).
@@ -270,8 +267,7 @@ pub struct RawStopTime {
     #[serde(
         deserialize_with = "de_with_optional_float",
         serialize_with = "serialize_float_as_str",
-        default,
-        skip_serializing_if = "Option::is_none"
+        default
     )]
     pub mean_duration_offset: Option<f64>,
     /// Factor for 95th percentile travel duration (GTFS-Flex).
@@ -279,8 +275,7 @@ pub struct RawStopTime {
     #[serde(
         deserialize_with = "de_with_optional_float",
         serialize_with = "serialize_float_as_str",
-        default,
-        skip_serializing_if = "Option::is_none"
+        default
     )]
     pub safe_duration_factor: Option<f64>,
     /// Offset in minutes for 95th percentile travel duration (GTFS-Flex).
@@ -288,8 +283,7 @@ pub struct RawStopTime {
     #[serde(
         deserialize_with = "de_with_optional_float",
         serialize_with = "serialize_float_as_str",
-        default,
-        skip_serializing_if = "Option::is_none"
+        default
     )]
     pub safe_duration_offset: Option<f64>,
 }
