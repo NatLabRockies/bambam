@@ -51,8 +51,8 @@ impl OsmImportConfiguration {
     /// island filter when neither `island_algorithm_configuration` nor a specific `ComponentFilter`
     /// is overriding it.
     pub fn resolved_island_detection(&self) -> Option<IslandDetectionAlgorithm> {
-        if let Some(ref alg) = self.island_algorithm_configuration {
-            return Some(alg.clone());
+        if self.edge_lists.is_some() || self.island_algorithm_configuration.is_some() {
+            return self.island_algorithm_configuration.clone();
         }
         match self.component_filter {
             ComponentFilter::KeepAll => None,
