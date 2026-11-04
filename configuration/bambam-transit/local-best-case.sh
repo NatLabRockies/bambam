@@ -1,0 +1,13 @@
+#!/bin/sh
+
+./rust/target/release/bambam-transit import \
+    --input "boulder_co/ucb-gtfs.zip" \
+    --parallelism 1 \
+    --date-mapping-policy best-case \
+    --date-mapping-date-tolerance 7 \
+    --output-directory "boulder_co/transit" \
+    --vertices-compass-filename "boulder_co/vertices-complete.csv.gz" \
+    --start-date 08-15-2025 \
+    --end-date 08-15-2025 \
+    --start-time 08:00:00 \
+    --end-time 09:00:00 

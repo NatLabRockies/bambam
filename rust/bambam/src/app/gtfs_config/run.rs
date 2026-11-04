@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use bambam_gtfs::model::traversal::transit::{ScheduleLoadingPolicy, TransitTraversalConfig};
+use bambam_transit::model::traversal::transit::{ScheduleLoadingPolicy, TransitTraversalConfig};
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use itertools::Itertools;

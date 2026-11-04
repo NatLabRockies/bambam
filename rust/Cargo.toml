@@ -11,6 +11,7 @@ members = [
     "bambam-omf",
     "bambam-osm",
     "bambam-py",
+    "bambam-transit",
 ]
 
 [workspace.package]
@@ -28,14 +29,17 @@ bambam-modal-metrics = { version = "0.3.3", path = "bambam-modal-metrics" }
 bambam-network = { version = "0.3.3", path = "bambam-network" }
 bambam-omf = { version = "0.3.3", path = "bambam-omf" }
 bambam-osm = { version = "0.3.3", path = "bambam-osm" }
+bambam-transit = { version = "0.3.3", path = "bambam-transit" }
 bamcensus = { version = "0.1.0" }
 bamcensus-acs = { version = "0.1.0" }
 bamcensus-core = { version = "0.1.0" }
 bamcensus-lehd = { version = "0.1.0" }
 chrono = { version = "0.4.42", features = ["serde"] }
+chrono-tz = "0.10.4"
 clap = { version = "4.5.52", features = ["derive", "env"] }
 config = "0.15.19"
 csv = "1.3.1"
+derive_more = { version = "2.1", features = ["try_from"] }
 downloader = { version = "0.2.8" }
 env_logger = "0.11.8"
 flate2 = "1.0"
@@ -45,15 +49,14 @@ geo = { version = "0.33.1", features = ["use-serde"] }
 geo-buffer = "0.2.0"
 geo-traits = "0.3.0"
 geo-types = "=0.7.19"
+geojson = "0.24"
 geozero = { version = "0.14.0", features = ["with-geo", "with-wkb", "with-wkt", "with-geojson"] }
-gtfs-structures = { git = "https://github.com/robfitzgerald/gtfs-structure", branch = "rjf/135-gtfs-flex", features = ["gtfs-flex"] }
 h3o = { version = "0.9.4", features = ["serde", "geo"] }
 hex = "0.4.3"
 humantime = "2.3.0"
 indexmap = { version = "2.12.0", features = ["serde"] }
 inventory = { version = "0.3.21" }
 itertools = { version = "0.14.0" }
-jiff = { version = "0.2.35", default-features = false, features = ["std"] }
 jsonpath-rust = { version = "1.0.4" }
 kdam = "0.6.3"
 log = "0.4.19"
@@ -70,6 +73,8 @@ rand = "0.10.0"
 rayon = "1.10.0"
 regex = { version = "1.11.1" }
 reqwest = { version = "0.12.12", features = ["blocking"] }
+rgb = { version = "0.8", features = ["serde"] }
+rkyv = "0.8"
 routee-compass = { version = "0.19.5", default-features = false, git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
 routee-compass-core = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66", features = ["accumulated_cost"] }
 routee-compass-macros = { version = "0.19.5", git = "https://github.com/NatLabRockies/routee-compass", rev = "47d7f0f2c610041753f3674a4ac316caa3bd1b66" }
@@ -78,7 +83,7 @@ routee-compass-py = { version = "0.19.5", default-features = false }
 rstar = { version = "0.12.2" }
 sanitize-filename = "0.6.0"
 schemars = { version = "1.2.2", features = ["chrono04"] }
-serde = { version = "1.0.160", features = ["derive"] }
+serde = { version = "1.0.160", features = ["derive", "rc"] }
 serde_arrow = { version = "0.14.0", features = ["arrow-58"] }
 serde_bytes = { version = "0.11.19" }
 serde_json = { version = "1.0" }

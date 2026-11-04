@@ -1,0 +1,40 @@
+[package]
+name = "bambam-transit"
+version.workspace = true
+edition = "2021"
+license = "BSD-3-Clause"
+exclude = ["test", "**/.DS_Store", "target/"]
+readme = "README.md"
+repository = "https://github.com/NatLabRockies/bambam"
+documentation = "https://docs.rs/bambam-transit"
+description = "Transit modeling and GTFS Command Line Utilities for The Behavior and Advanced Mobility Big Access Model"
+keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
+categories = ["command-line-utilities", "science", "science::geo"]
+
+[dependencies]
+bambam-core = { workspace = true }
+bambam-gtfs = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+config = { workspace = true }
+csv = { workspace = true }
+downloader = { workspace = true }
+env_logger = { workspace = true }
+flate2 = { workspace = true }
+geo = { workspace = true }
+geozero = { workspace = true }
+h3o = { workspace = true }
+itertools = { workspace = true }
+kdam = { workspace = true }
+log = { workspace = true }
+rayon = { workspace = true }
+routee-compass = { workspace = true, default-features = false }
+routee-compass-core = { workspace = true }
+rstar = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+skiplist = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+uom = { workspace = true }
+zip = { workspace = true }

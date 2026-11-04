@@ -22,7 +22,7 @@ First, install using cargo (via [rustup](rustup.rs)): `cargo build --release --m
 
   - **bambam** - runs the access model
   - **bambam_util** - runs specific support utilities
-  - **bambam_gtfs** - [GTFS](https://gtfs.org/documentation/schedule/reference/) analysis and import script
+  - **bambam-transit** - [GTFS](https://gtfs.org/documentation/schedule/reference/) analysis and import script
   - **bambam_osm** - [OpenStreetMap](https://www.openstreetmap.org/) import script
   - **bambam_omf** - [OvertureMaps](https://docs.overturemaps.org/) import script
 
@@ -75,7 +75,7 @@ result = app.run(query)
 This test uses walk-transit traversal to report opportunities near University of Colorado Boulder. First, process the GTFS archive:
 
 ```sh
-$ RUST_LOG=info ./configuration/bambam-gtfs/local-exact-range.sh
+$ RUST_LOG=info ./configuration/bambam-transit/local-exact-range.sh
 ```
 
 Now run BAMBAM using the boulder_test.toml configuration file and a small study area extent:

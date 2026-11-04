@@ -14,7 +14,7 @@ pub enum GtfsFlexError {
     #[error("GTFS error for archive {path}: {error}")]
     GtfsRead {
         path: PathBuf,
-        error: gtfs_structures::Error,
+        error: bambam_gtfs::Gtfs2Error,
     },
     #[error("gtfs flex modeling failed while interacting with the state due to: {0}")]
     StateModel(#[from] StateModelError),

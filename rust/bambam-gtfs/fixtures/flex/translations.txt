@@ -1,0 +1,4 @@
+table_name,field_name,language,translation,field_value
+routes,route_long_name,som,Ekisbareeska Heartland,Heartland Express
+routes,route_long_name,hmn,Heartland Express,Heartland Express
+routes,route_long_name,spa,Heartland Express,Heartland Express
