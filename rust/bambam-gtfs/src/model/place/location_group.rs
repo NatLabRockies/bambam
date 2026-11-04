@@ -59,19 +59,16 @@ impl LocationGroup {
 impl Identifiable for LocationGroup {
     type Id = LocationGroupId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }
 }
 
 impl Spatial for LocationGroup {
-    #[inline]
     fn representative_coord(&self) -> Option<Coord> {
         self.bbox.map(|b| b.center())
     }
 
-    #[inline]
     fn bounding_box(&self) -> Option<BoundingBox> {
         self.bbox
     }

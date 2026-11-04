@@ -21,7 +21,6 @@ macro_rules! define_gtfs_id {
 
         impl $name {
             /// Creates a new identifier from any string-like value.
-            #[inline]
             pub fn new(id: impl Into<String>) -> Self {
                 Self(id.into())
             }
@@ -294,7 +293,6 @@ pub struct ScopedId<Id> {
 
 impl<Id> ScopedId<Id> {
     /// Creates a new feed-scoped identifier.
-    #[inline]
     pub fn new(feed_id: impl Into<FeedId>, id: impl Into<Id>) -> Self {
         Self {
             feed_id: feed_id.into(),

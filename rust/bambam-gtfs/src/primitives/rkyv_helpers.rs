@@ -12,7 +12,6 @@ impl rkyv::with::ArchiveWith<NaiveDate> for RkyvNaiveDate {
     type Archived = rkyv::rend::i32_le;
     type Resolver = ();
 
-    #[inline]
     fn resolve_with(field: &NaiveDate, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
         let days = field.num_days_from_ce();
         rkyv::Archive::resolve(&days, resolver, out);
@@ -20,7 +19,6 @@ impl rkyv::with::ArchiveWith<NaiveDate> for RkyvNaiveDate {
 }
 
 impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<NaiveDate, S> for RkyvNaiveDate {
-    #[inline]
     fn serialize_with(field: &NaiveDate, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
         let days = field.num_days_from_ce();
         rkyv::Serialize::serialize(&days, serializer)
@@ -30,7 +28,6 @@ impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<NaiveDate, S>
 impl<D: rkyv::rancor::Fallible + ?Sized>
     rkyv::with::DeserializeWith<rkyv::rend::i32_le, NaiveDate, D> for RkyvNaiveDate
 {
-    #[inline]
     fn deserialize_with(
         field: &rkyv::rend::i32_le,
         _deserializer: &mut D,
@@ -93,7 +90,6 @@ impl rkyv::with::ArchiveWith<RGB8> for RkyvRgb8 {
     type Archived = [u8; 3];
     type Resolver = [(); 3];
 
-    #[inline]
     fn resolve_with(field: &RGB8, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
         let arr = [field.r, field.g, field.b];
         rkyv::Archive::resolve(&arr, resolver, out);
@@ -101,7 +97,6 @@ impl rkyv::with::ArchiveWith<RGB8> for RkyvRgb8 {
 }
 
 impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<RGB8, S> for RkyvRgb8 {
-    #[inline]
     fn serialize_with(field: &RGB8, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
         let arr = [field.r, field.g, field.b];
         rkyv::Serialize::serialize(&arr, serializer)
@@ -111,7 +106,6 @@ impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<RGB8, S> for 
 impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::with::DeserializeWith<[u8; 3], RGB8, D>
     for RkyvRgb8
 {
-    #[inline]
     fn deserialize_with(field: &[u8; 3], _deserializer: &mut D) -> Result<RGB8, D::Error> {
         Ok(RGB8::new(field[0], field[1], field[2]))
     }
@@ -124,7 +118,6 @@ impl rkyv::with::ArchiveWith<Tz> for RkyvTz {
     type Archived = rkyv::string::ArchivedString;
     type Resolver = rkyv::string::StringResolver;
 
-    #[inline]
     fn resolve_with(field: &Tz, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
         rkyv::string::ArchivedString::resolve_from_str(field.name(), resolver, out);
     }
@@ -135,7 +128,6 @@ where
     S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized,
     S::Error: rkyv::rancor::Source,
 {
-    #[inline]
     fn serialize_with(field: &Tz, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
         rkyv::string::ArchivedString::serialize_from_str(field.name(), serializer)
     }
@@ -144,7 +136,6 @@ where
 impl<D: rkyv::rancor::Fallible + ?Sized>
     rkyv::with::DeserializeWith<rkyv::string::ArchivedString, Tz, D> for RkyvTz
 {
-    #[inline]
     fn deserialize_with(
         field: &rkyv::string::ArchivedString,
         _deserializer: &mut D,
@@ -160,7 +151,6 @@ impl rkyv::with::ArchiveWith<Option<Tz>> for RkyvOptionTz {
     type Archived = rkyv::option::ArchivedOption<rkyv::string::ArchivedString>;
     type Resolver = Option<rkyv::string::StringResolver>;
 
-    #[inline]
     fn resolve_with(
         field: &Option<Tz>,
         resolver: Self::Resolver,
@@ -176,7 +166,6 @@ where
     S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized,
     S::Error: rkyv::rancor::Source,
 {
-    #[inline]
     fn serialize_with(field: &Option<Tz>, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
         let name: Option<String> = field.map(|t| t.name().to_owned());
         rkyv::Serialize::serialize(&name, serializer)
@@ -190,7 +179,6 @@ impl<D: rkyv::rancor::Fallible + ?Sized>
         D,
     > for RkyvOptionTz
 {
-    #[inline]
     fn deserialize_with(
         field: &rkyv::option::ArchivedOption<rkyv::string::ArchivedString>,
         _deserializer: &mut D,

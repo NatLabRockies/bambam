@@ -88,7 +88,6 @@ impl ValidatedFeed {
     }
 
     /// Returns the primary IANA [`chrono_tz::Tz`] timezone of this feed (from the first agency in `agency.txt`).
-    #[inline]
     pub fn primary_timezone(&self) -> Option<Tz> {
         self.agencies.first().map(|a| a.timezone)
     }

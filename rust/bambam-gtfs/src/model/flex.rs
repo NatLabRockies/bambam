@@ -109,7 +109,6 @@ impl From<RawBookingRule> for BookingRule {
 impl Identifiable for BookingRule {
     type Id = BookingRuleId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }

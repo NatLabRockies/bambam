@@ -234,7 +234,6 @@ pub struct Trip {
 impl Identifiable for Trip {
     type Id = TripId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }

@@ -75,7 +75,6 @@ impl GtfsTime {
 
     /// Combines this `GtfsTime` (which may be `>= 24:00:00` for overnight trips) with `service_date`
     /// into a [`NaiveDateTime`].
-    #[inline]
     pub fn to_naive_datetime(self, service_date: NaiveDate) -> Option<NaiveDateTime> {
         service_date
             .and_hms_opt(0, 0, 0)?
@@ -102,7 +101,6 @@ impl GtfsTime {
     }
 
     /// Extracts the local `(NaiveDate, GtfsTime)` from a timezone-aware [`DateTime`].
-    #[inline]
     pub fn from_datetime<T: chrono::TimeZone>(dt: &DateTime<T>) -> (NaiveDate, Self) {
         (
             dt.date_naive(),

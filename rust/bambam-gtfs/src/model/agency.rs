@@ -43,7 +43,6 @@ pub struct Agency {
 
 impl Agency {
     /// Returns the IANA [`chrono_tz::Tz`] timezone for this agency.
-    #[inline]
     pub const fn time_zone(&self) -> Tz {
         self.timezone
     }

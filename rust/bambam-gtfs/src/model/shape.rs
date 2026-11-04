@@ -346,19 +346,16 @@ impl ShapePolyline {
 impl Identifiable for ShapePolyline {
     type Id = ShapeId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }
 }
 
 impl Spatial for ShapePolyline {
-    #[inline]
     fn representative_coord(&self) -> Option<Coord> {
         self.coord_at_meters(self.total_meters * 0.5)
     }
 
-    #[inline]
     fn bounding_box(&self) -> Option<BoundingBox> {
         self.bbox
     }

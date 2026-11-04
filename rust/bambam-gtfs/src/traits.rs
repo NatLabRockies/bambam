@@ -16,7 +16,6 @@ pub trait Identifiable {
 impl<T: Identifiable> Identifiable for Arc<T> {
     type Id = T::Id;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         self.as_ref().id()
     }
@@ -35,12 +34,10 @@ pub trait Spatial {
 }
 
 impl<T: Spatial> Spatial for Arc<T> {
-    #[inline]
     fn representative_coord(&self) -> Option<Coord> {
         self.as_ref().representative_coord()
     }
 
-    #[inline]
     fn bounding_box(&self) -> Option<BoundingBox> {
         self.as_ref().bounding_box()
     }

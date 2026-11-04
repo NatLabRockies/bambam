@@ -10,7 +10,6 @@ impl rkyv::with::ArchiveWith<ExtendedRouteType> for RkyvExtendedRouteType {
     type Archived = rkyv::rend::i16_le;
     type Resolver = ();
 
-    #[inline]
     fn resolve_with(
         field: &ExtendedRouteType,
         resolver: Self::Resolver,
@@ -24,7 +23,6 @@ impl rkyv::with::ArchiveWith<ExtendedRouteType> for RkyvExtendedRouteType {
 impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<ExtendedRouteType, S>
     for RkyvExtendedRouteType
 {
-    #[inline]
     fn serialize_with(
         field: &ExtendedRouteType,
         serializer: &mut S,
@@ -38,7 +36,6 @@ impl<D: rkyv::rancor::Fallible + ?Sized>
     rkyv::with::DeserializeWith<rkyv::rend::i16_le, ExtendedRouteType, D>
     for RkyvExtendedRouteType
 {
-    #[inline]
     fn deserialize_with(
         field: &rkyv::rend::i16_le,
         _deserializer: &mut D,

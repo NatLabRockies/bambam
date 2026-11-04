@@ -62,7 +62,6 @@ impl FlexLocation {
     ///
     /// Performs a fast bounding-box check followed by exact ray-casting over the exterior
     /// and interior hole rings of `self.geometry`.
-    #[inline]
     pub fn contains_coord(&self, coord: Coord) -> bool {
         if let Some(bbox) = &self.bbox {
             if !bbox.contains(coord) {
@@ -76,19 +75,16 @@ impl FlexLocation {
 impl Identifiable for FlexLocation {
     type Id = LocationId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }
 }
 
 impl Spatial for FlexLocation {
-    #[inline]
     fn representative_coord(&self) -> Option<Coord> {
         self.bbox.map(|b| b.center())
     }
 
-    #[inline]
     fn bounding_box(&self) -> Option<BoundingBox> {
         self.bbox
     }

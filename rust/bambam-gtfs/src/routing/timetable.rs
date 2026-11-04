@@ -136,7 +136,6 @@ pub struct RoutingTimetable {
 impl RoutingTimetable {
     /// Creates a new [`RoutingTimetableBuilder`] for merging one or more [`crate::model::ValidatedFeed`]s
     /// into a single contiguous national/regional [`RoutingTimetable`].
-    #[inline]
     pub fn builder() -> RoutingTimetableBuilder {
         RoutingTimetableBuilder::new()
     }
@@ -160,7 +159,6 @@ impl RoutingTimetable {
 
     /// Resolves any interned [`FlexDurationParams`] for a [`CompactStopTime`].
     #[cfg(feature = "gtfs-flex")]
-    #[inline]
     pub fn stop_time_flex_duration(&self, st: CompactStopTime) -> FlexDurationParams {
         if st.flex_duration_idx == NO_FLEX_DURATION_IDX {
             FlexDurationParams::default()
@@ -285,7 +283,6 @@ impl RoutingTimetable {
     // --- O(1) Forward Lookups (Fully-Qualified / Scoped ID -> Global Index) ---
 
     /// Looks up a [`PlaceIdx`] by `(FeedId, StopId)` in $O(1)$ time.
-    #[inline]
     pub fn lookup_stop(&self, feed_id: &FeedId, stop_id: &StopId) -> Option<PlaceIdx> {
         let &feed_idx = self.feed_id_to_idx.get(feed_id)?;
         self.scoped_stop_to_place
@@ -295,7 +292,6 @@ impl RoutingTimetable {
 
     /// Looks up a [`PlaceIdx`] by `(FeedId, LocationId)` in $O(1)$ time (GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
-    #[inline]
     pub fn lookup_flex_location(
         &self,
         feed_id: &FeedId,
@@ -309,7 +305,6 @@ impl RoutingTimetable {
 
     /// Looks up a [`PlaceIdx`] by `(FeedId, LocationGroupId)` in $O(1)$ time (GTFS-Flex).
     #[cfg(feature = "gtfs-flex")]
-    #[inline]
     pub fn lookup_location_group(
         &self,
         feed_id: &FeedId,
@@ -322,7 +317,6 @@ impl RoutingTimetable {
     }
 
     /// Looks up a [`RouteIdx`] by `(FeedId, RouteId)` in $O(1)$ time.
-    #[inline]
     pub fn lookup_route(&self, feed_id: &FeedId, route_id: &RouteId) -> Option<RouteIdx> {
         let &feed_idx = self.feed_id_to_idx.get(feed_id)?;
         self.scoped_route_to_idx
@@ -331,7 +325,6 @@ impl RoutingTimetable {
     }
 
     /// Looks up a [`TripIdx`] by `(FeedId, TripId)` in $O(1)$ time.
-    #[inline]
     pub fn lookup_trip(&self, feed_id: &FeedId, trip_id: &TripId) -> Option<TripIdx> {
         let &feed_idx = self.feed_id_to_idx.get(feed_id)?;
         self.scoped_trip_to_idx

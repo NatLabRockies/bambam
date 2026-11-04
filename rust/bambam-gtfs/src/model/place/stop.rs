@@ -158,19 +158,16 @@ impl From<RawStop> for Stop {
 impl Identifiable for Stop {
     type Id = StopId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }
 }
 
 impl Spatial for Stop {
-    #[inline]
     fn representative_coord(&self) -> Option<Coord> {
         self.coord
     }
 
-    #[inline]
     fn bounding_box(&self) -> Option<BoundingBox> {
         self.coord.map(BoundingBox::from_coord)
     }

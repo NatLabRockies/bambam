@@ -149,7 +149,6 @@ impl ServiceCalendar {
 impl Identifiable for ServiceCalendar {
     type Id = ServiceId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }

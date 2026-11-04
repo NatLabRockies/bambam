@@ -69,7 +69,6 @@ impl From<RawRoute> for Route {
 impl Identifiable for Route {
     type Id = RouteId;
 
-    #[inline]
     fn id(&self) -> &Self::Id {
         &self.id
     }

@@ -107,7 +107,6 @@ pub struct DroppedEntityCounts {
 
 impl DroppedEntityCounts {
     /// Total number of trips dropped across all categories.
-    #[inline]
     pub const fn total_dropped_trips(&self) -> usize {
         self.empty_trips + self.single_stop_trips + self.malformed_trips
     }
