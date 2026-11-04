@@ -591,6 +591,8 @@ pub(crate) fn validate_raw_feed(
     })
 }
 
+/// boarding areas may not have a coordinate but instead inherit their
+/// location from a parent station.
 fn resolve_inherited_stop_coords(stop_map: &mut HashMap<StopId, Stop>) {
     let stop_ids: Vec<StopId> = stop_map
         .values()
