@@ -2,8 +2,8 @@
 
 use crate::ids::*;
 use crate::model::{
-    Agency, DroppedEntityCounts, ModelError, Route, ServiceCalendar, ShapePolyline, Stop, StopArea,
-    Trip, ValidationPolicy, ValidationWarning,
+    Agency, DateMappingPolicy, DroppedEntityCounts, ModelError, Route, ServiceCalendar,
+    ShapePolyline, Stop, StopArea, Trip, ValidationPolicy, ValidationWarning,
 };
 use crate::primitives::{Coord, GtfsTime};
 use crate::raw::{RawCalendar, RawCalendarDate, RawFeed, RawFeedInfo};
@@ -85,6 +85,16 @@ impl ValidatedFeed {
     /// Retrieves [`RawCalendarDate`] exceptions by `service_id`.
     pub fn get_calendar_date(&self, service_id: &str) -> Option<&Vec<RawCalendarDate>> {
         self.calendar_dates.get(service_id)
+    }
+
+    /// Resolves `target_date` to a single representative active service date (`picked_date`)
+    /// across this feed's [`ServiceCalendar`]s according to `policy`.
+    pub fn resolve_service_date(
+        &self,
+        target_date: NaiveDate,
+        policy: DateMappingPolicy,
+    ) -> Option<NaiveDate> {
+        policy.resolve_date(target_date, self.services.values())
     }
 
     /// Returns the primary IANA [`chrono_tz::Tz`] timezone of this feed (from the first agency in `agency.txt`).

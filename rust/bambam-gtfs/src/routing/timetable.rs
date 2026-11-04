@@ -2,7 +2,7 @@
 //! and `rkyv` binary snapshot serialization.
 
 use crate::ids::*;
-use crate::model::{Route, ServiceCalendar, ShapePolyline, StopPlace};
+use crate::model::{DateMappingPolicy, Route, ServiceCalendar, ShapePolyline, StopPlace};
 use crate::primitives::{BoundingBox, Coord, GtfsTime};
 #[cfg(feature = "gtfs-flex")]
 use crate::routing::compact_stop_time::NO_FLEX_DURATION_IDX;
@@ -337,6 +337,21 @@ impl RoutingTimetable {
         self.services.iter().map(|s| s.is_active_on(date)).collect()
     }
 
+    /// Resolves `target_date` to a representative active service date (`picked_date`) for `feed_idx`
+    /// by applying `policy` across that feed's [`ServiceCalendar`] slice (`feed.services_span`).
+    pub fn resolve_service_date_for_feed(
+        &self,
+        feed_idx: FeedIdx,
+        target_date: NaiveDate,
+        policy: DateMappingPolicy,
+    ) -> Option<NaiveDate> {
+        let feed = self.feeds.get(feed_idx.index())?;
+        let start = feed.services_span.start as usize;
+        let end = feed.services_span.end as usize;
+        let feed_services = self.services.get(start..end)?;
+        ServiceCalendar::resolve_service_date(feed_services, target_date, policy)
+    }
+
     /// Evaluates active services for a local `(date, time_of_day)` query, including previous-day
     /// (`date - 1`) services that may still be running overnight with GTFS timestamps `>= 24:00:00`
     /// (`time_of_day + 86_400` seconds).
@@ -351,6 +366,7 @@ impl RoutingTimetable {
         let yesterday_overnight_time = time_of_day.add_seconds(86_400);
         ActiveServiceWindow {
             date,
+            picked_date: date,
             time_of_day,
             today_active,
             yesterday_date,
@@ -359,21 +375,150 @@ impl RoutingTimetable {
         }
     }
 
+    /// Evaluates active services for `feed_idx` at a local `(query_date, time_of_day)` using `policy`
+    /// to map `query_date` to a representative `picked_date` for that feed.
+    ///
+    /// Only services belonging to `feed_idx` (`feed.services_span`) are enabled in the returned
+    /// [`ActiveServiceWindow`], and `window.date` preserves the rider's `query_date` so boarding
+    /// and arrival [`DateTime`]s are resolved on the rider's actual query date.
+    ///
+    /// If no date satisfies `policy` for `feed_idx`, `today_active` and `yesterday_active` will
+    /// be all `false`.
+    pub fn active_services_for_feed_with_policy(
+        &self,
+        feed_idx: FeedIdx,
+        query_date: NaiveDate,
+        time_of_day: GtfsTime,
+        policy: DateMappingPolicy,
+    ) -> Option<ActiveServiceWindow> {
+        let feed = self.feeds.get(feed_idx.index())?;
+        let n_services = self.services.len();
+        let mut today_active = vec![false; n_services];
+        let mut yesterday_active = vec![false; n_services];
+        let yesterday_overnight_time = time_of_day.add_seconds(86_400);
+
+        let start = feed.services_span.start as usize;
+        let end = feed.services_span.end as usize;
+        let feed_services = self.services.get(start..end)?;
+
+        if let Some(picked_date) =
+            ServiceCalendar::resolve_service_date(feed_services, query_date, policy)
+        {
+            let yesterday_date = picked_date
+                .checked_sub_days(Days::new(1))
+                .unwrap_or(picked_date);
+            for (offset, service) in feed_services.iter().enumerate() {
+                let sidx = start + offset;
+                today_active[sidx] = service.is_active_on(picked_date);
+                yesterday_active[sidx] = service.is_active_on(yesterday_date);
+            }
+            Some(ActiveServiceWindow {
+                date: query_date,
+                picked_date,
+                time_of_day,
+                today_active,
+                yesterday_date,
+                yesterday_overnight_time,
+                yesterday_active,
+            })
+        } else {
+            let yesterday_date = query_date
+                .checked_sub_days(Days::new(1))
+                .unwrap_or(query_date);
+            Some(ActiveServiceWindow {
+                date: query_date,
+                picked_date: query_date,
+                time_of_day,
+                today_active,
+                yesterday_date,
+                yesterday_overnight_time,
+                yesterday_active,
+            })
+        }
+    }
+
+    /// Evaluates active services across **all** feeds in this [`RoutingTimetable`] for a local
+    /// `(query_date, time_of_day)` by resolving each feed's `picked_date` independently using `policy`.
+    pub fn active_services_at_time_with_policy(
+        &self,
+        query_date: NaiveDate,
+        time_of_day: GtfsTime,
+        policy: DateMappingPolicy,
+    ) -> ActiveServiceWindow {
+        let n_services = self.services.len();
+        let mut today_active = vec![false; n_services];
+        let mut yesterday_active = vec![false; n_services];
+        let mut first_picked = query_date;
+
+        for (i, feed) in self.feeds.iter().enumerate() {
+            let start = feed.services_span.start as usize;
+            let end = feed.services_span.end as usize;
+            let Some(feed_services) = self.services.get(start..end) else {
+                continue;
+            };
+            if let Some(picked_date) =
+                ServiceCalendar::resolve_service_date(feed_services, query_date, policy)
+            {
+                if i == 0 {
+                    first_picked = picked_date;
+                }
+                let yesterday_date = picked_date
+                    .checked_sub_days(Days::new(1))
+                    .unwrap_or(picked_date);
+                for (offset, service) in feed_services.iter().enumerate() {
+                    let sidx = start + offset;
+                    today_active[sidx] = service.is_active_on(picked_date);
+                    yesterday_active[sidx] = service.is_active_on(yesterday_date);
+                }
+            }
+        }
+
+        let yesterday_date = first_picked
+            .checked_sub_days(Days::new(1))
+            .unwrap_or(first_picked);
+        ActiveServiceWindow {
+            date: query_date,
+            picked_date: first_picked,
+            time_of_day,
+            today_active,
+            yesterday_date,
+            yesterday_overnight_time: time_of_day.add_seconds(86_400),
+            yesterday_active,
+        }
+    }
+
     /// Evaluates active services for `feed_idx` at a timezone-aware [`DateTime`] by converting
-    /// the instant into the feed's primary IANA [`chrono_tz::Tz`] timezone (from `agency.txt`).
+    /// the instant into the feed's primary IANA [`chrono_tz::Tz`] timezone (from `agency.txt`)
+    /// using [`DateMappingPolicy::Exact`].
     pub fn active_services_for_feed_at_datetime<T: chrono::TimeZone>(
         &self,
         feed_idx: FeedIdx,
         dt: &DateTime<T>,
     ) -> Option<ActiveServiceWindow> {
+        self.active_services_for_feed_at_datetime_with_policy(
+            feed_idx,
+            dt,
+            DateMappingPolicy::Exact,
+        )
+    }
+
+    /// Evaluates active services for `feed_idx` at a timezone-aware [`DateTime`] by converting
+    /// the instant into the feed's primary IANA [`chrono_tz::Tz`] timezone and resolving the feed's
+    /// active service date via `policy`.
+    pub fn active_services_for_feed_at_datetime_with_policy<T: chrono::TimeZone>(
+        &self,
+        feed_idx: FeedIdx,
+        dt: &DateTime<T>,
+        policy: DateMappingPolicy,
+    ) -> Option<ActiveServiceWindow> {
         let tz = self.feed_timezone(feed_idx)?;
         let local_dt = dt.with_timezone(&tz);
         let (date, time_of_day) = GtfsTime::from_datetime(&local_dt);
-        Some(self.active_services_at_time(date, time_of_day))
+        self.active_services_for_feed_with_policy(feed_idx, date, time_of_day, policy)
     }
 
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` at or after a timezone-aware
-    /// [`DateTime`] across a merged multi-timezone [`RoutingTimetable`].
+    /// [`DateTime`] across a merged multi-timezone [`RoutingTimetable`] using [`DateMappingPolicy::Exact`].
     ///
     /// Automatically converts `dt` into the pattern's owning feed's local [`chrono_tz::Tz`] timezone,
     /// evaluates both current-day and previous-day overnight services in that feed's local service day,
@@ -384,8 +529,27 @@ impl RoutingTimetable {
         stop_offset: usize,
         dt: &DateTime<T>,
     ) -> Option<(BoardableDeparture, DateTime<Tz>)> {
+        self.earliest_boardable_trip_at_datetime_with_policy(
+            pattern_idx,
+            stop_offset,
+            dt,
+            DateMappingPolicy::Exact,
+        )
+    }
+
+    /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` at or after a timezone-aware
+    /// [`DateTime`] across a merged multi-timezone [`RoutingTimetable`], resolving the owning feed's
+    /// active service date using `policy`.
+    pub fn earliest_boardable_trip_at_datetime_with_policy<T: chrono::TimeZone>(
+        &self,
+        pattern_idx: PatternIdx,
+        stop_offset: usize,
+        dt: &DateTime<T>,
+        policy: DateMappingPolicy,
+    ) -> Option<(BoardableDeparture, DateTime<Tz>)> {
         let pattern = self.patterns.get(pattern_idx.index())?;
-        let window = self.active_services_for_feed_at_datetime(pattern.feed_idx, dt)?;
+        let window =
+            self.active_services_for_feed_at_datetime_with_policy(pattern.feed_idx, dt, policy)?;
         let dep = self.earliest_boardable_trip_with_overnight(pattern_idx, stop_offset, &window)?;
         let dep_dt = dep.departure_datetime(self, window.date)?;
         Some((dep, dep_dt))

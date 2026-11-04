@@ -27,7 +27,10 @@ pub mod traits;
 pub use enums::*;
 pub use error::Gtfs2Error;
 pub use ids::*;
-pub use model::{DroppedEntityCounts, ValidatedFeed, ValidationPolicy, ValidationWarning};
+pub use model::{
+    DateMappingPolicy, DroppedEntityCounts, ServiceCalendar, ValidatedFeed, ValidationPolicy,
+    ValidationWarning, WeeklyPattern, DEFAULT_BEST_CASE_TOLERANCE_DAYS,
+};
 pub use primitives::{BoundingBox, Coord, GtfsTime, PrimitiveError, TimeWindow, Tz};
 pub use raw::{CsvRowIter, GtfsArchive, GtfsTable, RawFeed, RawFeedReader, TableBundle};
 pub use routing::{

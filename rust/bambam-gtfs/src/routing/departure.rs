@@ -21,14 +21,19 @@ use chrono_tz::Tz;
     rkyv::Deserialize,
 )]
 pub struct ActiveServiceWindow {
-    /// Local calendar date of the query.
+    /// Local calendar date of the rider's query.
     #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub date: NaiveDate,
+    /// Representative calendar date evaluated against [`crate::model::ServiceCalendar`]s
+    /// (equals `date` under [`crate::model::DateMappingPolicy::Exact`], or the mapped active
+    /// service date when resolved via a [`crate::model::DateMappingPolicy`]).
+    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
+    pub picked_date: NaiveDate,
     /// Local time of day on `date` (`0..86_400` seconds).
     pub time_of_day: GtfsTime,
-    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on `date`.
+    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on `picked_date`.
     pub today_active: Vec<bool>,
-    /// Previous calendar date (`date - 1 day`).
+    /// Previous calendar date relative to `picked_date` (`picked_date - 1 day`).
     #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub yesterday_date: NaiveDate,
     /// Query time expressed on `yesterday_date`'s service clock (`time_of_day + 86_400` seconds).
@@ -276,5 +281,207 @@ mod tests {
             .unwrap();
         assert_eq!(la_win.date, NaiveDate::from_ymd_opt(2017, 1, 7).unwrap());
         assert_eq!(la_win.time_of_day, GtfsTime::from_hms(22, 30, 0));
+    }
+
+    #[test]
+    fn test_colleague_wednesday_vs_weekend_and_date_mapping_regression() {
+        use crate::enums::Exception;
+        use crate::model::DateMappingPolicy;
+        use crate::raw::{RawCalendar, RawCalendarDate};
+
+        // Construct the exact scenario reported:
+        // One route with 4 Wednesday departures between 09:00 and 10:00 AM,
+        // plus 2 Saturday departures and 1 Sunday departure in the same 09:00-10:00 AM window.
+        let build_test_feed = |use_calendar_dates_only: bool| -> ValidatedFeed {
+            let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+            raw.frequencies = None;
+            raw.trips.clear();
+            raw.stop_times.clear();
+
+            let start = NaiveDate::from_ymd_opt(2023, 8, 1).unwrap();
+            let end = NaiveDate::from_ymd_opt(2023, 8, 31).unwrap();
+            let wed_in_aug = NaiveDate::from_ymd_opt(2023, 8, 30).unwrap(); // Wednesday
+            let sat_in_aug = NaiveDate::from_ymd_opt(2023, 8, 26).unwrap(); // Saturday
+            let sun_in_aug = NaiveDate::from_ymd_opt(2023, 8, 27).unwrap(); // Sunday
+
+            if use_calendar_dates_only {
+                raw.calendar = None;
+                raw.calendar_dates = Some(vec![
+                    RawCalendarDate {
+                        service_id: ServiceId::new("wed_svc"),
+                        date: wed_in_aug,
+                        exception_type: Exception::Added,
+                    },
+                    RawCalendarDate {
+                        service_id: ServiceId::new("sat_svc"),
+                        date: sat_in_aug,
+                        exception_type: Exception::Added,
+                    },
+                    RawCalendarDate {
+                        service_id: ServiceId::new("sun_svc"),
+                        date: sun_in_aug,
+                        exception_type: Exception::Added,
+                    },
+                ]);
+            } else {
+                raw.calendar_dates = None;
+                raw.calendar = Some(vec![
+                    RawCalendar {
+                        id: ServiceId::new("wed_svc"),
+                        monday: true,
+                        tuesday: true,
+                        wednesday: true,
+                        thursday: true,
+                        friday: true,
+                        saturday: false,
+                        sunday: false,
+                        start_date: start,
+                        end_date: end,
+                    },
+                    RawCalendar {
+                        id: ServiceId::new("sat_svc"),
+                        monday: false,
+                        tuesday: false,
+                        wednesday: false,
+                        thursday: false,
+                        friday: false,
+                        saturday: true,
+                        sunday: false,
+                        start_date: start,
+                        end_date: end,
+                    },
+                    RawCalendar {
+                        id: ServiceId::new("sun_svc"),
+                        monday: false,
+                        tuesday: false,
+                        wednesday: false,
+                        thursday: false,
+                        friday: false,
+                        saturday: false,
+                        sunday: true,
+                        start_date: start,
+                        end_date: end,
+                    },
+                ]);
+            }
+
+            let add_trip =
+                |raw: &mut RawFeed, trip_id: &str, service_id: &str, dep_mins: u32| {
+                    raw.trips.push(RawTrip {
+                        id: TripId::new(trip_id),
+                        service_id: ServiceId::new(service_id),
+                        route_id: RouteId::new("route1"),
+                        ..Default::default()
+                    });
+                    raw.stop_times.push(RawStopTime {
+                        trip_id: TripId::new(trip_id),
+                        stop_id: Some(StopId::new("stop2")),
+                        stop_sequence: 1,
+                        arrival_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
+                        departure_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
+                        ..Default::default()
+                    });
+                    raw.stop_times.push(RawStopTime {
+                        trip_id: TripId::new(trip_id),
+                        stop_id: Some(StopId::new("stop3")),
+                        stop_sequence: 2,
+                        arrival_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
+                        departure_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
+                        ..Default::default()
+                    });
+                };
+
+            // 4 Wednesday trips (09:00, 09:15, 09:30, 09:45)
+            add_trip(&mut raw, "wed_1", "wed_svc", 0);
+            add_trip(&mut raw, "wed_2", "wed_svc", 15);
+            add_trip(&mut raw, "wed_3", "wed_svc", 30);
+            add_trip(&mut raw, "wed_4", "wed_svc", 45);
+            // 2 Saturday trips (09:05, 09:35)
+            add_trip(&mut raw, "sat_1", "sat_svc", 5);
+            add_trip(&mut raw, "sat_2", "sat_svc", 35);
+            // 1 Sunday trip (09:20)
+            add_trip(&mut raw, "sun_1", "sun_svc", 20);
+
+            ValidatedFeed::try_from(raw).unwrap()
+        };
+
+        for use_calendar_dates_only in [false, true] {
+            let feed = build_test_feed(use_calendar_dates_only);
+            let timetable = RoutingTimetable::try_from(feed).unwrap();
+            assert_eq!(timetable.trips.len(), 7);
+
+            // Query on a Wednesday (both in-range 2023-08-30 and out-of-range 2023-09-06)
+            // under BestCase and Nearest { tolerance_days: 730, match_weekday: true }
+            let in_range_wed = NaiveDate::from_ymd_opt(2023, 8, 30).unwrap();
+            let out_of_range_wed = NaiveDate::from_ymd_opt(2023, 9, 6).unwrap();
+
+            for query_wed in [in_range_wed, out_of_range_wed] {
+                for policy in [
+                    DateMappingPolicy::Nearest {
+                        tolerance_days: 730,
+                        match_weekday: true,
+                    },
+                    DateMappingPolicy::BestCase {
+                        tolerance_days: 730,
+                    },
+                ] {
+                    let window = timetable
+                        .active_services_for_feed_with_policy(
+                            FeedIdx::new(0),
+                            query_wed,
+                            GtfsTime::from_hms(9, 0, 0),
+                            policy,
+                        )
+                        .unwrap();
+
+                    assert_eq!(window.date, query_wed);
+                    assert_eq!(window.picked_date, in_range_wed);
+
+                    // Count how many trips in the pattern are active on this Wednesday window:
+                    // Must be exactly the 4 Wednesday trips (never the 2 Saturday or 1 Sunday trips!)
+                    let active_trip_count = timetable
+                        .trips
+                        .iter()
+                        .filter(|t| window.today_active[t.service_idx.index()])
+                        .count();
+                    assert_eq!(
+                        active_trip_count, 4,
+                        "expected 4 active Wednesday trips (use_calendar_dates_only={use_calendar_dates_only}, query_wed={query_wed}, policy={policy:?})"
+                    );
+
+                    // Stepping through boardable departures from 09:00 to 10:00 yields 4 departures,
+                    // and their resolved DateTime<Tz> has the rider's query_wed date!
+                    let mut cursor = GtfsTime::from_hms(9, 0, 0);
+                    let mut boarded = Vec::new();
+                    while cursor <= GtfsTime::from_hms(10, 0, 0) {
+                        let mut step_win = window.clone();
+                        step_win.time_of_day = cursor;
+                        if let Some(dep) = timetable.earliest_boardable_trip_with_overnight(
+                            PatternIdx::new(0),
+                            0,
+                            &step_win,
+                        ) {
+                            if dep.departure_time <= GtfsTime::from_hms(10, 0, 0) {
+                                let dt = dep.departure_datetime(&timetable, step_win.date).unwrap();
+                                assert_eq!(dt.date_naive(), query_wed);
+                                boarded.push(dep.departure_time);
+                                cursor = dep.departure_time.add_seconds(1);
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+                    assert_eq!(
+                        boarded,
+                        vec![
+                            GtfsTime::from_hms(9, 0, 0),
+                            GtfsTime::from_hms(9, 15, 0),
+                            GtfsTime::from_hms(9, 30, 0),
+                            GtfsTime::from_hms(9, 45, 0),
+                        ]
+                    );
+                }
+            }
+        }
     }
 }
