@@ -229,4 +229,56 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     assert!(!flex_timetable
         .patterns_serving_place(area_708_pidx)
         .is_empty());
+
+    // 3. Zone-only GTFS-Flex archive without `stops.txt`
+    let mut zip_buf = std::io::Cursor::new(Vec::new());
+    {
+        let mut zw = zip::ZipWriter::new(&mut zip_buf);
+        let opts = zip::write::SimpleFileOptions::default();
+        for entry in std::fs::read_dir(fixture_path("fixtures/flex")).unwrap() {
+            let entry = entry.unwrap();
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            if file_name == "stops.txt" {
+                continue;
+            }
+            let bytes = std::fs::read(entry.path()).unwrap();
+            std::io::Write::write_all(
+                &mut {
+                    zw.start_file(&file_name, opts).unwrap();
+                    &mut zw
+                },
+                &bytes,
+            )
+            .unwrap();
+        }
+        zw.finish().unwrap();
+    }
+
+    zip_buf.set_position(0);
+    let zone_only_raw = RawFeed::from_reader(zip_buf.clone())
+        .expect("zone-only RawFeed::from_reader should succeed");
+    assert!(zone_only_raw.stops.is_empty());
+
+    let zone_only_via_reader = RawFeedReader::default()
+        .read_from_reader(zip_buf)
+        .expect("zone-only RawFeedReader::read_from_reader should succeed");
+    assert!(zone_only_via_reader.stops.is_empty());
+
+    let zone_only_validated = ValidatedFeed::try_from(zone_only_raw)
+        .expect("zone-only ValidatedFeed validation should succeed");
+    assert!(zone_only_validated.stops.is_empty());
+    assert_eq!(zone_only_validated.locations.len(), 2);
+
+    // Fixed-stop reference in a zone-only feed without stops.txt fails validation cleanly
+    let mut bad_zone_only = zone_only_via_reader;
+    bad_zone_only.stop_times[0].location_id = None;
+    bad_zone_only.stop_times[0].stop_id = Some(StopId::new("missing_fixed_stop"));
+    assert!(matches!(
+        ValidatedFeed::try_from(bad_zone_only),
+        Err(ModelError::MissingReference {
+            source_file: "stop_times.txt",
+            field_name: "stop_id",
+            ..
+        })
+    ));
 }

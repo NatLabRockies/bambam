@@ -36,7 +36,7 @@ impl Default for RawFeedReader {
 pub struct RawFeed {
     /// Rows from `agency.txt` (mandatory).
     pub agencies: Vec<RawAgency>,
-    /// Rows from `stops.txt` (mandatory).
+    /// Rows from `stops.txt` (mandatory unless GTFS-Flex `locations.geojson` is present).
     pub stops: Vec<RawStop>,
     /// Rows from `routes.txt` (mandatory).
     pub routes: Vec<RawRoute>,
@@ -153,7 +153,11 @@ impl RawFeedReader {
         archive: &mut GtfsArchive<R>,
     ) -> Result<RawFeed, RawReadError> {
         let agencies = archive.load()?;
-        let stops = archive.load()?;
+        let stops = if cfg!(feature = "gtfs-flex") && archive.contains_file("locations.geojson") {
+            archive.load::<Option<Vec<RawStop>>>()?.unwrap_or_default()
+        } else {
+            archive.load()?
+        };
         let routes = archive.load()?;
         let trips = archive.load()?;
         let stop_times = if self.read_stop_times {
