@@ -521,16 +521,10 @@ impl RoutingTimetableBuilder {
             });
         }
 
-        let primary_timezone = feed
-            .agencies
-            .iter()
-            .find_map(|a| a.parsed_timezone.clone());
-
         self.timetable.feeds.push(FeedMetadata {
             idx: feed_idx,
             id: feed_id,
             agencies: feed.agencies,
-            primary_timezone,
             places_span: places_start..places_end,
             routes_span: routes_start..routes_end,
             patterns_span: patterns_start..patterns_end,

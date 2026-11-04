@@ -320,29 +320,6 @@ impl RoutingTimetable {
         }
     }
 
-    /// Evaluates active services for `feed_idx` at a unified UTC [`jiff::Timestamp`] by converting
-    /// the instant into the feed's primary IANA [`jiff::tz::TimeZone`] (from `agency.txt`).
-    pub fn active_services_for_feed_at_timestamp(
-        &self,
-        feed_idx: FeedIdx,
-        timestamp: jiff::Timestamp,
-    ) -> Option<ActiveServiceWindow> {
-        let feed = self.feeds.get(feed_idx.index())?;
-        let tz = feed.primary_timezone.as_ref()?;
-        let zdt = timestamp.to_zoned(tz.clone());
-        let date = NaiveDate::from_ymd_opt(
-            i32::from(zdt.year()),
-            u32::try_from(zdt.month()).ok()?,
-            u32::try_from(zdt.day()).ok()?,
-        )?;
-        let time_of_day = GtfsTime::from_hms(
-            u32::try_from(zdt.hour()).ok()?,
-            u32::try_from(zdt.minute()).ok()?,
-            u32::try_from(zdt.second()).ok()?,
-        );
-        Some(self.active_services_at_time(date, time_of_day))
-    }
-
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` departing at or after `after_time`
     /// among trips whose `service_idx` is enabled in `active_services`.
     ///

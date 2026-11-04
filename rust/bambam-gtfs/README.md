@@ -4,23 +4,23 @@
 
 It is designed to scale from inspecting a single transit agency archive up to merging hundreds or thousands of feeds into a single, compact routing timetable with fast spatial queries, linear-referenced shape geometry, and instant binary snapshot loading.
 
-## Attribution
+## Alternatives
 
-This crate builds upon and draws inspiration from [`gtfs-structures`](https://crates.io/crates/gtfs-structures), which served as the foundation for this work and provided several of the core GTFS enum and data structure implementations.
+`bambam-gtfs` owes its beginnings to [`gtfs-structures`](https://crates.io/crates/gtfs-structures), from which this crate borrows several of the core GTFS enum and data structure implementations. `gtfs-structures` is a community-driven project with two active maintainers and clear focus. Consider using that crate if your use case is GTFS analysis and editing. Use `bambam-gtfs` if you need more fine grained control or want to leverage the `RoutingTimetable` data model for [RAPTOR](https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)-style transit route planning. This project may move slower to update than `gtfs-structures`.
 
-## How `bambam-gtfs` Differs from `gtfs-structures`
+## Features
 
-While `gtfs-structures` is a great general-purpose GTFS reader, `bambam-gtfs` re-architects the data model and loading pipeline around the needs of continental-scale multimodal routing and GTFS extensions:
-
-- **Sum Types (`enum`s) for GTFS Extensions**: Rather than scattering mutually exclusive `Option<T>` fields across structs (which can vary depending on whether GTFS-Flex or other extensions are enabled), `bambam-gtfs` normalizes polymorphic concepts into strict enums—such as `StopPlace` (`Stop`, `FlexZone`, or `LocationGroup`), `StopTimeTiming` (`Scheduled`, `Uninterpolated`, or `FlexWindow`), and `BookingNotice`. This preserves type safety and Cargo feature additivity whether `gtfs-flex` is enabled or disabled.
-- **Strongly-Typed Identifiers & Dense Indices**: Entity IDs (`StopId`, `RouteId`, `TripId`, `ServiceId`, `ShapeId`, `LocationId`, etc.) and Phase 3 contiguous array indices (`PlaceIdx`, `RouteIdx`, `PatternIdx`, `TripIdx`, `FeedIdx`) are distinct newtypes rather than raw `String`s or `usize`s, preventing accidental mix-ups across tables or across merged feeds.
-- **Composable, Non-Monolithic Table Loading**: Instead of requiring callers to load an entire feed into a single monolithic struct, Phase 1 provides `GtfsArchive`, `GtfsTable`, and `TableBundle`. You can selectively load individual tables, tuples of tables (e.g., `(Vec<RawRoute>, Option<Vec<RawCalendar>>)`), extension bundles (`FlexTables`), or stream massive tables like `stop_times.txt` and `shapes.txt` row-by-row in $O(1)$ memory via `CsvRowIter`.
-- **Phased Pipeline & RAPTOR-Style Routing Timetable**: Reading is separated into three explicit phases:
-  1. **Phase 1 (`raw::RawFeed`)**: 1:1 syntactic CSV/GeoJSON deserialization.
-  2. **Phase 2 (`model::ValidatedFeed`)**: Relational foreign-key validation, `ServiceCalendar` unification, `jiff::tz::TimeZone` parsing, and configurable lenience (`ValidationPolicy::Strict` vs. `DropInvalidTripsWithWarning`) for messy real-world feeds.
-  3. **Phase 3 (`routing::RoutingTimetable`)**: A RAPTOR-style contiguous CSR timetable that groups trips into `RoutePattern`s, interpolates intermediate stop times into 16-byte `CompactStopTime` records, indexes stops and flex zones in an `rstar::RTree` (with exact point-in-polygon checks), and supports unified departure queries (`earliest_boardable_trip`) across fixed schedules, `frequencies.txt` headways, overnight trips, and GTFS-Flex windows.
-- **Linear Referencing System (LRS) for Route Geometry**: `ShapePolyline` projects stops onto `shapes.txt` polylines and stores cumulative arc-length references (`ShapeLinearRef`). During route planning, any transit leg between two stop offsets on a trip can be sliced into an exact sub-segment linestring (`Vec<Coord>`) via `reconstruct_leg_linestring`.
-- **Zero-Copy / Fast Binary Snapshots with `rkyv`**: `RoutingTimetable` and all of its constituent types implement `rkyv::{Archive, Serialize, Deserialize}`, allowing a compiled multi-feed timetable to be saved once to disk and loaded (or accessed zero-copy via `access_rkyv_bytes`) in milliseconds on subsequent runs.
+`bambam-gtfs` was built to add the following features to GTFS reading:
+  - strong type system guarantees
+  - lazy/granular + streaming IO, allowing users to read only specific GTFS files from an archive
+  - merge archives
+  - GTFS-Flex compiler feature, data model changes modeled via feature-flagged enum variants
+  - ability to construct geometries along shapes between stops (for map plotting a trip/trip segment)
+  - phased initialization approach to reading a GTFS collection:
+    - a collection of Vectors of data rows in [bambam-gtfs::raw::RawFeed]
+    - a validated collection of hash maps in [bambam-gtfs::model::ValidatedFeed]
+    - a vectorized representation suitable for [RAPTOR](https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf) route planning in [bambam-gtfs::routing::RoutingTimetable]
+  - for `RoutingTimetable`, a binary load/save to disk backed by [rkyv](https://crates.io/crates/rkyv)
 
 ## High-Level Example
 
@@ -78,4 +78,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## License
 
+BSD-Clause 3
+
+Copyright 2025 Alliance for Energy Innovation, LLC
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

@@ -645,22 +645,10 @@ fn test_timezone_and_overnight_service_day_normalization() {
     raw.frequencies = None;
 
     let validated = ValidatedFeed::try_from(raw).unwrap();
-    // Verify Agency parsed jiff::tz::TimeZone ("Europe/Paris" in fixtures/basic/agency.txt)
-    assert_eq!(
-        validated.agencies[0]
-            .time_zone()
-            .and_then(|tz| tz.iana_name()),
-        Some("Europe/Paris")
-    );
+    assert_eq!(validated.agencies[0].timezone, "Europe/Paris");
 
     let timetable = RoutingTimetable::try_from(validated).unwrap();
-    assert_eq!(
-        timetable.feeds[0]
-            .primary_timezone
-            .as_ref()
-            .and_then(|tz| tz.iana_name()),
-        Some("Europe/Paris")
-    );
+    assert_eq!(timetable.feeds[0].agencies[0].timezone, "Europe/Paris");
 
     // Suppose a rider searches on Monday 2017-01-09 at 00:15:00 local time.
     // Sunday 2017-01-08 (yesterday) had `service1` active, and `overnight_trip` departs at 24:30:00

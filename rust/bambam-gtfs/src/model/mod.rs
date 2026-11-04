@@ -1,6 +1,6 @@
 //! Phase 2: Relationally validated GTFS + GTFS-Flex domain model (`ValidatedFeed`).
 
-pub(crate) mod agency;
+mod agency;
 mod calendar;
 mod error;
 #[cfg(feature = "gtfs-flex")]
