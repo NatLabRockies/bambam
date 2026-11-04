@@ -365,31 +365,30 @@ mod tests {
                 ]);
             }
 
-            let add_trip =
-                |raw: &mut RawFeed, trip_id: &str, service_id: &str, dep_mins: u32| {
-                    raw.trips.push(RawTrip {
-                        id: TripId::new(trip_id),
-                        service_id: ServiceId::new(service_id),
-                        route_id: RouteId::new("route1"),
-                        ..Default::default()
-                    });
-                    raw.stop_times.push(RawStopTime {
-                        trip_id: TripId::new(trip_id),
-                        stop_id: Some(StopId::new("stop2")),
-                        stop_sequence: 1,
-                        arrival_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
-                        departure_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
-                        ..Default::default()
-                    });
-                    raw.stop_times.push(RawStopTime {
-                        trip_id: TripId::new(trip_id),
-                        stop_id: Some(StopId::new("stop3")),
-                        stop_sequence: 2,
-                        arrival_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
-                        departure_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
-                        ..Default::default()
-                    });
-                };
+            let add_trip = |raw: &mut RawFeed, trip_id: &str, service_id: &str, dep_mins: u32| {
+                raw.trips.push(RawTrip {
+                    id: TripId::new(trip_id),
+                    service_id: ServiceId::new(service_id),
+                    route_id: RouteId::new("route1"),
+                    ..Default::default()
+                });
+                raw.stop_times.push(RawStopTime {
+                    trip_id: TripId::new(trip_id),
+                    stop_id: Some(StopId::new("stop2")),
+                    stop_sequence: 1,
+                    arrival_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
+                    departure_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
+                    ..Default::default()
+                });
+                raw.stop_times.push(RawStopTime {
+                    trip_id: TripId::new(trip_id),
+                    stop_id: Some(StopId::new("stop3")),
+                    stop_sequence: 2,
+                    arrival_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
+                    departure_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
+                    ..Default::default()
+                });
+            };
 
             // 4 Wednesday trips (09:00, 09:15, 09:30, 09:45)
             add_trip(&mut raw, "wed_1", "wed_svc", 0);
