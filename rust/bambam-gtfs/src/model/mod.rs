@@ -2,6 +2,7 @@
 
 mod agency;
 mod calendar;
+mod date_mapping_policy;
 mod error;
 #[cfg(feature = "gtfs-flex")]
 pub mod flex;
@@ -14,9 +15,8 @@ mod validated_feed;
 mod validation_policy;
 
 pub use agency::Agency;
-pub use calendar::{
-    DateMappingPolicy, ServiceCalendar, WeeklyPattern, DEFAULT_BEST_CASE_TOLERANCE_DAYS,
-};
+pub use calendar::{ServiceCalendar, WeeklyPattern};
+pub use date_mapping_policy::{DateMappingPolicy, DEFAULT_BEST_CASE_TOLERANCE_DAYS};
 pub use error::ModelError;
 #[cfg(feature = "gtfs-flex")]
 pub use flex::{BookingNotice, BookingRule, FlexDurationParams};
