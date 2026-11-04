@@ -846,3 +846,202 @@ impl RoutingTimetable {
         Ok(coords)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::enums::{PickupDropOffType, TimepointType};
+    use crate::model::ValidatedFeed;
+    use crate::raw::{RawFeed, RawFrequency};
+    use std::path::PathBuf;
+
+    fn fixture_path(rel_path: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel_path)
+    }
+
+    #[test]
+    fn test_frequency_trips_earliest_boardable_and_materialization() {
+        let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        raw.frequencies = Some(vec![RawFrequency {
+            trip_id: TripId::new("trip1"),
+            start_time: GtfsTime::from_hms(6, 0, 0),
+            end_time: GtfsTime::from_hms(7, 0, 0),
+            headway_secs: 600,
+            exact_times: TimepointType::Approximate,
+        }]);
+        let validated = ValidatedFeed::try_from(raw).unwrap();
+
+        // 1. Non-materialized frequency query via earliest_boardable_trip
+        let timetable = RoutingTimetable::try_from(validated.clone()).unwrap();
+        let active_mask = vec![true; timetable.services.len()];
+        let pat_idx = PatternIdx::new(0);
+
+        let dep0 = timetable
+            .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &active_mask)
+            .expect("should find frequency departure at stop 0");
+        assert_eq!(dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
+        assert_eq!(
+            dep0.arrival_time_at(&timetable, 2),
+            Some(GtfsTime::from_hms(8, 10, 0))
+        );
+
+        let dep1 = timetable
+            .earliest_boardable_trip(pat_idx, 1, GtfsTime::from_hms(7, 12, 0), &active_mask)
+            .expect("should find frequency departure at stop 1");
+        assert_eq!(dep1.departure_time, GtfsTime::from_hms(7, 20, 0));
+        assert_eq!(
+            dep1.arrival_time_at(&timetable, 2),
+            Some(GtfsTime::from_hms(8, 20, 0))
+        );
+
+        // 2. Materialized frequency trips in RoutingTimetableBuilder
+        let mut builder = RoutingTimetable::builder().with_materialize_frequencies(true);
+        builder.add_feed("basic_mat", validated).unwrap();
+        let mat_timetable = builder.build();
+
+        assert_eq!(mat_timetable.trips.len(), 6);
+        assert!(mat_timetable.trips.iter().all(|t| t.frequencies.is_empty()));
+
+        let mat_active = vec![true; mat_timetable.services.len()];
+        let mat_dep0 = mat_timetable
+            .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &mat_active)
+            .expect("should binary-search materialized frequency trips");
+        assert_eq!(mat_dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
+        assert_eq!(mat_dep0.frequency_offset_secs, 0);
+        assert_eq!(
+            mat_dep0.arrival_time_at(&mat_timetable, 2),
+            Some(GtfsTime::from_hms(8, 10, 0))
+        );
+    }
+
+    #[test]
+    fn test_earliest_boardable_pickup_filtering_service_mask_and_leg_linestring() {
+        let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        raw.frequencies = None;
+        // Forbid pickup at stop_offset = 1
+        raw.stop_times[1].pickup_type = PickupDropOffType::NotAvailable;
+        let validated = ValidatedFeed::try_from(raw).unwrap();
+        let timetable = RoutingTimetable::try_from(validated).unwrap();
+
+        let active_all = vec![true; timetable.services.len()];
+        let inactive_all = vec![false; timetable.services.len()];
+
+        // Pickup forbidden at stop_offset = 1 -> None
+        assert!(timetable
+            .earliest_boardable_trip(PatternIdx::new(0), 1, GtfsTime::from_hms(0, 0, 0), &active_all)
+            .is_none());
+
+        // Service inactive -> None
+        assert!(timetable
+            .earliest_boardable_trip(
+                PatternIdx::new(0),
+                0,
+                GtfsTime::from_hms(0, 0, 0),
+                &inactive_all
+            )
+            .is_none());
+
+        // Fallback straight-line leg linestring when shape_idx is None
+        let coords = timetable
+            .reconstruct_leg_linestring(TripIdx::new(0), 0, 2)
+            .expect("straight-line fallback should succeed");
+        assert_eq!(coords.len(), 3);
+
+        // Out-of-bounds or inverted stop offsets return InvalidStopOffsetRange
+        assert!(matches!(
+            timetable.reconstruct_leg_linestring(TripIdx::new(0), 2, 1),
+            Err(RoutingError::InvalidStopOffsetRange { .. })
+        ));
+        assert!(matches!(
+            timetable.reconstruct_leg_linestring(TripIdx::new(0), 0, 99),
+            Err(RoutingError::InvalidStopOffsetRange { .. })
+        ));
+    }
+
+    #[test]
+    fn test_multi_feed_timezone_retention_and_local_timezone_inference() {
+        let feed_paris = ValidatedFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        let mut raw_denver = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        for ag in &mut raw_denver.agencies {
+            ag.timezone = chrono_tz::Tz::America__Denver;
+        }
+        for st in &mut raw_denver.stops {
+            if st.latitude.is_some() {
+                st.latitude = Some(39.7392);
+                st.longitude = Some(-104.9903);
+            }
+        }
+        let feed_denver = ValidatedFeed::try_from(raw_denver).unwrap();
+
+        let mut builder = RoutingTimetable::builder();
+        let paris_idx = builder.add_feed("paris", feed_paris).unwrap();
+        let denver_idx = builder.add_feed("denver", feed_denver).unwrap();
+        let timetable = builder.build();
+
+        assert_eq!(
+            timetable.feed_timezone(paris_idx),
+            Some(chrono_tz::Tz::Europe__Paris)
+        );
+        assert_eq!(
+            timetable.feed_timezone(denver_idx),
+            Some(chrono_tz::Tz::America__Denver)
+        );
+
+        let naive_query = NaiveDate::from_ymd_opt(2017, 1, 7)
+            .unwrap()
+            .and_hms_opt(8, 30, 0)
+            .unwrap();
+        let paris_coord = Coord::new(2.449386, 48.796058);
+        let denver_coord = Coord::new(-104.9903, 39.7392);
+
+        assert_eq!(
+            timetable.infer_local_timezone(paris_coord, 500.0),
+            Some(chrono_tz::Tz::Europe__Paris)
+        );
+        assert_eq!(
+            timetable.infer_local_timezone(denver_coord, 500.0),
+            Some(chrono_tz::Tz::America__Denver)
+        );
+
+        let localized_denver = timetable
+            .localize_naive_query_datetime(naive_query, denver_coord, 500.0)
+            .expect("should localize naive query to America/Denver");
+        assert_eq!(localized_denver.timezone(), chrono_tz::Tz::America__Denver);
+        assert_eq!(localized_denver.naive_local(), naive_query);
+    }
+
+    #[test]
+    fn test_rkyv_snapshot_roundtrip() {
+        let feed = ValidatedFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        let original = RoutingTimetable::try_from(feed).unwrap();
+
+        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
+            .expect("should serialize RoutingTimetable to aligned rkyv buffer");
+        let archived = RoutingTimetable::access_rkyv_bytes(&aligned)
+            .expect("should zero-copy access ArchivedRoutingTimetable");
+        assert_eq!(archived.places.len(), original.places.len());
+
+        let bytes = original
+            .to_rkyv_bytes()
+            .expect("should serialize RoutingTimetable to rkyv");
+        assert!(!bytes.is_empty());
+
+        let restored = RoutingTimetable::from_rkyv_bytes(&bytes)
+            .expect("should deserialize RoutingTimetable from rkyv");
+
+        assert_eq!(restored.feeds, original.feeds);
+        assert_eq!(restored.places, original.places);
+        assert_eq!(restored.place_feed, original.place_feed);
+        assert_eq!(restored.routes, original.routes);
+        assert_eq!(restored.patterns, original.patterns);
+        assert_eq!(restored.trips, original.trips);
+        assert_eq!(restored.stop_times, original.stop_times);
+
+        let stop1_coord = restored.places[restored.stop_id_to_place[&StopId::new("stop1")].index()]
+            .representative_coord()
+            .unwrap();
+        let nearby = restored.places_near(stop1_coord, 50.0);
+        assert!(!nearby.is_empty());
+    }
+}
+

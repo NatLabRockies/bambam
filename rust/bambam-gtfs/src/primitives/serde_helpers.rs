@@ -179,3 +179,92 @@ pub(crate) fn serialize_optional_color<S: Serializer>(
         None => serializer.serialize_none(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct WireSample {
+        #[serde(
+            deserialize_with = "deserialize_date",
+            serialize_with = "serialize_date"
+        )]
+        date: NaiveDate,
+        #[serde(
+            deserialize_with = "deserialize_option_date",
+            serialize_with = "serialize_option_date",
+            default
+        )]
+        opt_date: Option<NaiveDate>,
+        #[serde(
+            deserialize_with = "deserialize_bool",
+            serialize_with = "serialize_bool"
+        )]
+        flag: bool,
+        #[serde(
+            deserialize_with = "deserialize_timezone",
+            serialize_with = "serialize_timezone"
+        )]
+        tz: Tz,
+        #[serde(
+            deserialize_with = "deserialize_option_timezone",
+            serialize_with = "serialize_option_timezone",
+            default
+        )]
+        opt_tz: Option<Tz>,
+        #[serde(
+            deserialize_with = "deserialize_optional_color",
+            serialize_with = "serialize_optional_color",
+            default
+        )]
+        color: Option<RGB8>,
+    }
+
+    #[test]
+    fn test_parse_color_and_wire_serde_helpers() {
+        assert_eq!(parse_color("FF00AA"), Ok(RGB8::new(255, 0, 170)));
+        assert_eq!(parse_color("  00ff00 "), Ok(RGB8::new(0, 255, 0)));
+        for invalid in ["#FF00AA", "FFF", "GGGGGG", ""] {
+            assert!(matches!(
+                parse_color(invalid),
+                Err(PrimitiveError::InvalidColor(_))
+            ));
+        }
+
+        let csv_data = "date,opt_date,flag,tz,opt_tz,color\n20261103,,1,America/Denver,,00FFAA\n";
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+        let row: WireSample = rdr.deserialize().next().unwrap().unwrap();
+        assert_eq!(row.date, NaiveDate::from_ymd_opt(2026, 11, 3).unwrap());
+        assert_eq!(row.opt_date, None);
+        assert!(row.flag);
+        assert_eq!(row.tz, Tz::America__Denver);
+        assert_eq!(row.opt_tz, None);
+        assert_eq!(row.color, Some(RGB8::new(0, 255, 170)));
+
+        // Invalid date format
+        let bad_date = "date,opt_date,flag,tz,opt_tz,color\n2026-11-03,,0,UTC,,\n";
+        assert!(csv::Reader::from_reader(bad_date.as_bytes())
+            .deserialize::<WireSample>()
+            .next()
+            .unwrap()
+            .is_err());
+
+        // Invalid boolean value
+        let bad_bool = "date,opt_date,flag,tz,opt_tz,color\n20261103,,true,UTC,,\n";
+        assert!(csv::Reader::from_reader(bad_bool.as_bytes())
+            .deserialize::<WireSample>()
+            .next()
+            .unwrap()
+            .is_err());
+
+        // Invalid timezone
+        let bad_tz = "date,opt_date,flag,tz,opt_tz,color\n20261103,,0,Not/A_Zone,,\n";
+        assert!(csv::Reader::from_reader(bad_tz.as_bytes())
+            .deserialize::<WireSample>()
+            .next()
+            .unwrap()
+            .is_err());
+    }
+}
+

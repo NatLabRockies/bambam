@@ -144,3 +144,70 @@ impl FlexDurationParams {
         (base_seconds * factor + offset_secs).max(0.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_booking_rule_from_raw_and_flex_duration_params() {
+        let rt_rule = BookingRule::from(RawBookingRule {
+            id: BookingRuleId::new("br_rt"),
+            booking_type: BookingType::RealTime,
+            ..Default::default()
+        });
+        assert_eq!(rt_rule.notice, BookingNotice::RealTime);
+
+        let same_day = BookingRule::from(RawBookingRule {
+            id: BookingRuleId::new("br_sd"),
+            booking_type: BookingType::SameDayWithAdvanceNotice,
+            prior_notice_duration_min: Some(30),
+            prior_notice_duration_max: Some(120),
+            ..Default::default()
+        });
+        assert_eq!(
+            same_day.notice,
+            BookingNotice::SameDay {
+                min_minutes: Some(30),
+                max_minutes: Some(120)
+            }
+        );
+
+        let prior_days = BookingRule::from(RawBookingRule {
+            id: BookingRuleId::new("br_pd"),
+            booking_type: BookingType::PriorDays,
+            prior_notice_last_day: Some(1),
+            prior_notice_last_time: Some(GtfsTime::from_hms(17, 0, 0)),
+            prior_notice_start_day: Some(7),
+            prior_notice_start_time: Some(GtfsTime::from_hms(8, 0, 0)),
+            prior_notice_service_id: Some(ServiceId::new("wkday")),
+            ..Default::default()
+        });
+        assert_eq!(
+            prior_days.notice,
+            BookingNotice::PriorDays {
+                last_day: Some(1),
+                last_time: Some(GtfsTime::from_hms(17, 0, 0)),
+                start_day: Some(7),
+                start_time: Some(GtfsTime::from_hms(8, 0, 0)),
+                service_id: Some(ServiceId::new("wkday")),
+            }
+        );
+
+        let default_params = FlexDurationParams::default();
+        assert!(!default_params.is_some());
+        assert!((default_params.estimate_mean_seconds(600.0) - 600.0).abs() < 1e-6);
+        assert!((default_params.estimate_safe_seconds(600.0) - 600.0).abs() < 1e-6);
+
+        let custom = FlexDurationParams {
+            mean_duration_factor: Some(1.5),
+            mean_duration_offset: Some(5.0), // +300s
+            safe_duration_factor: Some(0.5),
+            safe_duration_offset: Some(-20.0), // -1200s -> clamps at 0.0
+        };
+        assert!(custom.is_some());
+        assert!((custom.estimate_mean_seconds(600.0) - 1200.0).abs() < 1e-6);
+        assert!((custom.estimate_safe_seconds(600.0) - 0.0).abs() < 1e-6);
+    }
+}
+

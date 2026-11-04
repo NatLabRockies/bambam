@@ -202,3 +202,96 @@ impl Identifiable for Trip {
         &self.id
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ids::StopId;
+    use crate::model::Stop;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_boarding_policy_and_temporal_stop_time() {
+        let regular = BoardingPolicy {
+            method: PickupDropOffType::Regular,
+            continuous: ContinuousPickupDropOff::NotAvailable,
+            #[cfg(feature = "gtfs-flex")]
+            booking_rule: None,
+        };
+        let not_avail = BoardingPolicy {
+            method: PickupDropOffType::NotAvailable,
+            continuous: ContinuousPickupDropOff::NotAvailable,
+            #[cfg(feature = "gtfs-flex")]
+            booking_rule: None,
+        };
+        let phone = BoardingPolicy {
+            method: PickupDropOffType::ArrangeByPhone,
+            continuous: ContinuousPickupDropOff::NotAvailable,
+            #[cfg(feature = "gtfs-flex")]
+            booking_rule: None,
+        };
+        assert!(regular.is_allowed());
+        assert!(!not_avail.is_allowed());
+        assert!(phone.is_allowed());
+
+        let stop = Arc::new(Stop {
+            id: StopId::new("s1"),
+            code: None,
+            name: None,
+            description: None,
+            location_type: crate::enums::LocationType::StopPoint,
+            parent_station: None,
+            zone_id: None,
+            url: None,
+            coord: None,
+            timezone: None,
+            wheelchair_boarding: Availability::InformationNotAvailable,
+            level_id: None,
+            platform_code: None,
+            transfers: Vec::new(),
+            pathways: Vec::new(),
+        });
+
+        let mut st = StopTime {
+            stop_sequence: 1,
+            place: StopPlace::Stop(stop),
+            timing: StopTimeTiming::Scheduled {
+                arrival: GtfsTime::from_hms(8, 0, 0),
+                departure: GtfsTime::from_hms(8, 2, 0),
+            },
+            pickup: regular.clone(),
+            drop_off: regular,
+            stop_headsign: None,
+            timepoint: TimepointType::Exact,
+            shape_ref: None,
+            #[cfg(feature = "gtfs-flex")]
+            flex_duration: FlexDurationParams::default(),
+        };
+        assert!(!st.is_flexible());
+        assert_eq!(st.arrival_time(), Some(GtfsTime::from_hms(8, 0, 0)));
+        assert_eq!(st.departure_time(), Some(GtfsTime::from_hms(8, 2, 0)));
+        assert_eq!(st.earliest_time(), Some(GtfsTime::from_hms(8, 0, 0)));
+        assert_eq!(st.latest_time(), Some(GtfsTime::from_hms(8, 2, 0)));
+
+        st.timing = StopTimeTiming::Uninterpolated {
+            arrival: None,
+            departure: Some(GtfsTime::from_hms(8, 5, 0)),
+        };
+        assert_eq!(st.arrival_time(), Some(GtfsTime::from_hms(8, 5, 0)));
+        assert_eq!(st.departure_time(), Some(GtfsTime::from_hms(8, 5, 0)));
+
+        #[cfg(feature = "gtfs-flex")]
+        {
+            let win =
+                TimeWindow::new(GtfsTime::from_hms(9, 0, 0), GtfsTime::from_hms(10, 0, 0)).unwrap();
+            st.timing = StopTimeTiming::FlexWindow(win);
+            assert!(st.is_flexible());
+            assert_eq!(st.arrival_time(), None);
+            assert_eq!(st.departure_time(), None);
+            assert_eq!(st.flex_window(), Some(win));
+            assert_eq!(st.earliest_time(), Some(GtfsTime::from_hms(9, 0, 0)));
+            assert_eq!(st.latest_time(), Some(GtfsTime::from_hms(10, 0, 0)));
+        }
+    }
+}
+

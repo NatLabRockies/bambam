@@ -24,9 +24,6 @@ pub mod raw;
 pub mod routing;
 pub mod traits;
 
-#[cfg(test)]
-mod tests;
-
 pub use enums::*;
 pub use error::Gtfs2Error;
 pub use ids::*;

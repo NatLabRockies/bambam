@@ -298,3 +298,36 @@ impl<Id: fmt::Display> fmt::Display for ScopedId<Id> {
         write!(f, "{}:{}", self.feed_id, self.id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_id_newtypes_and_indices() {
+        let stop_id = StopId::new("stop_1");
+        assert_eq!(stop_id.as_str(), "stop_1");
+        assert_eq!(&*stop_id, "stop_1");
+        assert_eq!(stop_id.as_ref(), "stop_1");
+        assert!(!stop_id.is_empty());
+        assert!(StopId::default().is_empty());
+        assert_eq!(format!("{stop_id}"), "stop_1");
+
+        let from_str: StopId = "stop_2".into();
+        let into_string: String = from_str.clone().into();
+        assert_eq!(into_string, "stop_2");
+
+        let place_idx = PlaceIdx::from_usize(42);
+        assert_eq!(place_idx.index(), 42);
+        assert_eq!(place_idx.as_u32(), 42);
+        assert_eq!(usize::from(place_idx), 42);
+        assert_eq!(PlaceIdx::from(42u32), place_idx);
+        assert_eq!(format!("{place_idx}"), "42");
+
+        let scoped: ScopedId<StopId> = ScopedId::new("feed_a", StopId::new("stop_1"));
+        assert_eq!(scoped.feed_id.as_str(), "feed_a");
+        assert_eq!(scoped.id.as_str(), "stop_1");
+        assert_eq!(format!("{scoped}"), "feed_a:stop_1");
+    }
+}
+

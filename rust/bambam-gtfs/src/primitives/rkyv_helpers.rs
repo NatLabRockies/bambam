@@ -204,3 +204,46 @@ impl<D: rkyv::rancor::Fallible + ?Sized>
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+    struct RkyvPrimitiveSample {
+        #[rkyv(with = RkyvNaiveDate)]
+        date: NaiveDate,
+        #[rkyv(with = RkyvNaiveDateSet)]
+        date_set: HashSet<NaiveDate>,
+        #[rkyv(with = RkyvRgb8)]
+        color: RGB8,
+        #[rkyv(with = RkyvTz)]
+        tz: Tz,
+        #[rkyv(with = RkyvOptionTz)]
+        opt_tz_some: Option<Tz>,
+        #[rkyv(with = RkyvOptionTz)]
+        opt_tz_none: Option<Tz>,
+    }
+
+    #[test]
+    fn test_rkyv_primitive_wrappers_roundtrip() {
+        let mut date_set = HashSet::new();
+        date_set.insert(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        date_set.insert(NaiveDate::from_ymd_opt(2026, 12, 31).unwrap());
+
+        let sample = RkyvPrimitiveSample {
+            date: NaiveDate::from_ymd_opt(2026, 11, 4).unwrap(),
+            date_set,
+            color: RGB8::new(18, 52, 86),
+            tz: Tz::America__Denver,
+            opt_tz_some: Some(Tz::Europe__Paris),
+            opt_tz_none: None,
+        };
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&sample).unwrap();
+        let restored: RkyvPrimitiveSample =
+            rkyv::from_bytes::<RkyvPrimitiveSample, rkyv::rancor::Error>(&bytes).unwrap();
+        assert_eq!(restored, sample);
+    }
+}
+
+

@@ -50,3 +50,31 @@ impl Coord {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_coord_haversine_and_lerp() {
+        let origin = Coord::new(0.0, 0.0);
+        assert!((origin.haversine_meters(origin)).abs() < 1e-9);
+
+        // 1 degree of latitude at the equator is ~111,195 meters
+        let one_deg_north = Coord::new(0.0, 1.0);
+        let dist = origin.haversine_meters(one_deg_north);
+        assert!(
+            (dist - 111_195.0).abs() < 20.0,
+            "unexpected 1-deg distance: {dist}"
+        );
+
+        let a = Coord::new(-105.0, 40.0);
+        let b = Coord::new(-104.0, 41.0);
+        let mid = Coord::lerp(a, b, 0.5);
+        assert!((mid.lon - (-104.5)).abs() < 1e-9);
+        assert!((mid.lat - 40.5).abs() < 1e-9);
+        assert_eq!(Coord::lerp(a, b, -1.0), a);
+        assert_eq!(Coord::lerp(a, b, 2.0), b);
+    }
+}
+

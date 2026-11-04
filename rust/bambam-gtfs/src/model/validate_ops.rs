@@ -852,3 +852,108 @@ fn resolve_boarding_policy(
         booking_rule,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::primitives::GtfsTime;
+    #[cfg(feature = "gtfs-flex")]
+    use crate::raw::RawStop;
+    use crate::raw::RawTrip;
+    use std::path::PathBuf;
+
+    fn fixture_path(rel_path: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel_path)
+    }
+
+    #[cfg(feature = "gtfs-flex")]
+    #[test]
+    fn test_gtfs_flex_validation_errors() {
+        // 1. Namespace collision between stops.txt and locations.geojson
+        let mut raw = RawFeed::from_path(fixture_path("fixtures/flex")).unwrap();
+        raw.stops.push(RawStop {
+            id: StopId::new("area_708"),
+            name: Some("Conflicting Stop".to_owned()),
+            ..Default::default()
+        });
+        let err = ValidatedFeed::try_from(raw).unwrap_err();
+        assert!(matches!(err, ModelError::NamespaceCollision { id } if id == "area_708"));
+
+        // 2. Mutually exclusive stop_id and location_id on the same stop_time
+        let mut raw2 = RawFeed::from_path(fixture_path("fixtures/flex")).unwrap();
+        raw2.stops.push(RawStop {
+            id: StopId::new("valid_stop_1"),
+            ..Default::default()
+        });
+        raw2.stop_times[0].stop_id = Some(StopId::new("valid_stop_1"));
+        // location_id is already Some("area_715")
+        let err2 = ValidatedFeed::try_from(raw2).unwrap_err();
+        assert!(matches!(
+            err2,
+            ModelError::MutuallyExclusivePlaceFields { .. }
+        ));
+    }
+
+    #[test]
+    fn test_lenient_validation_policy_phase_2_dirty_gtfs() {
+        let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+
+        // 1. A trip with 0 stop_times rows
+        raw.trips.push(RawTrip {
+            id: TripId::new("dirty_empty_trip"),
+            service_id: ServiceId::new("service1"),
+            route_id: RouteId::new("route1"),
+            ..Default::default()
+        });
+        // 2. A trip with only 1 stop_times row
+        raw.trips.push(RawTrip {
+            id: TripId::new("dirty_single_stop_trip"),
+            service_id: ServiceId::new("service1"),
+            route_id: RouteId::new("route1"),
+            ..Default::default()
+        });
+        raw.stop_times.push(RawStopTime {
+            trip_id: TripId::new("dirty_single_stop_trip"),
+            stop_id: Some(StopId::new("stop1")),
+            stop_sequence: 1,
+            arrival_time: Some(GtfsTime::from_hms(8, 0, 0)),
+            departure_time: Some(GtfsTime::from_hms(8, 0, 0)),
+            ..Default::default()
+        });
+        // 3. Duplicate stop_sequence on valid trip1
+        let dup_st = raw.stop_times[0].clone();
+        raw.stop_times.push(dup_st);
+        // 4. Orphan stop_time referencing non-existent trip
+        raw.stop_times.push(RawStopTime {
+            trip_id: TripId::new("ghost_trip"),
+            stop_id: Some(StopId::new("stop1")),
+            stop_sequence: 1,
+            ..Default::default()
+        });
+
+        // Strict mode rejects dirty feed when a broken foreign key is added
+        let mut strict_raw = raw.clone();
+        strict_raw.stop_times.push(RawStopTime {
+            trip_id: TripId::new("trip1"),
+            stop_id: Some(StopId::new("nonexistent_stop")),
+            stop_sequence: 99,
+            arrival_time: Some(GtfsTime::from_hms(18, 0, 0)),
+            departure_time: Some(GtfsTime::from_hms(18, 0, 0)),
+            ..Default::default()
+        });
+        assert!(ValidatedFeed::from_raw_with_policy(strict_raw, ValidationPolicy::Strict).is_err());
+
+        // Lenient mode succeeds in Phase 2, preserving valid trip1 and recording warnings
+        let validated = ValidatedFeed::from_raw_with_policy(
+            raw,
+            ValidationPolicy::DropInvalidTripsWithWarning,
+        )
+        .expect("Phase 2 lenient validation should succeed");
+        assert_eq!(validated.dropped_counts.empty_trips, 1);
+        assert_eq!(validated.dropped_counts.single_stop_trips, 1);
+        assert_eq!(validated.dropped_counts.duplicate_stop_sequences, 1);
+        assert_eq!(validated.dropped_counts.orphan_stop_times, 1);
+        assert!(!validated.warnings.is_empty());
+    }
+}
+

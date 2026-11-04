@@ -399,3 +399,61 @@ impl<'de> Deserialize<'de> for ExactTimes {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct TripEnumRow {
+        pickup: PickupDropOffType,
+        continuous: ContinuousPickupDropOff,
+        timepoint: TimepointType,
+        bikes: BikesAllowedType,
+        cars: CarsAllowedType,
+        exact_times: ExactTimes,
+    }
+
+    #[test]
+    fn test_trip_enums_defaults_and_unknown_fallbacks() {
+        let csv_data =
+            "pickup,continuous,timepoint,bikes,cars,exact_times\n,,,,,\n1,0,0,1,2,1\n7,8,1,9,10,0\n";
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+        let rows: Vec<TripEnumRow> = rdr.deserialize().map(Result::unwrap).collect();
+
+        assert_eq!(
+            rows[0],
+            TripEnumRow {
+                pickup: PickupDropOffType::Regular,
+                continuous: ContinuousPickupDropOff::NotAvailable,
+                timepoint: TimepointType::Exact,
+                bikes: BikesAllowedType::NoBikeInfo,
+                cars: CarsAllowedType::NoCarInfo,
+                exact_times: ExactTimes::FrequencyBased,
+            }
+        );
+        assert_eq!(
+            rows[1],
+            TripEnumRow {
+                pickup: PickupDropOffType::NotAvailable,
+                continuous: ContinuousPickupDropOff::Continuous,
+                timepoint: TimepointType::Approximate,
+                bikes: BikesAllowedType::AtLeastOneBike,
+                cars: CarsAllowedType::NoCarsAllowed,
+                exact_times: ExactTimes::ScheduleBased,
+            }
+        );
+        assert_eq!(
+            rows[2],
+            TripEnumRow {
+                pickup: PickupDropOffType::Unknown(7),
+                continuous: ContinuousPickupDropOff::Unknown(8),
+                timepoint: TimepointType::Exact,
+                bikes: BikesAllowedType::Unknown(9),
+                cars: CarsAllowedType::Unknown(10),
+                exact_times: ExactTimes::FrequencyBased,
+            }
+        );
+    }
+}
+

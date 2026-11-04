@@ -771,3 +771,176 @@ fn resolve_place_idx(
         StopPlace::LocationGroup(g) => location_group_id_to_place[&g.id],
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::enums::PickupDropOffType;
+    use crate::raw::{RawFeed, RawStopTime, RawTrip};
+    use crate::traits::TemporalStopTime;
+    use std::path::PathBuf;
+
+    fn fixture_path(rel_path: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel_path)
+    }
+
+    #[test]
+    fn test_interpolated_stop_times_in_phase_3() {
+        // Notice: this single test compiles and passes both WITH and WITHOUT `--features gtfs-flex`!
+        let validated = ValidatedFeed::from_path(fixture_path("fixtures/interpolated_stop_times"))
+            .expect("Phase 2 should accept uninterpolated intermediate stop times");
+        let trip1 = &validated.trips[&TripId::new("trip1")];
+        assert!(matches!(
+            trip1.stop_times[1].timing,
+            StopTimeTiming::Uninterpolated {
+                arrival: None,
+                departure: None
+            }
+        ));
+
+        // Phase 3 interpolates the missing intermediate stop time between 14:00:00 and 15:00:00
+        let timetable =
+            RoutingTimetable::try_from(validated).expect("Phase 3 should interpolate stop times");
+        let st_slice = timetable.trip_stop_times(TripIdx::new(0));
+        assert_eq!(st_slice.len(), 3);
+
+        let st0_dep = st_slice[0].departure_time().unwrap();
+        let st1_arr = st_slice[1].arrival_time().unwrap();
+        let st2_arr = st_slice[2].arrival_time().unwrap();
+        assert!(
+            st1_arr > st0_dep && st1_arr < st2_arr,
+            "interpolated time {st1_arr} should be strictly between {st0_dep} and {st2_arr}"
+        );
+    }
+
+    #[test]
+    fn test_interpolation_shape_distance_weighted_and_error_cases() {
+        // 1. Shape distance-weighted interpolation vs uniform step interpolation
+        let mut raw = RawFeed::from_path(fixture_path("fixtures/interpolated_stop_times")).unwrap();
+        raw.trips[0].shape_id = Some(ShapeId::new("A_shp"));
+        // A_shp has raw distances 0 -> 20 -> 50; assign raw_dist 5.0 (25% of 20.0) to stop 1
+        raw.stop_times[0].shape_dist_traveled = Some(0.0);
+        raw.stop_times[1].shape_dist_traveled = Some(5.0);
+        raw.stop_times[2].shape_dist_traveled = Some(20.0);
+
+        let validated = ValidatedFeed::try_from(raw).unwrap();
+        let timetable = RoutingTimetable::try_from(validated).unwrap();
+        let st1 = timetable.trip_stop_times(TripIdx::new(0))[1];
+        // Since shape_ref is populated asymmetrically near the start, interpolated time is closer to 14:00 than 14:30
+        assert!(st1.arrival_time().unwrap() < GtfsTime::from_hms(14, 30, 0));
+
+        // 2. UninterpolatableTripBoundary when stop 0 is missing times
+        let mut bad_boundary_raw =
+            RawFeed::from_path(fixture_path("fixtures/interpolated_stop_times")).unwrap();
+        bad_boundary_raw.stop_times[0].arrival_time = None;
+        bad_boundary_raw.stop_times[0].departure_time = None;
+        let bad_boundary_val = ValidatedFeed::try_from(bad_boundary_raw).unwrap();
+        assert!(matches!(
+            RoutingTimetable::try_from(bad_boundary_val),
+            Err(RoutingError::UninterpolatableTripBoundary { .. })
+        ));
+
+        // 3. DecreasingStopTimes when scheduled times go backwards across stops
+        let mut dec_raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        dec_raw.stop_times[1].arrival_time = Some(GtfsTime::from_hms(13, 0, 0));
+        dec_raw.stop_times[1].departure_time = Some(GtfsTime::from_hms(13, 0, 0));
+        let dec_val = ValidatedFeed::try_from(dec_raw).unwrap();
+        assert!(matches!(
+            RoutingTimetable::try_from(dec_val),
+            Err(RoutingError::DecreasingStopTimes { .. })
+        ));
+    }
+
+    #[test]
+    fn test_pattern_deduplication_and_lenient_phase_3_policy() {
+        let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        raw.frequencies = None;
+
+        // Add trip2 with identical stop sequence and pickup/drop-off profile -> shares PatternIdx
+        raw.trips.push(RawTrip {
+            id: TripId::new("trip2"),
+            service_id: ServiceId::new("service1"),
+            route_id: RouteId::new("route1"),
+            ..Default::default()
+        });
+        let template_sts: Vec<_> = raw
+            .stop_times
+            .iter()
+            .filter(|st| st.trip_id.as_str() == "trip1")
+            .cloned()
+            .collect();
+        for mut st in template_sts.clone() {
+            st.trip_id = TripId::new("trip2");
+            st.arrival_time = st.arrival_time.map(|t| t.add_seconds(7200));
+            st.departure_time = st.departure_time.map(|t| t.add_seconds(7200));
+            raw.stop_times.push(st);
+        }
+
+        // Add trip3 with same stops but pickup_type = NotAvailable on stop 0 -> distinct PatternIdx
+        raw.trips.push(RawTrip {
+            id: TripId::new("trip3"),
+            service_id: ServiceId::new("service1"),
+            route_id: RouteId::new("route1"),
+            ..Default::default()
+        });
+        for (i, mut st) in template_sts.into_iter().enumerate() {
+            st.trip_id = TripId::new("trip3");
+            st.arrival_time = st.arrival_time.map(|t| t.add_seconds(14400));
+            st.departure_time = st.departure_time.map(|t| t.add_seconds(14400));
+            if i == 0 {
+                st.pickup_type = PickupDropOffType::NotAvailable;
+            }
+            raw.stop_times.push(st);
+        }
+
+        // Also inject a decreasing-stop-time trip to verify Phase 3 DropInvalidTripsWithWarning
+        raw.trips.push(RawTrip {
+            id: TripId::new("dirty_decreasing_trip"),
+            service_id: ServiceId::new("service1"),
+            route_id: RouteId::new("route1"),
+            ..Default::default()
+        });
+        raw.stop_times.push(RawStopTime {
+            trip_id: TripId::new("dirty_decreasing_trip"),
+            stop_id: Some(StopId::new("stop1")),
+            stop_sequence: 1,
+            arrival_time: Some(GtfsTime::from_hms(10, 5, 0)),
+            departure_time: Some(GtfsTime::from_hms(10, 5, 0)),
+            ..Default::default()
+        });
+        raw.stop_times.push(RawStopTime {
+            trip_id: TripId::new("dirty_decreasing_trip"),
+            stop_id: Some(StopId::new("stop2")),
+            stop_sequence: 2,
+            arrival_time: Some(GtfsTime::from_hms(10, 4, 0)),
+            departure_time: Some(GtfsTime::from_hms(10, 4, 0)),
+            ..Default::default()
+        });
+
+        let validated = ValidatedFeed::from_raw_with_policy(
+            raw,
+            ValidationPolicy::DropInvalidTripsWithWarning,
+        )
+        .unwrap();
+        let mut builder = RoutingTimetable::builder()
+            .with_validation_policy(ValidationPolicy::DropInvalidTripsWithWarning);
+        builder.add_feed("test_feed", validated).unwrap();
+        let timetable = builder.build();
+
+        assert_eq!(timetable.trips.len(), 3);
+        assert_eq!(timetable.patterns.len(), 2);
+        let t1 = timetable.trip_id_to_idx[&TripId::new("trip1")];
+        let t2 = timetable.trip_id_to_idx[&TripId::new("trip2")];
+        let t3 = timetable.trip_id_to_idx[&TripId::new("trip3")];
+        assert_eq!(
+            timetable.trips[t1.index()].pattern_idx,
+            timetable.trips[t2.index()].pattern_idx
+        );
+        assert_ne!(
+            timetable.trips[t1.index()].pattern_idx,
+            timetable.trips[t3.index()].pattern_idx
+        );
+        assert_eq!(timetable.feeds[0].dropped_counts.malformed_trips, 1);
+    }
+}
+

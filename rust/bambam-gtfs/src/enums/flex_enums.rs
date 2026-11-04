@@ -64,3 +64,27 @@ impl Serialize for BookingType {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct BookingRow {
+        booking_type: BookingType,
+    }
+
+    #[test]
+    fn test_booking_type_defaults_and_unknown() {
+        let csv_data = "booking_type\n\"\"\n0\n1\n2\n9\n";
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+        let rows: Vec<BookingRow> = rdr.deserialize().map(Result::unwrap).collect();
+
+        assert_eq!(rows[0].booking_type, BookingType::RealTime);
+        assert_eq!(rows[1].booking_type, BookingType::RealTime);
+        assert_eq!(rows[2].booking_type, BookingType::SameDayWithAdvanceNotice);
+        assert_eq!(rows[3].booking_type, BookingType::PriorDays);
+        assert_eq!(rows[4].booking_type, BookingType::Unknown(9));
+    }
+}
+

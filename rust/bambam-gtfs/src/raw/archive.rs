@@ -255,3 +255,125 @@ fn strip_utf8_bom<'a>(
         Ok(Box::new(cursor.chain(reader)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::raw::{RawCalendar, RawLevel, RawRoute, RawStop, RawStopTime};
+    use std::io::{Cursor, Write};
+    use std::path::PathBuf;
+
+    fn fixture_path(rel_path: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel_path)
+    }
+
+    #[test]
+    fn test_selective_table_loading_and_streaming() {
+        // 1. Selective tuple loading from a zip archive (never touches stop_times.txt or shapes.txt!)
+        let mut archive = GtfsArchive::open(fixture_path("fixtures/zips/gtfs.zip"))
+            .expect("should open zip archive");
+        assert!(archive.contains_file("routes.txt"));
+        assert!(!archive.contains_file("nonexistent_table.txt"));
+
+        let (routes, calendar, levels): (
+            Vec<RawRoute>,
+            Option<Vec<RawCalendar>>,
+            Option<Vec<RawLevel>>,
+        ) = archive
+            .load()
+            .expect("should selectively load tuple of required and optional tables");
+        assert_eq!(routes.len(), 1);
+        assert_eq!(calendar.expect("calendar.txt present").len(), 1);
+        assert!(levels.is_none());
+
+        // 2. Streaming O(1)-memory iterator over stop_times.txt
+        let stop_time_count = archive
+            .table_iter::<RawStopTime>()
+            .expect("should open streaming CSV iterator")
+            .filter(|r| r.is_ok())
+            .count();
+        assert_eq!(stop_time_count, 2);
+
+        // 3. Custom user-defined table loaded via GtfsTable without modifying reader.rs
+        #[derive(Debug, Deserialize)]
+        struct CustomLicenseRow {
+            #[serde(rename = "license_spdx_id")]
+            spdx_id: Option<String>,
+        }
+        crate::impl_gtfs_csv_table!(CustomLicenseRow, "licenses.txt", mandatory = false);
+
+        let mut dir_archive = GtfsArchive::open(fixture_path("fixtures/basic"))
+            .expect("should open directory archive");
+        let licenses: Option<Vec<CustomLicenseRow>> = dir_archive
+            .load()
+            .expect("should load custom extension table");
+        assert!(licenses.is_some());
+        assert!(!licenses.unwrap().is_empty());
+        assert!(dir_archive
+            .load::<Vec<CustomLicenseRow>>()
+            .unwrap()
+            .iter()
+            .any(|l| l.spdx_id.is_some()));
+    }
+
+    #[test]
+    fn test_utf8_bom_blank_lines_row_error_context_and_macosx_filtering() {
+        let mut buf = Cursor::new(Vec::new());
+        {
+            let mut zw = zip::ZipWriter::new(&mut buf);
+            let opts = zip::write::SimpleFileOptions::default();
+
+            // macOS resource fork files that must be ignored
+            zw.start_file("__MACOSX/._stops.txt", opts).unwrap();
+            zw.write_all(b"garbage").unwrap();
+            zw.start_file("._routes.txt", opts).unwrap();
+            zw.write_all(b"garbage").unwrap();
+
+            // stops.txt with UTF-8 BOM, intermediate blank line, trailing blank line, and a malformed row
+            zw.start_file("stops.txt", opts).unwrap();
+            zw.write_all(b"\xEF\xBB\xBFstop_id,stop_name,stop_lat,stop_lon\n")
+                .unwrap();
+            zw.write_all(b"s1,First Stop,40.0,-105.0\n").unwrap();
+            zw.write_all(b"   ,  , , \n").unwrap(); // row 2: blank/whitespace line (skipped)
+            zw.write_all(b"s2,Bad Lat Stop,not_a_float,-105.0\n")
+                .unwrap(); // row 3: invalid float
+            zw.write_all(b"\n").unwrap();
+            zw.finish().unwrap();
+        }
+        buf.set_position(0);
+
+        let mut archive = GtfsArchive::from_reader(buf).expect("open in-memory zip");
+        let names: Vec<&str> = archive.file_names().collect();
+        assert_eq!(names, vec!["stops.txt"]);
+
+        let mut iter = archive.table_iter::<RawStop>().expect("open stops.txt iter");
+        let first = iter.next().expect("row 1").expect("row 1 should parse");
+        assert_eq!(first.id.as_str(), "s1");
+
+        let second_err = iter
+            .next()
+            .expect("row 3 (after skipping blank row 2)")
+            .expect_err("row 3 should fail float parse");
+        match second_err {
+            RawReadError::Csv {
+                file_name,
+                row: Some(ctx),
+                ..
+            } => {
+                assert_eq!(file_name, "stops.txt");
+                assert_eq!(ctx.row_number, 3);
+                assert_eq!(
+                    ctx.headers,
+                    vec!["stop_id", "stop_name", "stop_lat", "stop_lon"]
+                );
+                assert_eq!(ctx.values[0], "s2");
+                assert_eq!(ctx.values[2], "not_a_float");
+            }
+            other => panic!("expected RawReadError::Csv with row context, got {other:?}"),
+        }
+
+        // Trailing blank line is skipped cleanly
+        assert!(iter.next().is_none());
+    }
+}
+

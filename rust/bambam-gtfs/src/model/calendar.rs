@@ -140,3 +140,79 @@ impl Identifiable for ServiceCalendar {
         &self.id
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_weekly_pattern_every_weekday_and_service_calendar_exceptions() {
+        let start = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(); // Monday
+        let end = NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(); // Sunday
+
+        let raw_cal = RawCalendar {
+            id: ServiceId::new("wkday"),
+            monday: true,
+            tuesday: false,
+            wednesday: true,
+            thursday: false,
+            friday: true,
+            saturday: false,
+            sunday: false,
+            start_date: start,
+            end_date: end,
+        };
+        let wp = WeeklyPattern::from(&raw_cal);
+        assert!(wp.runs_on_weekday(Weekday::Mon));
+        assert!(!wp.runs_on_weekday(Weekday::Tue));
+        assert!(wp.runs_on_weekday(Weekday::Wed));
+        assert!(!wp.runs_on_weekday(Weekday::Thu));
+        assert!(wp.runs_on_weekday(Weekday::Fri));
+        assert!(!wp.runs_on_weekday(Weekday::Sat));
+        assert!(!wp.runs_on_weekday(Weekday::Sun));
+
+        let mut cal = ServiceCalendar::new(ServiceId::new("wkday"));
+        cal.weekly = Some(wp);
+
+        let mon = NaiveDate::from_ymd_opt(2026, 11, 2).unwrap();
+        let tue = NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
+        let before = NaiveDate::from_ymd_opt(2026, 10, 26).unwrap();
+
+        assert!(cal.is_active_on(mon));
+        assert!(!cal.is_active_on(tue));
+        assert!(!cal.is_active_on(before));
+
+        // Exception::Deleted disables otherwise active Monday
+        cal.add_exception(&RawCalendarDate {
+            service_id: ServiceId::new("wkday"),
+            date: mon,
+            exception_type: Exception::Deleted,
+        });
+        assert!(!cal.is_active_on(mon));
+
+        // Exception::Added enables inactive Tuesday and out-of-range date
+        cal.add_exception(&RawCalendarDate {
+            service_id: ServiceId::new("wkday"),
+            date: tue,
+            exception_type: Exception::Added,
+        });
+        cal.add_exception(&RawCalendarDate {
+            service_id: ServiceId::new("wkday"),
+            date: before,
+            exception_type: Exception::Added,
+        });
+        assert!(cal.is_active_on(tue));
+        assert!(cal.is_active_on(before));
+
+        // Calendar defined purely via calendar_dates.txt (weekly == None)
+        let mut dates_only = ServiceCalendar::new(ServiceId::new("dates_only"));
+        dates_only.add_exception(&RawCalendarDate {
+            service_id: ServiceId::new("dates_only"),
+            date: tue,
+            exception_type: Exception::Added,
+        });
+        assert!(dates_only.is_active_on(tue));
+        assert!(!dates_only.is_active_on(mon));
+    }
+}
+

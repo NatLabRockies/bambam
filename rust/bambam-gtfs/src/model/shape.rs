@@ -343,3 +343,145 @@ impl Spatial for ShapePolyline {
         self.bbox
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_shape_linear_referencing_and_subsegment_slicing() {
+        let raw_points = vec![
+            RawShapePoint {
+                id: ShapeId::new("shp1"),
+                latitude: 40.0,
+                longitude: -105.0,
+                sequence: 1,
+                dist_traveled: Some(0.0),
+            },
+            RawShapePoint {
+                id: ShapeId::new("shp1"),
+                latitude: 40.0,
+                longitude: -104.95,
+                sequence: 2,
+                dist_traveled: Some(50.0),
+            },
+            RawShapePoint {
+                id: ShapeId::new("shp1"),
+                latitude: 40.05,
+                longitude: -104.95,
+                sequence: 3,
+                dist_traveled: Some(100.0),
+            },
+        ];
+
+        let poly = ShapePolyline::from_raw_points(ShapeId::new("shp1"), raw_points)
+            .expect("valid shape polyline");
+        assert_eq!(poly.vertices.len(), 3);
+        assert!(poly.total_meters > 8_000.0);
+
+        // Resolve raw_dist = 25.0 (halfway along the first segment) and raw_dist = 75.0 (halfway along the second segment)
+        let ref_start = poly.resolve_raw_dist(25.0).unwrap();
+        let ref_end = poly.resolve_raw_dist(75.0).unwrap();
+        assert!(ref_start.arc_meters < poly.vertices[1].cumulative_meters as f64);
+        assert!(ref_end.arc_meters > poly.vertices[1].cumulative_meters as f64);
+
+        // Slice the sub-segment linestring from ref_start to ref_end:
+        // It should contain [interpolated_start, corner_vertex_2, interpolated_end] = 3 coordinates!
+        let sub_linestring = poly.slice_linestring(ref_start.arc_meters, ref_end.arc_meters);
+        assert_eq!(sub_linestring.len(), 3);
+        assert!((sub_linestring[0].lon - (-104.975)).abs() < 1e-4);
+        assert!((sub_linestring[1].lon - (-104.95)).abs() < 1e-5);
+        assert!((sub_linestring[1].lat - 40.0).abs() < 1e-5);
+        assert!((sub_linestring[2].lat - 40.025).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_shape_polyline_sorting_monotonic_validation_loop_projection_and_edge_cases() {
+        // 1. Out-of-order sequences sort properly; non-monotonic dist_traveled is rejected
+        let non_monotonic = vec![
+            RawShapePoint {
+                id: ShapeId::new("bad"),
+                latitude: 40.0,
+                longitude: -105.0,
+                sequence: 2,
+                dist_traveled: Some(10.0),
+            },
+            RawShapePoint {
+                id: ShapeId::new("bad"),
+                latitude: 40.0,
+                longitude: -104.9,
+                sequence: 1,
+                dist_traveled: Some(20.0),
+            },
+        ];
+        assert!(matches!(
+            ShapePolyline::from_raw_points(ShapeId::new("bad"), non_monotonic),
+            Err(ModelError::NonMonotonicShapeDistance { .. })
+        ));
+
+        // 2. Looping route: (0,0) -> (0,0.01) -> (0.01,0.01) -> (0,0)
+        // Verify project_coord_monotonic with min_arc_meters prevents snapping backwards to vertex 0
+        let loop_pts = vec![
+            RawShapePoint {
+                id: ShapeId::new("loop"),
+                latitude: 0.0,
+                longitude: 0.0,
+                sequence: 1,
+                dist_traveled: None,
+            },
+            RawShapePoint {
+                id: ShapeId::new("loop"),
+                latitude: 0.01,
+                longitude: 0.0,
+                sequence: 2,
+                dist_traveled: None,
+            },
+            RawShapePoint {
+                id: ShapeId::new("loop"),
+                latitude: 0.01,
+                longitude: 0.01,
+                sequence: 3,
+                dist_traveled: None,
+            },
+            RawShapePoint {
+                id: ShapeId::new("loop"),
+                latitude: 0.0,
+                longitude: 0.0,
+                sequence: 4,
+                dist_traveled: None,
+            },
+        ];
+        let loop_poly = ShapePolyline::from_raw_points(ShapeId::new("loop"), loop_pts).unwrap();
+        let origin = Coord::new(0.0, 0.0);
+        let first_pass = loop_poly.project_coord_monotonic(origin, 0.0).unwrap();
+        assert!(first_pass.arc_meters < 1.0);
+
+        let second_pass = loop_poly
+            .project_coord_monotonic(origin, loop_poly.total_meters * 0.5)
+            .unwrap();
+        assert!((second_pass.arc_meters - loop_poly.total_meters).abs() < 1.0);
+
+        // 3. Edge cases: empty shape, 1-vertex shape, start == end, clamping
+        let empty_poly = ShapePolyline::from_raw_points(ShapeId::new("empty"), vec![]).unwrap();
+        assert!(empty_poly.coord_at_meters(0.0).is_none());
+        assert!(empty_poly.slice_linestring(0.0, 10.0).is_empty());
+
+        let single_poly = ShapePolyline::from_raw_points(
+            ShapeId::new("single"),
+            vec![RawShapePoint {
+                id: ShapeId::new("single"),
+                latitude: 40.0,
+                longitude: -105.0,
+                sequence: 1,
+                dist_traveled: None,
+            }],
+        )
+        .unwrap();
+        assert_eq!(
+            single_poly.coord_at_meters(100.0),
+            Some(Coord::new(-105.0, 40.0))
+        );
+        assert_eq!(single_poly.slice_linestring(0.0, 0.0).len(), 1);
+    }
+}
+

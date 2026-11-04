@@ -45,3 +45,35 @@ impl TimeWindow {
         time.0 >= self.start.0 && time.0 <= self.end.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_time_window_validation_and_bounds() {
+        let start = GtfsTime::from_hms(8, 0, 0);
+        let end = GtfsTime::from_hms(9, 30, 0);
+
+        let win = TimeWindow::new(start, end).expect("valid time window");
+        assert_eq!(win.duration_seconds(), 5400);
+        assert!(!win.contains(GtfsTime::from_hms(7, 59, 59)));
+        assert!(win.contains(start));
+        assert!(win.contains(GtfsTime::from_hms(8, 45, 0)));
+        assert!(win.contains(end));
+        assert!(!win.contains(GtfsTime::from_hms(9, 30, 1)));
+
+        let zero_win = TimeWindow::new(start, start).expect("zero-duration window is valid");
+        assert_eq!(zero_win.duration_seconds(), 0);
+        assert!(zero_win.contains(start));
+
+        assert_eq!(
+            TimeWindow::new(end, start),
+            Err(PrimitiveError::InvalidTimeWindow {
+                start: end,
+                end: start
+            })
+        );
+    }
+}
+

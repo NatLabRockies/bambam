@@ -250,3 +250,84 @@ impl crate::raw::TableBundle for FlexTables {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_locations_geojson_valid_and_error_cases() {
+        let valid_geojson = r#"{
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "id": "zone_1",
+                    "properties": { "stop_name": "Zone One" },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [[[-105.0, 40.0], [-104.9, 40.0], [-104.9, 40.1], [-105.0, 40.0]]]
+                    }
+                }
+            ]
+        }"#;
+        let parsed = parse_locations_geojson(valid_geojson).expect("valid GeoJSON should parse");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id.as_str(), "zone_1");
+        assert_eq!(parsed[0].stop_name.as_deref(), Some("Zone One"));
+
+        // 1. Missing feature id
+        let missing_id = r#"{
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[-105.0, 40.0], [-104.9, 40.0], [-104.9, 40.1], [-105.0, 40.0]]]
+                }
+            }]
+        }"#;
+        assert!(matches!(
+            parse_locations_geojson(missing_id),
+            Err(RawReadError::GeoJson { .. })
+        ));
+
+        // 2. Non-Polygon geometry (Point)
+        let point_geom = r#"{
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "bad_geom",
+                "properties": {},
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [-105.0, 40.0]
+                }
+            }]
+        }"#;
+        assert!(matches!(
+            parse_locations_geojson(point_geom),
+            Err(RawReadError::GeoJson { .. })
+        ));
+
+        // 3. Coordinate position with < 2 elements
+        let short_coord = r#"{
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "id": "bad_coord",
+                "properties": {},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[[-105.0], [-104.9, 40.0], [-105.0, 40.0]]]
+                }
+            }]
+        }"#;
+        assert!(matches!(
+            parse_locations_geojson(short_coord),
+            Err(RawReadError::GeoJson { .. })
+        ));
+    }
+}
+

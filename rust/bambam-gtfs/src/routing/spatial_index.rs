@@ -169,3 +169,65 @@ pub(crate) fn flex_zone_within_radius(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "gtfs-flex")]
+    use super::*;
+    #[cfg(feature = "gtfs-flex")]
+    use crate::ids::LocationId;
+    #[cfg(feature = "gtfs-flex")]
+    use crate::model::{FlexLocation, ValidatedFeed};
+    #[cfg(feature = "gtfs-flex")]
+    use crate::raw::{RawFeed, RawFlexGeometry, RawFlexLocation};
+    #[cfg(feature = "gtfs-flex")]
+    use crate::routing::RoutingTimetable;
+    #[cfg(feature = "gtfs-flex")]
+    use std::path::PathBuf;
+
+    #[cfg(feature = "gtfs-flex")]
+    #[test]
+    fn test_places_near_with_rtree_and_concave_polygon() {
+        let fixture_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/basic");
+        let l_ring = vec![
+            Coord::new(0.0, 0.0),
+            Coord::new(1.0, 0.0),
+            Coord::new(1.0, 0.4),
+            Coord::new(0.4, 0.4),
+            Coord::new(0.4, 1.0),
+            Coord::new(0.0, 1.0),
+            Coord::new(0.0, 0.0),
+        ];
+        let raw_loc = RawFlexLocation {
+            id: LocationId::new("l_zone"),
+            stop_name: Some("L-Shaped Flex Zone".to_owned()),
+            stop_desc: None,
+            zone_id: None,
+            stop_url: None,
+            geometry: RawFlexGeometry::Polygon(vec![l_ring]),
+        };
+        let flex_loc = FlexLocation::from(raw_loc.clone());
+
+        let inside_bottom = Coord::new(0.8, 0.2);
+        let outside_in_bbox_cutout = Coord::new(0.8, 0.8);
+        assert!(flex_loc.bbox.unwrap().contains(outside_in_bbox_cutout));
+        assert!(!flex_loc.contains_coord(outside_in_bbox_cutout));
+
+        let mut raw = RawFeed::from_path(fixture_dir).unwrap();
+        raw.locations = Some(vec![raw_loc]);
+        let validated = ValidatedFeed::try_from(raw).unwrap();
+        let timetable = RoutingTimetable::try_from(validated).unwrap();
+
+        let l_zone_pidx = timetable.location_id_to_place[&LocationId::new("l_zone")];
+        assert!(timetable
+            .places_near(inside_bottom, 0.0)
+            .contains(&l_zone_pidx));
+        assert!(
+            !timetable
+                .places_near(outside_in_bbox_cutout, 0.0)
+                .contains(&l_zone_pidx),
+            "places_near(radius=0) should not match L-zone when point is in the cutout"
+        );
+    }
+}
+

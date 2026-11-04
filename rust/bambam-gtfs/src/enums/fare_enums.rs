@@ -182,3 +182,30 @@ pub enum TicketingType {
     #[serde(rename = "1")]
     Unavailable,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct FareRow {
+        transfers: Transfers,
+        default_cat: DefaultFareCategory,
+    }
+
+    #[test]
+    fn test_fare_enums_defaults_and_other() {
+        let csv_data = "transfers,default_cat\n,\n0,0\n1,1\n2,0\n5,1\n";
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+        let rows: Vec<FareRow> = rdr.deserialize().map(Result::unwrap).collect();
+
+        assert_eq!(rows[0].transfers, Transfers::Unlimited);
+        assert_eq!(rows[0].default_cat, DefaultFareCategory::NotDefault);
+        assert_eq!(rows[1].transfers, Transfers::NoTransfer);
+        assert_eq!(rows[2].transfers, Transfers::UniqueTransfer);
+        assert_eq!(rows[2].default_cat, DefaultFareCategory::Default);
+        assert_eq!(rows[3].transfers, Transfers::TwoTransfers);
+        assert_eq!(rows[4].transfers, Transfers::Other(5));
+    }
+}
+

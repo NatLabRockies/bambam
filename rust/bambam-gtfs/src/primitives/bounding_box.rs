@@ -95,3 +95,51 @@ impl BoundingBox {
             && self.max_lat >= other.min_lat
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bounding_box_operations() {
+        assert_eq!(BoundingBox::from_coords(std::iter::empty()), None);
+
+        let p1 = Coord::new(-105.0, 39.0);
+        let single = BoundingBox::from_coords([p1]).unwrap();
+        assert_eq!(single.center(), p1);
+        assert!(single.contains(p1));
+
+        let p2 = Coord::new(-104.0, 40.0);
+        let p3 = Coord::new(-106.0, 41.0);
+        let bbox = BoundingBox::from_coords([p1, p2, p3]).unwrap();
+        assert_eq!(bbox.min_lon, -106.0);
+        assert_eq!(bbox.max_lon, -104.0);
+        assert_eq!(bbox.min_lat, 39.0);
+        assert_eq!(bbox.max_lat, 41.0);
+        assert_eq!(bbox.center(), Coord::new(-105.0, 40.0));
+
+        assert!(bbox.contains(Coord::new(-105.0, 40.0))); // interior
+        assert!(bbox.contains(Coord::new(-106.0, 39.0))); // edge/corner
+        assert!(!bbox.contains(Coord::new(-103.9, 40.0))); // exterior
+
+        let touching = BoundingBox::from_coords([
+            Coord::new(-104.0, 40.0),
+            Coord::new(-103.0, 42.0),
+        ])
+        .unwrap();
+        let disjoint = BoundingBox::from_coords([
+            Coord::new(-103.0, 40.0),
+            Coord::new(-102.0, 42.0),
+        ])
+        .unwrap();
+        assert!(bbox.intersects(&touching));
+        assert!(!bbox.intersects(&disjoint));
+
+        let union = bbox.union(disjoint);
+        assert_eq!(union.min_lon, -106.0);
+        assert_eq!(union.max_lon, -102.0);
+        assert_eq!(union.min_lat, 39.0);
+        assert_eq!(union.max_lat, 42.0);
+    }
+}
+

@@ -296,3 +296,48 @@ pub enum PathwayDirectionType {
     #[serde(rename = "1")]
     Bidirectional,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Deserialize)]
+    struct StopEnumRow {
+        location_type: LocationType,
+        wheelchair: Availability,
+        transfer_type: TransferType,
+    }
+
+    #[test]
+    fn test_stop_enums_defaults_and_unknown_fallbacks() {
+        let csv_data = "location_type,wheelchair,transfer_type\n,,\n0,1,2\n99,42,5\n";
+        let mut rdr = csv::Reader::from_reader(csv_data.as_bytes());
+        let rows: Vec<StopEnumRow> = rdr.deserialize().map(Result::unwrap).collect();
+
+        assert_eq!(
+            rows[0],
+            StopEnumRow {
+                location_type: LocationType::StopPoint,
+                wheelchair: Availability::InformationNotAvailable,
+                transfer_type: TransferType::Recommended,
+            }
+        );
+        assert_eq!(
+            rows[1],
+            StopEnumRow {
+                location_type: LocationType::StopPoint,
+                wheelchair: Availability::Available,
+                transfer_type: TransferType::MinTime,
+            }
+        );
+        assert_eq!(
+            rows[2],
+            StopEnumRow {
+                location_type: LocationType::Unknown(99),
+                wheelchair: Availability::Unknown(42),
+                transfer_type: TransferType::MustAlight,
+            }
+        );
+    }
+}
+

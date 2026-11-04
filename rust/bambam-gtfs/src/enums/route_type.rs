@@ -326,3 +326,113 @@ impl Serialize for RouteType {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, PartialEq, Serialize, Deserialize)]
+    struct RouteRow {
+        route_type: RouteType,
+    }
+
+    #[test]
+    fn test_route_type_serde_and_standard_mapping() {
+        let cases = [
+            (0, RouteType::Tramway),
+            (1, RouteType::Subway),
+            (2, RouteType::Rail),
+            (3, RouteType::Bus),
+            (4, RouteType::Ferry),
+            (5, RouteType::CableCar),
+            (6, RouteType::Gondola),
+            (7, RouteType::Funicular),
+            (100, RouteType::Extended(ExtendedRouteType::Railway)),
+            (401, RouteType::Extended(ExtendedRouteType::Metro)),
+            (700, RouteType::Extended(ExtendedRouteType::Bus)),
+            (
+                715,
+                RouteType::Extended(ExtendedRouteType::DemandAndResponseBus),
+            ),
+            (999, RouteType::Other(999)),
+        ];
+
+        for (code, expected) in cases {
+            let csv_str = format!("route_type\n{code}\n");
+            let row: RouteRow = csv::Reader::from_reader(csv_str.as_bytes())
+                .deserialize()
+                .next()
+                .unwrap()
+                .unwrap();
+            assert_eq!(row.route_type, expected);
+        }
+
+        // ExtendedRouteType::to_standard_route_type mapping
+        assert_eq!(
+            ExtendedRouteType::HighSpeedRail.to_standard_route_type(),
+            RouteType::Rail
+        );
+        assert_eq!(
+            ExtendedRouteType::NationalCoach.to_standard_route_type(),
+            RouteType::Bus
+        );
+        assert_eq!(
+            ExtendedRouteType::Metro.to_standard_route_type(),
+            RouteType::Subway
+        );
+        assert_eq!(
+            ExtendedRouteType::DemandAndResponseBus.to_standard_route_type(),
+            RouteType::Bus
+        );
+        assert_eq!(
+            ExtendedRouteType::Trolleybus.to_standard_route_type(),
+            RouteType::Bus
+        );
+        assert_eq!(
+            ExtendedRouteType::CityTram.to_standard_route_type(),
+            RouteType::Tramway
+        );
+        assert_eq!(
+            ExtendedRouteType::WaterTransport.to_standard_route_type(),
+            RouteType::Ferry
+        );
+        assert_eq!(
+            ExtendedRouteType::Ferry.to_standard_route_type(),
+            RouteType::Ferry
+        );
+        assert_eq!(
+            ExtendedRouteType::Telecabin.to_standard_route_type(),
+            RouteType::Gondola
+        );
+        assert_eq!(
+            ExtendedRouteType::Funicular.to_standard_route_type(),
+            RouteType::Funicular
+        );
+        assert_eq!(
+            ExtendedRouteType::Air.to_standard_route_type(),
+            RouteType::Extended(ExtendedRouteType::Air)
+        );
+        assert_eq!(
+            ExtendedRouteType::Taxi.to_standard_route_type(),
+            RouteType::Extended(ExtendedRouteType::Taxi)
+        );
+    }
+
+    #[test]
+    fn test_rkyv_extended_route_type_roundtrip() {
+        let variants = [
+            RouteType::Bus,
+            RouteType::Extended(ExtendedRouteType::HighSpeedRail),
+            RouteType::Extended(ExtendedRouteType::DemandAndResponseBus),
+            RouteType::Extended(ExtendedRouteType::HorseDrawnCarriage),
+            RouteType::Other(1999),
+        ];
+        for v in variants {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&v).unwrap();
+            let restored: RouteType =
+                rkyv::from_bytes::<RouteType, rkyv::rancor::Error>(&bytes).unwrap();
+            assert_eq!(restored, v);
+        }
+    }
+}
+

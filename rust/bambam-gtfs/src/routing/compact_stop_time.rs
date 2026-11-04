@@ -188,3 +188,42 @@ impl TemporalStopTime for CompactStopTime {
         Some(GtfsTime(self.departure_or_end_secs))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compact_stop_time_encoding_and_nan_reflexivity() {
+        let arr = GtfsTime::from_hms(8, 0, 0);
+        let dep = GtfsTime::from_hms(8, 2, 0);
+        let fixed_nan = CompactStopTime::new_fixed(arr, dep, f32::NAN, NO_FLEX_DURATION_IDX);
+        assert!(!fixed_nan.is_flex_window());
+        assert_eq!(fixed_nan.arrival_time(), Some(arr));
+        assert_eq!(fixed_nan.departure_time(), Some(dep));
+        assert_eq!(fixed_nan.flex_window(), None);
+        assert_eq!(fixed_nan.shape_meters(), None);
+        assert_eq!(fixed_nan.timing(), RoutableStopTiming::Fixed { arrival: arr, departure: dep });
+        // Reflexivity with f32::NAN
+        assert_eq!(fixed_nan, fixed_nan.clone());
+
+        let fixed_dist = CompactStopTime::new_fixed(arr, dep, 1250.5, 0);
+        assert_ne!(fixed_nan, fixed_dist);
+        assert_eq!(fixed_dist.shape_meters(), Some(1250.5));
+
+        #[cfg(feature = "gtfs-flex")]
+        {
+            let win = TimeWindow::new(GtfsTime::from_hms(9, 0, 0), GtfsTime::from_hms(10, 0, 0)).unwrap();
+            let flex_st = CompactStopTime::new_flex_window(win, f32::NAN, 1);
+            assert!(flex_st.is_flex_window());
+            assert_eq!(flex_st.arrival_time(), None);
+            assert_eq!(flex_st.departure_time(), None);
+            assert_eq!(flex_st.flex_window(), Some(win));
+            assert_eq!(flex_st.earliest_time(), Some(win.start));
+            assert_eq!(flex_st.latest_time(), Some(win.end));
+            assert_eq!(flex_st.timing(), RoutableStopTiming::FlexWindow(win));
+            assert_eq!(flex_st, flex_st.clone());
+        }
+    }
+}
+

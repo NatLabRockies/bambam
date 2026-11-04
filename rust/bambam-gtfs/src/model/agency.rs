@@ -56,3 +56,30 @@ impl From<RawAgency> for Agency {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agency_from_raw_and_rkyv_roundtrip() {
+        let raw = RawAgency {
+            id: Some(AgencyId::new("")),
+            name: "RTD Denver".to_owned(),
+            url: "https://www.rtd-denver.com".to_owned(),
+            timezone: Tz::America__Denver,
+            lang: Some("en".to_owned()),
+            phone: None,
+            fare_url: None,
+            email: None,
+        };
+        let agency = Agency::from(raw);
+        assert!(agency.id.is_none(), "empty agency_id should normalize to None");
+        assert_eq!(agency.time_zone(), Tz::America__Denver);
+
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&agency).unwrap();
+        let restored: Agency = rkyv::from_bytes::<Agency, rkyv::rancor::Error>(&bytes).unwrap();
+        assert_eq!(restored, agency);
+    }
+}
+

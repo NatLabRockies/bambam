@@ -158,3 +158,103 @@ impl Serialize for GtfsTime {
         serializer.serialize_str(&self.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    #[test]
+    fn test_gtfs_time_parse_valid_and_invalid() {
+        assert_eq!(GtfsTime::parse("00:00:00"), Ok(GtfsTime::from_hms(0, 0, 0)));
+        assert_eq!(GtfsTime::parse("08:05:09"), Ok(GtfsTime::from_hms(8, 5, 9)));
+        assert_eq!(GtfsTime::parse("8:05:09"), Ok(GtfsTime::from_hms(8, 5, 9)));
+        assert_eq!(
+            GtfsTime::parse("  25:30:00  "),
+            Ok(GtfsTime::from_hms(25, 30, 0))
+        );
+        assert_eq!(
+            GtfsTime::parse("48:00:00"),
+            Ok(GtfsTime::from_hms(48, 0, 0))
+        );
+
+        for invalid in [
+            "12:60:00",
+            "12:00:60",
+            "12:5:00",
+            "12:00:5",
+            "12:00",
+            "12:00:00:00",
+            "-01:00:00",
+            "",
+            "abc",
+        ] {
+            assert!(
+                matches!(GtfsTime::parse(invalid), Err(PrimitiveError::InvalidTime(_))),
+                "expected InvalidTime for '{invalid}'"
+            );
+        }
+    }
+
+    #[test]
+    fn test_gtfs_time_arithmetic_lerp_and_display() {
+        let t = GtfsTime::from_hms(10, 0, 0);
+        assert_eq!(t.seconds(), 36_000);
+        assert_eq!(t.add_seconds(3661), GtfsTime::from_hms(11, 1, 1));
+        assert_eq!(
+            GtfsTime::from_seconds(u32::MAX - 5).add_seconds(10),
+            GtfsTime::from_seconds(u32::MAX)
+        );
+
+        assert_eq!(t.add_signed_seconds(-3600), GtfsTime::from_hms(9, 0, 0));
+        assert_eq!(t.add_signed_seconds(-50_000), GtfsTime::from_seconds(0));
+        assert_eq!(
+            t.add_signed_seconds(u32::MAX as i64),
+            GtfsTime::from_seconds(u32::MAX)
+        );
+
+        let start = GtfsTime::from_hms(14, 0, 0);
+        let end = GtfsTime::from_hms(15, 0, 0);
+        assert_eq!(GtfsTime::lerp(start, end, 0.0), start);
+        assert_eq!(GtfsTime::lerp(start, end, 0.5), GtfsTime::from_hms(14, 30, 0));
+        assert_eq!(GtfsTime::lerp(start, end, 1.0), end);
+        assert_eq!(GtfsTime::lerp(start, end, -0.5), start);
+        assert_eq!(GtfsTime::lerp(start, end, 1.5), end);
+
+        let overnight = GtfsTime::from_hms(25, 5, 9);
+        assert_eq!(overnight.to_string(), "25:05:09");
+        assert_eq!(GtfsTime::parse(&overnight.to_string()), Ok(overnight));
+    }
+
+    #[test]
+    fn test_gtfs_time_timezone_conversions() {
+        let date = NaiveDate::from_ymd_opt(2026, 7, 15).unwrap();
+        let overnight = GtfsTime::from_hms(25, 30, 0);
+        let zoned = overnight
+            .to_zoned_datetime(date, Tz::America__Denver)
+            .expect("should convert overnight time to America/Denver");
+        assert_eq!(zoned.timezone(), Tz::America__Denver);
+        assert_eq!(
+            zoned.date_naive(),
+            NaiveDate::from_ymd_opt(2026, 7, 16).unwrap()
+        );
+        let (extracted_date, extracted_time) = GtfsTime::from_datetime(&zoned);
+        assert_eq!(
+            extracted_date,
+            NaiveDate::from_ymd_opt(2026, 7, 16).unwrap()
+        );
+        assert_eq!(extracted_time, GtfsTime::from_hms(1, 30, 0));
+
+        // Spring-forward DST gap in America/Denver on 2026-03-08 at 02:30:00
+        let dst_date = NaiveDate::from_ymd_opt(2026, 3, 8).unwrap();
+        let gap_time = GtfsTime::from_hms(2, 30, 0);
+        let gap_dt = gap_time
+            .to_zoned_datetime(dst_date, Tz::America__Denver)
+            .expect("should resolve spring-forward gap time via midnight fallback");
+        let midnight = Tz::America__Denver
+            .with_ymd_and_hms(2026, 3, 8, 0, 0, 0)
+            .unwrap();
+        assert_eq!((gap_dt - midnight).num_seconds(), 2 * 3600 + 30 * 60);
+    }
+}
+
