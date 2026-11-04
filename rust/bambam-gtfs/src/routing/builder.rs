@@ -685,7 +685,7 @@ impl RoutingTimetableBuilder {
                         (Some(s_m), Some(e_m), Some(k_m)) if e_m > s_m => (k_m - s_m) / (e_m - s_m),
                         _ => (k - prev_idx) as f64 / (next_idx - prev_idx) as f64,
                     };
-                    let interp_t = GtfsTime::lerp(start_dep, end_arr, ratio);
+                    let interp_t = GtfsTime::linear_interpolate(start_dep, end_arr, ratio);
                     fixed_times[k] = Some((interp_t, interp_t));
                 }
                 i = next_idx;

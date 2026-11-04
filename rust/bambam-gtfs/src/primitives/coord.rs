@@ -42,7 +42,7 @@ impl Coord {
 
     /// Linearly interpolates between `a` and `b` by factor `t` in `[0.0, 1.0]`.
     #[inline]
-    pub fn lerp(a: Self, b: Self, t: f64) -> Self {
+    pub fn linear_interpolate(a: Self, b: Self, t: f64) -> Self {
         let t = t.clamp(0.0, 1.0);
         Self {
             lon: a.lon + (b.lon - a.lon) * t,
@@ -70,10 +70,10 @@ mod tests {
 
         let a = Coord::new(-105.0, 40.0);
         let b = Coord::new(-104.0, 41.0);
-        let mid = Coord::lerp(a, b, 0.5);
+        let mid = Coord::linear_interpolate(a, b, 0.5);
         assert!((mid.lon - (-104.5)).abs() < 1e-9);
         assert!((mid.lat - 40.5).abs() < 1e-9);
-        assert_eq!(Coord::lerp(a, b, -1.0), a);
-        assert_eq!(Coord::lerp(a, b, 2.0), b);
+        assert_eq!(Coord::linear_interpolate(a, b, -1.0), a);
+        assert_eq!(Coord::linear_interpolate(a, b, 2.0), b);
     }
 }

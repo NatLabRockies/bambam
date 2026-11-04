@@ -67,7 +67,7 @@ impl GtfsTime {
 
     /// Linearly interpolates between `start` and `end` by ratio `t` in `[0.0, 1.0]`.
     #[inline]
-    pub fn lerp(start: Self, end: Self, t: f64) -> Self {
+    pub fn linear_interpolate(start: Self, end: Self, t: f64) -> Self {
         let t = t.clamp(0.0, 1.0);
         let delta = (end.0 as f64 - start.0 as f64) * t;
         Self((start.0 as f64 + delta).round().max(0.0) as u32)
@@ -218,14 +218,14 @@ mod tests {
 
         let start = GtfsTime::from_hms(14, 0, 0);
         let end = GtfsTime::from_hms(15, 0, 0);
-        assert_eq!(GtfsTime::lerp(start, end, 0.0), start);
+        assert_eq!(GtfsTime::linear_interpolate(start, end, 0.0), start);
         assert_eq!(
-            GtfsTime::lerp(start, end, 0.5),
+            GtfsTime::linear_interpolate(start, end, 0.5),
             GtfsTime::from_hms(14, 30, 0)
         );
-        assert_eq!(GtfsTime::lerp(start, end, 1.0), end);
-        assert_eq!(GtfsTime::lerp(start, end, -0.5), start);
-        assert_eq!(GtfsTime::lerp(start, end, 1.5), end);
+        assert_eq!(GtfsTime::linear_interpolate(start, end, 1.0), end);
+        assert_eq!(GtfsTime::linear_interpolate(start, end, -0.5), start);
+        assert_eq!(GtfsTime::linear_interpolate(start, end, 1.5), end);
 
         let overnight = GtfsTime::from_hms(25, 5, 9);
         assert_eq!(overnight.to_string(), "25:05:09");

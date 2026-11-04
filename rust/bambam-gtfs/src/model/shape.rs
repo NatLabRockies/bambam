@@ -306,7 +306,7 @@ impl ShapePolyline {
         } else {
             0.0
         };
-        Some(Coord::lerp(v0.coord(), v1.coord(), t))
+        Some(Coord::linear_interpolate(v0.coord(), v1.coord(), t))
     }
 
     /// Extracts the sub-segment linestring (`Vec<Coord>`) between `start_meters` and `end_meters`,

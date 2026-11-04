@@ -157,7 +157,7 @@ pub(crate) fn flex_zone_within_radius(
             } else {
                 0.0
             };
-            let closest = Coord::lerp(a, b, t);
+            let closest = Coord::linear_interpolate(a, b, t);
             if closest.haversine_meters(target) <= radius_meters {
                 return true;
             }
