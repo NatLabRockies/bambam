@@ -6,7 +6,7 @@ use crate::model::{
     Route, ServiceCalendar, ShapePolyline, Stop, StopArea, StopPlace, StopTime, StopTimeTiming,
     StopTransfer, Trip, ValidatedFeed, ValidationPolicy, ValidationWarning, WeeklyPattern,
 };
-use crate::primitives::TimeWindow;
+use crate::primitives::{Coord, TimeWindow};
 use crate::raw::{RawCalendar, RawCalendarDate, RawFeed, RawStopTime};
 use crate::traits::Spatial;
 use std::collections::{HashMap, HashSet};
@@ -35,6 +35,8 @@ pub(crate) fn validate_raw_feed(
             (stop.id.clone(), stop)
         })
         .collect();
+
+    resolve_inherited_stop_coords(&mut stop_map);
 
     if let Some(transfers) = raw.transfers {
         for tr in transfers {
@@ -589,6 +591,40 @@ pub(crate) fn validate_raw_feed(
     })
 }
 
+fn resolve_inherited_stop_coords(stop_map: &mut HashMap<StopId, Stop>) {
+    let stop_ids: Vec<StopId> = stop_map
+        .values()
+        .filter(|s| s.coord.is_none() && s.parent_station.is_some())
+        .map(|s| s.id.clone())
+        .collect();
+
+    for id in stop_ids {
+        let mut current_id = id.clone();
+        let mut visited = HashSet::new();
+        let mut resolved_coord: Option<Coord> = None;
+
+        while visited.insert(current_id.clone()) {
+            let Some(stop) = stop_map.get(&current_id) else {
+                break;
+            };
+            if let Some(c) = stop.coord {
+                resolved_coord = Some(c);
+                break;
+            }
+            match &stop.parent_station {
+                Some(parent_id) => current_id = parent_id.clone(),
+                None => break,
+            }
+        }
+
+        if let Some(coord) = resolved_coord {
+            if let Some(stop) = stop_map.get_mut(&id) {
+                stop.coord = Some(coord);
+            }
+        }
+    }
+}
+
 #[cfg(feature = "gtfs-flex")]
 fn build_location_groups(
     raw_groups: Vec<crate::raw::RawLocationGroup>,
@@ -856,10 +892,10 @@ fn resolve_boarding_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::enums::LocationType;
     use crate::primitives::GtfsTime;
-    #[cfg(feature = "gtfs-flex")]
-    use crate::raw::RawStop;
-    use crate::raw::RawTrip;
+    use crate::raw::{RawStop, RawTrip};
+    use crate::routing::RoutingTimetable;
     use std::path::PathBuf;
 
     fn fixture_path(rel_path: &str) -> PathBuf {
@@ -952,5 +988,65 @@ mod tests {
         assert_eq!(validated.dropped_counts.duplicate_stop_sequences, 1);
         assert_eq!(validated.dropped_counts.orphan_stop_times, 1);
         assert!(!validated.warnings.is_empty());
+    }
+
+    #[test]
+    fn test_boarding_area_inherits_parent_coordinates_and_is_spatially_indexed() {
+        let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+
+        // stop3 in fixtures/basic has coordinates (2.393585, 48.777903).
+        // Add a coordinate-less boarding area (location_type = 4) whose parent_station is stop3.
+        raw.stops.push(RawStop {
+            id: StopId::new("boarding_area_3a"),
+            name: Some("Platform 3 Boarding Area A".to_owned()),
+            location_type: LocationType::BoardingArea,
+            parent_station: Some(StopId::new("stop3")),
+            longitude: None,
+            latitude: None,
+            ..Default::default()
+        });
+
+        // Add a trip serving the coordinate-less boarding area
+        raw.trips.push(RawTrip {
+            id: TripId::new("trip_boarding_area"),
+            service_id: ServiceId::new("service1"),
+            route_id: RouteId::new("route1"),
+            ..Default::default()
+        });
+        raw.stop_times.push(RawStopTime {
+            trip_id: TripId::new("trip_boarding_area"),
+            stop_id: Some(StopId::new("boarding_area_3a")),
+            stop_sequence: 1,
+            arrival_time: Some(GtfsTime::from_hms(9, 0, 0)),
+            departure_time: Some(GtfsTime::from_hms(9, 0, 0)),
+            ..Default::default()
+        });
+        raw.stop_times.push(RawStopTime {
+            trip_id: TripId::new("trip_boarding_area"),
+            stop_id: Some(StopId::new("stop2")),
+            stop_sequence: 2,
+            arrival_time: Some(GtfsTime::from_hms(9, 15, 0)),
+            departure_time: Some(GtfsTime::from_hms(9, 15, 0)),
+            ..Default::default()
+        });
+
+        let validated = ValidatedFeed::try_from(raw).unwrap();
+        let parent_coord = validated.get_stop("stop3").unwrap().coord;
+        assert!(parent_coord.is_some());
+
+        let ba_stop = validated.get_stop("boarding_area_3a").unwrap();
+        assert_eq!(ba_stop.coord, parent_coord);
+        assert_eq!(ba_stop.representative_coord(), parent_coord);
+        assert!(ba_stop.bounding_box().is_some());
+
+        let timetable = RoutingTimetable::try_from(validated).unwrap();
+        let ba_pidx = timetable.stop_id_to_place[&StopId::new("boarding_area_3a")];
+
+        let nearby = timetable.places_near(parent_coord.unwrap(), 10.0);
+        assert!(
+            nearby.contains(&ba_pidx),
+            "places_near should discover boarding_area_3a via its inherited parent coordinates"
+        );
+        assert!(!timetable.patterns_serving_place(ba_pidx).is_empty());
     }
 }

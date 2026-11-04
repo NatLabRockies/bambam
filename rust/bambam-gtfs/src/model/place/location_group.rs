@@ -50,7 +50,7 @@ impl LocationGroup {
             }
         }
         self.members.iter().any(|m| match m {
-            PlaceMember::Stop(s) => s.coord == Some(coord),
+            PlaceMember::Stop(s) => s.representative_coord() == Some(coord),
             PlaceMember::FlexZone(z) => z.contains_coord(coord),
         })
     }

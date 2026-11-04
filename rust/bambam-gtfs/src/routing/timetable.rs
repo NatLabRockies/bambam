@@ -685,7 +685,7 @@ impl RoutingTimetable {
             };
             match place {
                 StopPlace::Stop(s) => {
-                    if let Some(sc) = s.coord {
+                    if let Some(sc) = s.representative_coord() {
                         if sc.haversine_meters(coord) <= radius_meters {
                             matches.push(pidx);
                         }
@@ -705,7 +705,7 @@ impl RoutingTimetable {
                         || (radius_meters > 0.0
                             && g.members.iter().any(|m| match m {
                                 crate::model::PlaceMember::Stop(s) => s
-                                    .coord
+                                    .representative_coord()
                                     .is_some_and(|sc| sc.haversine_meters(coord) <= radius_meters),
                                 crate::model::PlaceMember::FlexZone(z) => {
                                     flex_zone_within_radius(z, coord, radius_meters)

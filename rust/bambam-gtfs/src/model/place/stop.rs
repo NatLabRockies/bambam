@@ -107,7 +107,8 @@ pub struct Stop {
     pub zone_id: Option<ZoneId>,
     /// Optional URL about the stop.
     pub url: Option<String>,
-    /// Geographic coordinate (`lon`, `lat`) if both `stop_lon` and `stop_lat` are present.
+    /// Geographic coordinate (`lon`, `lat`), either defined directly on this stop
+    /// (`stop_lon` and `stop_lat`) or inherited from its `parent_station` during validation.
     pub coord: Option<Coord>,
     /// Optional IANA [`chrono_tz::Tz`] timezone override of the stop (`stop_timezone`).
     #[serde(

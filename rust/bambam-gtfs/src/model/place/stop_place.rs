@@ -134,7 +134,7 @@ impl StopPlace {
     /// or `LocationGroup`, or exact coordinate match for `Stop`).
     pub fn contains_coord(&self, coord: Coord) -> bool {
         match self {
-            StopPlace::Stop(s) => s.coord == Some(coord),
+            StopPlace::Stop(s) => s.representative_coord() == Some(coord),
             #[cfg(feature = "gtfs-flex")]
             StopPlace::FlexZone(z) => z.contains_coord(coord),
             #[cfg(feature = "gtfs-flex")]
