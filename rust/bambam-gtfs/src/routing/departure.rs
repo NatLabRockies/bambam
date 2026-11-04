@@ -4,7 +4,8 @@ use crate::ids::TripIdx;
 use crate::primitives::GtfsTime;
 use crate::routing::RoutingTimetable;
 use crate::traits::TemporalStopTime;
-use chrono::NaiveDate;
+use chrono::{DateTime, Days, NaiveDate};
+use chrono_tz::Tz;
 
 /// Active service evaluation window for a local `(date, time_of_day)` query, supporting both
 /// current-day schedules and previous-day overnight trips (`>= 24:00:00` on `date - 1`).
@@ -86,5 +87,40 @@ impl BoardableDeparture {
         } else {
             self.departure_time
         }
+    }
+
+    /// Resolves this departure into a timezone-aware [`DateTime<Tz>`] in the trip's agency timezone,
+    /// given the `query_date` of the [`ActiveServiceWindow`] (automatically accounting for
+    /// `self.is_overnight_from_yesterday`).
+    pub fn departure_datetime(
+        &self,
+        timetable: &RoutingTimetable,
+        query_date: NaiveDate,
+    ) -> Option<DateTime<Tz>> {
+        let tz = timetable.trip_timezone(self.trip_idx)?;
+        let service_date = if self.is_overnight_from_yesterday {
+            query_date.checked_sub_days(Days::new(1))?
+        } else {
+            query_date
+        };
+        self.departure_time.to_zoned_datetime(service_date, tz)
+    }
+
+    /// Resolves the arrival at `to_stop_offset` along this trip into a timezone-aware [`DateTime<Tz>`]
+    /// in the trip's agency timezone, given the `query_date` of the [`ActiveServiceWindow`].
+    pub fn arrival_datetime_at(
+        &self,
+        timetable: &RoutingTimetable,
+        query_date: NaiveDate,
+        to_stop_offset: usize,
+    ) -> Option<DateTime<Tz>> {
+        let tz = timetable.trip_timezone(self.trip_idx)?;
+        let arr_time = self.arrival_time_at(timetable, to_stop_offset)?;
+        let service_date = if self.is_overnight_from_yesterday {
+            query_date.checked_sub_days(Days::new(1))?
+        } else {
+            query_date
+        };
+        arr_time.to_zoned_datetime(service_date, tz)
     }
 }

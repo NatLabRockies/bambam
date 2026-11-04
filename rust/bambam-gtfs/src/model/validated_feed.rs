@@ -5,9 +5,11 @@ use crate::model::{
     Agency, DroppedEntityCounts, ModelError, Route, ServiceCalendar, ShapePolyline, Stop, StopArea,
     Trip, ValidationPolicy, ValidationWarning,
 };
-use crate::primitives::Coord;
+use crate::primitives::{Coord, GtfsTime};
 use crate::raw::{RawCalendar, RawCalendarDate, RawFeed, RawFeedInfo};
 use crate::traits::Spatial;
+use chrono::{DateTime, NaiveDate};
+use chrono_tz::Tz;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -83,6 +85,65 @@ impl ValidatedFeed {
     /// Retrieves [`RawCalendarDate`] exceptions by `service_id`.
     pub fn get_calendar_date(&self, service_id: &str) -> Option<&Vec<RawCalendarDate>> {
         self.calendar_dates.get(service_id)
+    }
+
+    /// Returns the primary IANA [`chrono_tz::Tz`] timezone of this feed (from the first agency in `agency.txt`).
+    #[inline]
+    pub fn primary_timezone(&self) -> Option<Tz> {
+        self.agencies.first().map(|a| a.timezone)
+    }
+
+    /// Resolves the [`chrono_tz::Tz`] timezone for `route_id` by matching `Route::agency_id` against
+    /// `self.agencies`, falling back to [`ValidatedFeed::primary_timezone`] for single-agency feeds.
+    pub fn route_timezone(&self, route_id: &str) -> Option<Tz> {
+        let route = self.routes.get(route_id)?;
+        if let Some(aid) = &route.agency_id {
+            if let Some(ag) = self.agencies.iter().find(|a| a.id.as_ref() == Some(aid)) {
+                return Some(ag.timezone);
+            }
+        }
+        self.primary_timezone()
+    }
+
+    /// Resolves the [`chrono_tz::Tz`] timezone for `trip_id` via its route's agency.
+    pub fn trip_timezone(&self, trip_id: &str) -> Option<Tz> {
+        let trip = self.trips.get(trip_id)?;
+        self.route_timezone(trip.route_id.as_str())
+    }
+
+    /// Resolves the [`chrono_tz::Tz`] timezone for `stop_id`, preferring `Stop::timezone` (`stop_timezone`),
+    /// then any parent station's `timezone`, and falling back to [`ValidatedFeed::primary_timezone`].
+    pub fn stop_timezone(&self, stop_id: &str) -> Option<Tz> {
+        let stop = self.stops.get(stop_id)?;
+        if let Some(tz) = stop.timezone {
+            return Some(tz);
+        }
+        if let Some(parent_id) = &stop.parent_station {
+            if let Some(parent) = self.stops.get(parent_id) {
+                if let Some(tz) = parent.timezone {
+                    return Some(tz);
+                }
+            }
+        }
+        self.primary_timezone()
+    }
+
+    /// Appends this archive's primary `agency_timezone` to `(service_date, time)` to construct a
+    /// timezone-aware [`DateTime<Tz>`].
+    pub fn resolve_datetime(&self, service_date: NaiveDate, time: GtfsTime) -> Option<DateTime<Tz>> {
+        time.to_zoned_datetime(service_date, self.primary_timezone()?)
+    }
+
+    /// Appends the agency timezone of `trip_id` to `(service_date, time)` to construct a
+    /// timezone-aware [`DateTime<Tz>`].
+    pub fn resolve_trip_datetime(
+        &self,
+        trip_id: &str,
+        service_date: NaiveDate,
+        time: GtfsTime,
+    ) -> Option<DateTime<Tz>> {
+        let tz = self.trip_timezone(trip_id)?;
+        time.to_zoned_datetime(service_date, tz)
     }
 
     /// Reconstructs the geographic linestring (`Vec<Coord>`) for `trip_id` between

@@ -17,7 +17,8 @@ use crate::routing::{
     RoutingTimetableBuilder,
 };
 use crate::traits::Spatial;
-use chrono::{Days, NaiveDate};
+use chrono::{DateTime, Days, NaiveDate, NaiveDateTime};
+use chrono_tz::Tz;
 use rstar::{RTree, AABB};
 use std::collections::HashMap;
 use std::fs::File;
@@ -178,61 +179,113 @@ impl RoutingTimetable {
         }
     }
 
-    // --- O(1) Reverse Lookups (Global Index -> Fully-Qualified Lineage) ---
+    // --- O(1) Reverse Lookups (Global Index -> Fully-Qualified Lineage & Timezone) ---
+
+    /// Returns the primary IANA [`chrono_tz::Tz`] timezone for `feed_idx` (from `agency.txt`).
+    #[inline]
+    pub fn feed_timezone(&self, feed_idx: FeedIdx) -> Option<Tz> {
+        self.feeds
+            .get(feed_idx.index())
+            .and_then(|f| f.primary_timezone)
+    }
+
+    /// Resolves the IANA [`chrono_tz::Tz`] timezone for `route_idx` in $O(1)$ time
+    /// (matching `Route::agency_id` against the feed's agencies, or falling back to the feed's `primary_timezone`).
+    pub fn route_timezone(&self, route_idx: RouteIdx) -> Option<Tz> {
+        let route = self.routes.get(route_idx.index())?;
+        let feed_idx = *self.route_feed.get(route_idx.index())?;
+        let feed = self.feeds.get(feed_idx.index())?;
+        let (_, _, tz) = resolve_route_agency(route, &feed.agencies);
+        tz.or(feed.primary_timezone)
+    }
+
+    /// Resolves the IANA [`chrono_tz::Tz`] timezone for `trip_idx` in $O(1)$ time via its route and feed.
+    pub fn trip_timezone(&self, trip_idx: TripIdx) -> Option<Tz> {
+        let trip = self.trips.get(trip_idx.index())?;
+        self.route_timezone(trip.route_idx)
+    }
+
+    /// Resolves the local IANA [`chrono_tz::Tz`] timezone for `place_idx` in $O(1)$ time
+    /// (preferring `Stop::timezone` if overridden on a stop, otherwise returning the owning feed's `primary_timezone`).
+    pub fn place_timezone(&self, place_idx: PlaceIdx) -> Option<Tz> {
+        let place = self.places.get(place_idx.index())?;
+        if let Some(s) = place.as_stop() {
+            if let Some(tz) = s.timezone {
+                return Some(tz);
+            }
+        }
+        let feed_idx = *self.place_feed.get(place_idx.index())?;
+        self.feed_timezone(feed_idx)
+    }
+
+    /// Appends the agency timezone of `trip_idx` to `(service_date, time)` to construct a
+    /// timezone-aware [`DateTime<Tz>`].
+    pub fn resolve_trip_datetime(
+        &self,
+        trip_idx: TripIdx,
+        service_date: NaiveDate,
+        time: GtfsTime,
+    ) -> Option<DateTime<Tz>> {
+        let tz = self.trip_timezone(trip_idx)?;
+        time.to_zoned_datetime(service_date, tz)
+    }
 
     /// Resolves a [`TripIdx`] in $O(1)$ time (three direct slice reads, zero hash lookups) into its
-    /// [`FullyQualifiedTripId`]: `(FeedId, AgencyId, RouteId, TripId)`.
+    /// [`FullyQualifiedTripId`]: `(FeedId, AgencyId, RouteId, TripId, Tz)`.
     pub fn resolve_trip_id(&self, trip_idx: TripIdx) -> Option<FullyQualifiedTripId<'_>> {
         let trip = self.trips.get(trip_idx.index())?;
         let route = self.routes.get(trip.route_idx.index())?;
         let feed = self.feeds.get(trip.feed_idx.index())?;
 
-        let (agency_id, agency_name) = resolve_route_agency(route, &feed.agencies);
+        let (agency_id, agency_name, tz) = resolve_route_agency(route, &feed.agencies);
 
         Some(FullyQualifiedTripId {
             feed_idx: trip.feed_idx,
             feed_id: &feed.id,
             agency_id,
             agency_name,
+            timezone: tz.or(feed.primary_timezone),
             route_id: &route.id,
             trip_id: &trip.id,
         })
     }
 
-    /// Resolves a [`RouteIdx`] in $O(1)$ time into its [`FullyQualifiedRouteId`]: `(FeedId, AgencyId, RouteId)`.
+    /// Resolves a [`RouteIdx`] in $O(1)$ time into its [`FullyQualifiedRouteId`]: `(FeedId, AgencyId, RouteId, Tz)`.
     pub fn resolve_route_id(&self, route_idx: RouteIdx) -> Option<FullyQualifiedRouteId<'_>> {
         let route = self.routes.get(route_idx.index())?;
         let feed_idx = *self.route_feed.get(route_idx.index())?;
         let feed = self.feeds.get(feed_idx.index())?;
-        let (agency_id, _) = resolve_route_agency(route, &feed.agencies);
+        let (agency_id, _, tz) = resolve_route_agency(route, &feed.agencies);
 
         Some(FullyQualifiedRouteId {
             feed_idx,
             feed_id: &feed.id,
             agency_id,
+            timezone: tz.or(feed.primary_timezone),
             route_id: &route.id,
         })
     }
 
     /// Resolves a [`PlaceIdx`] in $O(1)$ time into its [`FullyQualifiedPlaceId`]:
-    /// `(FeedId, StopId | LocationId | LocationGroupId)`.
+    /// `(FeedId, StopId | LocationId | LocationGroupId, Tz)`.
     pub fn resolve_place_id(&self, place_idx: PlaceIdx) -> Option<FullyQualifiedPlaceId<'_>> {
         let place = self.places.get(place_idx.index())?;
         let feed_idx = *self.place_feed.get(place_idx.index())?;
         let feed = self.feeds.get(feed_idx.index())?;
 
-        let place_id = match place {
-            StopPlace::Stop(s) => PlaceIdKind::Stop(&s.id),
+        let (place_id, stop_tz) = match place {
+            StopPlace::Stop(s) => (PlaceIdKind::Stop(&s.id), s.timezone),
             #[cfg(feature = "gtfs-flex")]
-            StopPlace::FlexZone(z) => PlaceIdKind::FlexZone(&z.id),
+            StopPlace::FlexZone(z) => (PlaceIdKind::FlexZone(&z.id), None),
             #[cfg(feature = "gtfs-flex")]
-            StopPlace::LocationGroup(g) => PlaceIdKind::LocationGroup(&g.id),
+            StopPlace::LocationGroup(g) => (PlaceIdKind::LocationGroup(&g.id), None),
         };
 
         Some(FullyQualifiedPlaceId {
             feed_idx,
             feed_id: &feed.id,
             place_id,
+            timezone: stop_tz.or(feed.primary_timezone),
         })
     }
 
@@ -318,6 +371,79 @@ impl RoutingTimetable {
             yesterday_overnight_time,
             yesterday_active,
         }
+    }
+
+    /// Evaluates active services for `feed_idx` at a timezone-aware [`DateTime`] by converting
+    /// the instant into the feed's primary IANA [`chrono_tz::Tz`] timezone (from `agency.txt`).
+    pub fn active_services_for_feed_at_datetime<T: chrono::TimeZone>(
+        &self,
+        feed_idx: FeedIdx,
+        dt: &DateTime<T>,
+    ) -> Option<ActiveServiceWindow> {
+        let tz = self.feed_timezone(feed_idx)?;
+        let local_dt = dt.with_timezone(&tz);
+        let (date, time_of_day) = GtfsTime::from_datetime(&local_dt);
+        Some(self.active_services_at_time(date, time_of_day))
+    }
+
+    /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` at or after a timezone-aware
+    /// [`DateTime`] across a merged multi-timezone [`RoutingTimetable`].
+    ///
+    /// Automatically converts `dt` into the pattern's owning feed's local [`chrono_tz::Tz`] timezone,
+    /// evaluates both current-day and previous-day overnight services in that feed's local service day,
+    /// and returns both the [`BoardableDeparture`] and the exact [`DateTime<Tz>`] of boarding.
+    pub fn earliest_boardable_trip_at_datetime<T: chrono::TimeZone>(
+        &self,
+        pattern_idx: PatternIdx,
+        stop_offset: usize,
+        dt: &DateTime<T>,
+    ) -> Option<(BoardableDeparture, DateTime<Tz>)> {
+        let pattern = self.patterns.get(pattern_idx.index())?;
+        let window = self.active_services_for_feed_at_datetime(pattern.feed_idx, dt)?;
+        let dep = self.earliest_boardable_trip_with_overnight(pattern_idx, stop_offset, &window)?;
+        let dep_dt = dep.departure_datetime(self, window.date)?;
+        Some((dep, dep_dt))
+    }
+
+    /// Infers the local IANA [`chrono_tz::Tz`] timezone for a query at `coord` by checking transit places
+    /// within `radius_meters`, or falling back to the nearest transit place in the R*-tree spatial index.
+    ///
+    /// Used for nationwide queries that provide a naive local start time (`NaiveDateTime`) without an
+    /// explicit timezone, allowing the query to assume the local timezone of nearby transit services.
+    pub fn infer_local_timezone(&self, coord: Coord, radius_meters: f64) -> Option<Tz> {
+        for pidx in self.places_near(coord, radius_meters) {
+            if let Some(tz) = self.place_timezone(pidx) {
+                return Some(tz);
+            }
+        }
+        self.nearest_place_timezone(coord)
+    }
+
+    /// Returns the local IANA [`chrono_tz::Tz`] timezone of the closest transit place to `coord`
+    /// in the [`rstar::RTree`] spatial index in $O(\log N)$ time.
+    pub fn nearest_place_timezone(&self, coord: Coord) -> Option<Tz> {
+        if let Some(nearest) = self
+            .place_spatial_index
+            .nearest_neighbor(&[coord.lon, coord.lat])
+        {
+            if let Some(tz) = self.place_timezone(nearest.place_idx) {
+                return Some(tz);
+            }
+        }
+        self.feeds.iter().find_map(|f| f.primary_timezone)
+    }
+
+    /// Resolves a timezone-unaware query `naive_dt` at `coord` (within `radius_meters`) into a
+    /// timezone-aware [`DateTime<Tz>`] by assuming the local [`chrono_tz::Tz`] timezone of the
+    /// transit services found at or nearest to `coord`.
+    pub fn localize_naive_query_datetime(
+        &self,
+        naive_dt: NaiveDateTime,
+        coord: Coord,
+        radius_meters: f64,
+    ) -> Option<DateTime<Tz>> {
+        let tz = self.infer_local_timezone(coord, radius_meters)?;
+        naive_dt.and_local_timezone(tz).earliest()
     }
 
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` departing at or after `after_time`

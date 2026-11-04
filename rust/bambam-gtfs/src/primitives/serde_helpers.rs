@@ -2,9 +2,51 @@
 
 use crate::primitives::{GtfsTime, PrimitiveError};
 use chrono::NaiveDate;
+use chrono_tz::Tz;
 use rgb::RGB8;
 use serde::de::{self, Deserialize, Deserializer};
 use serde::ser::Serializer;
+
+pub(crate) fn deserialize_timezone<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Tz, D::Error> {
+    let s: std::borrow::Cow<'de, str> = Deserialize::deserialize(deserializer)?;
+    let trimmed = s.trim();
+    trimmed
+        .parse::<Tz>()
+        .map_err(|_| de::Error::custom(PrimitiveError::InvalidTimezone(trimmed.to_owned())))
+}
+
+pub(crate) fn serialize_timezone<S: Serializer>(tz: &Tz, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(tz.name())
+}
+
+pub(crate) fn deserialize_option_timezone<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Tz>, D::Error> {
+    let opt: Option<std::borrow::Cow<'de, str>> = Deserialize::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(s) if s.trim().is_empty() => Ok(None),
+        Some(s) => {
+            let trimmed = s.trim();
+            trimmed
+                .parse::<Tz>()
+                .map(Some)
+                .map_err(|_| de::Error::custom(PrimitiveError::InvalidTimezone(trimmed.to_owned())))
+        }
+    }
+}
+
+pub(crate) fn serialize_option_timezone<S: Serializer>(
+    tz: &Option<Tz>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match tz {
+        None => serializer.serialize_none(),
+        Some(t) => serializer.serialize_some(t.name()),
+    }
+}
 
 pub(crate) fn deserialize_optional_time<'de, D: Deserializer<'de>>(
     deserializer: D,

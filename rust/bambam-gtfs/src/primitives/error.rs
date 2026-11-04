@@ -23,4 +23,7 @@ pub enum PrimitiveError {
     /// A color string is not in valid 6-digit hex `RRGGBB` format.
     #[error("'{0}' is not a valid hex color; expected RRGGBB without '#'")]
     InvalidColor(String),
+    /// An IANA timezone string is not recognized.
+    #[error("'{0}' is not a valid IANA timezone")]
+    InvalidTimezone(String),
 }

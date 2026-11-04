@@ -1,6 +1,7 @@
-//! `rkyv::with` adapters for external primitive types (`chrono::NaiveDate` and `rgb::RGB8`).
+//! `rkyv::with` adapters for external primitive types (`chrono::NaiveDate`, `chrono_tz::Tz`, and `rgb::RGB8`).
 
 use chrono::{Datelike, NaiveDate};
+use chrono_tz::Tz;
 use rgb::RGB8;
 use std::collections::HashSet;
 
@@ -118,3 +119,88 @@ impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::with::DeserializeWith<[u8; 3], RG
         Ok(RGB8::new(field[0], field[1], field[2]))
     }
 }
+
+/// `rkyv::with` wrapper that serializes [`chrono_tz::Tz`] via its IANA timezone name string.
+pub struct RkyvTz;
+
+impl rkyv::with::ArchiveWith<Tz> for RkyvTz {
+    type Archived = rkyv::string::ArchivedString;
+    type Resolver = rkyv::string::StringResolver;
+
+    #[inline]
+    fn resolve_with(field: &Tz, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        rkyv::string::ArchivedString::resolve_from_str(field.name(), resolver, out);
+    }
+}
+
+impl<S> rkyv::with::SerializeWith<Tz, S> for RkyvTz
+where
+    S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized,
+    S::Error: rkyv::rancor::Source,
+{
+    #[inline]
+    fn serialize_with(field: &Tz, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        rkyv::string::ArchivedString::serialize_from_str(field.name(), serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::with::DeserializeWith<rkyv::string::ArchivedString, Tz, D> for RkyvTz
+{
+    #[inline]
+    fn deserialize_with(
+        field: &rkyv::string::ArchivedString,
+        _deserializer: &mut D,
+    ) -> Result<Tz, D::Error> {
+        Ok(field.as_str().parse::<Tz>().unwrap_or(Tz::UTC))
+    }
+}
+
+/// `rkyv::with` wrapper that serializes `Option<chrono_tz::Tz>` via its IANA timezone name string.
+pub struct RkyvOptionTz;
+
+impl rkyv::with::ArchiveWith<Option<Tz>> for RkyvOptionTz {
+    type Archived = rkyv::option::ArchivedOption<rkyv::string::ArchivedString>;
+    type Resolver = Option<rkyv::string::StringResolver>;
+
+    #[inline]
+    fn resolve_with(
+        field: &Option<Tz>,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let name: Option<String> = field.map(|t| t.name().to_owned());
+        rkyv::Archive::resolve(&name, resolver, out);
+    }
+}
+
+impl<S> rkyv::with::SerializeWith<Option<Tz>, S> for RkyvOptionTz
+where
+    S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized,
+    S::Error: rkyv::rancor::Source,
+{
+    #[inline]
+    fn serialize_with(field: &Option<Tz>, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        let name: Option<String> = field.map(|t| t.name().to_owned());
+        rkyv::Serialize::serialize(&name, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::with::DeserializeWith<
+        rkyv::option::ArchivedOption<rkyv::string::ArchivedString>,
+        Option<Tz>,
+        D,
+    > for RkyvOptionTz
+{
+    #[inline]
+    fn deserialize_with(
+        field: &rkyv::option::ArchivedOption<rkyv::string::ArchivedString>,
+        _deserializer: &mut D,
+    ) -> Result<Option<Tz>, D::Error> {
+        Ok(field
+            .as_ref()
+            .and_then(|s| s.as_str().trim().parse::<Tz>().ok()))
+    }
+}
+

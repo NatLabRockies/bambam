@@ -645,10 +645,32 @@ fn test_timezone_and_overnight_service_day_normalization() {
     raw.frequencies = None;
 
     let validated = ValidatedFeed::try_from(raw).unwrap();
-    assert_eq!(validated.agencies[0].timezone, "Europe/Paris");
+    assert_eq!(validated.agencies[0].timezone, chrono_tz::Tz::Europe__Paris);
+    assert_eq!(
+        validated.primary_timezone(),
+        Some(chrono_tz::Tz::Europe__Paris)
+    );
+
+    // Verify appending agency_timezone to service_date + GtfsTime produces a zoned DateTime<Tz>
+    let service_date = NaiveDate::from_ymd_opt(2017, 1, 8).unwrap();
+    let zoned_overnight = validated
+        .resolve_trip_datetime("overnight_trip", service_date, GtfsTime::from_hms(24, 30, 0))
+        .expect("should resolve zoned datetime for overnight trip");
+    assert_eq!(zoned_overnight.timezone(), chrono_tz::Tz::Europe__Paris);
+    assert_eq!(
+        zoned_overnight.date_naive(),
+        NaiveDate::from_ymd_opt(2017, 1, 9).unwrap()
+    );
 
     let timetable = RoutingTimetable::try_from(validated).unwrap();
-    assert_eq!(timetable.feeds[0].agencies[0].timezone, "Europe/Paris");
+    assert_eq!(
+        timetable.feeds[0].primary_timezone,
+        Some(chrono_tz::Tz::Europe__Paris)
+    );
+    assert_eq!(
+        timetable.feed_timezone(FeedIdx::new(0)),
+        Some(chrono_tz::Tz::Europe__Paris)
+    );
 
     // Suppose a rider searches on Monday 2017-01-09 at 00:15:00 local time.
     // Sunday 2017-01-08 (yesterday) had `service1` active, and `overnight_trip` departs at 24:30:00
@@ -670,6 +692,63 @@ fn test_timezone_and_overnight_service_day_normalization() {
         board.normalized_query_day_departure(),
         GtfsTime::from_hms(0, 30, 0)
     );
+    assert_eq!(
+        board.departure_datetime(&timetable, query_date),
+        Some(zoned_overnight)
+    );
+}
+
+#[test]
+fn test_multi_feed_timezone_retention_and_local_timezone_inference() {
+    let feed_paris = ValidatedFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+    let mut raw_denver = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+    for ag in &mut raw_denver.agencies {
+        ag.timezone = chrono_tz::Tz::America__Denver;
+    }
+    for st in &mut raw_denver.stops {
+        if st.latitude.is_some() {
+            st.latitude = Some(39.7392);
+            st.longitude = Some(-104.9903);
+        }
+    }
+    let feed_denver = ValidatedFeed::try_from(raw_denver).unwrap();
+
+    let mut builder = RoutingTimetable::builder();
+    let paris_idx = builder.add_feed("paris", feed_paris).unwrap();
+    let denver_idx = builder.add_feed("denver", feed_denver).unwrap();
+    let timetable = builder.build();
+
+    assert_eq!(
+        timetable.feed_timezone(paris_idx),
+        Some(chrono_tz::Tz::Europe__Paris)
+    );
+    assert_eq!(
+        timetable.feed_timezone(denver_idx),
+        Some(chrono_tz::Tz::America__Denver)
+    );
+
+    // Inferring local timezone near Paris vs. near Denver when a query provides a NaiveDateTime
+    let naive_query = NaiveDate::from_ymd_opt(2017, 1, 7)
+        .unwrap()
+        .and_hms_opt(8, 30, 0)
+        .unwrap();
+    let paris_coord = Coord::new(2.449386, 48.796058);
+    let denver_coord = Coord::new(-104.9903, 39.7392);
+
+    assert_eq!(
+        timetable.infer_local_timezone(paris_coord, 500.0),
+        Some(chrono_tz::Tz::Europe__Paris)
+    );
+    assert_eq!(
+        timetable.infer_local_timezone(denver_coord, 500.0),
+        Some(chrono_tz::Tz::America__Denver)
+    );
+
+    let localized_denver = timetable
+        .localize_naive_query_datetime(naive_query, denver_coord, 500.0)
+        .expect("should localize naive query to America/Denver");
+    assert_eq!(localized_denver.timezone(), chrono_tz::Tz::America__Denver);
+    assert_eq!(localized_denver.naive_local(), naive_query);
 }
 
 #[test]

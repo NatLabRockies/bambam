@@ -6,7 +6,7 @@ use crate::primitives::BoundingBox;
 #[cfg(feature = "gtfs-flex")]
 use crate::primitives::Coord;
 use crate::traits::Spatial;
-use rstar::{RTree, RTreeObject, AABB};
+use rstar::{PointDistance, RTree, RTreeObject, AABB};
 
 /// Spatial index entry associating a [`PlaceIdx`] with its WGS84 bounding box inside an [`rstar::RTree`].
 #[derive(
@@ -36,6 +36,13 @@ impl RTreeObject for PlaceSpatialEntry {
             [self.bbox.min_lon, self.bbox.min_lat],
             [self.bbox.max_lon, self.bbox.max_lat],
         )
+    }
+}
+
+impl PointDistance for PlaceSpatialEntry {
+    #[inline]
+    fn distance_2(&self, point: &[f64; 2]) -> f64 {
+        self.envelope().distance_2(point)
     }
 }
 

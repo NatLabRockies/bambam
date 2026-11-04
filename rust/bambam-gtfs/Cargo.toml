@@ -17,6 +17,7 @@ gtfs-flex = ["dep:geojson"]
 
 [dependencies]
 chrono = { workspace = true }
+chrono-tz = { workspace = true }
 csv = { workspace = true }
 derive_more = { workspace = true }
 flate2 = { workspace = true }

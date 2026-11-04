@@ -1,7 +1,9 @@
-//! Per-archive metadata, index spans, and validation diagnostics (`FeedMetadata`).
+//! Per-archive metadata, index spans, timezone, and validation diagnostics (`FeedMetadata`).
 
 use crate::ids::{FeedId, FeedIdx};
 use crate::model::{Agency, DroppedEntityCounts, ValidationWarning};
+use crate::primitives::{deserialize_option_timezone, serialize_option_timezone, RkyvOptionTz};
+use chrono_tz::Tz;
 use std::ops::Range;
 
 /// Metadata and contiguous index spans for a single GTFS archive inside a merged [`crate::routing::RoutingTimetable`].
@@ -23,6 +25,14 @@ pub struct FeedMetadata {
     pub id: FeedId,
     /// Agencies defined in this archive's `agency.txt`.
     pub agencies: Vec<Agency>,
+    /// Primary IANA [`chrono_tz::Tz`] timezone for this feed (derived from the first agency in `agency.txt`).
+    #[serde(
+        deserialize_with = "deserialize_option_timezone",
+        serialize_with = "serialize_option_timezone",
+        default
+    )]
+    #[rkyv(with = RkyvOptionTz)]
+    pub primary_timezone: Option<Tz>,
     /// Contiguous range of [`crate::ids::PlaceIdx`]s belonging to this feed.
     pub places_span: Range<u32>,
     /// Contiguous range of [`crate::ids::RouteIdx`]s belonging to this feed.

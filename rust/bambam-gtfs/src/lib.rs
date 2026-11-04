@@ -31,7 +31,7 @@ pub use enums::*;
 pub use error::Gtfs2Error;
 pub use ids::*;
 pub use model::{DroppedEntityCounts, ValidatedFeed, ValidationPolicy, ValidationWarning};
-pub use primitives::{BoundingBox, Coord, GtfsTime, PrimitiveError, TimeWindow};
+pub use primitives::{BoundingBox, Coord, GtfsTime, PrimitiveError, TimeWindow, Tz};
 pub use raw::{CsvRowIter, GtfsArchive, GtfsTable, RawFeed, RawFeedReader, TableBundle};
 pub use routing::{
     ActiveServiceWindow, ArchivedRoutingTimetable, BoardableDeparture, CompactStopTime,

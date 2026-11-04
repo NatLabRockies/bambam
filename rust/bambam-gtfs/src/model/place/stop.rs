@@ -2,9 +2,12 @@
 
 use crate::enums::{Availability, LocationType, PathwayDirectionType, PathwayMode, TransferType};
 use crate::ids::*;
-use crate::primitives::{BoundingBox, Coord};
+use crate::primitives::{
+    deserialize_option_timezone, serialize_option_timezone, BoundingBox, Coord, RkyvOptionTz,
+};
 use crate::raw::{RawPathway, RawStop, RawTransfer};
 use crate::traits::{Identifiable, Spatial};
+use chrono_tz::Tz;
 
 /// A validated stop-to-stop transfer rule (`transfers.txt`).
 #[derive(
@@ -106,8 +109,14 @@ pub struct Stop {
     pub url: Option<String>,
     /// Geographic coordinate (`lon`, `lat`) if both `stop_lon` and `stop_lat` are present.
     pub coord: Option<Coord>,
-    /// Optional timezone of the stop.
-    pub timezone: Option<String>,
+    /// Optional IANA [`chrono_tz::Tz`] timezone override of the stop (`stop_timezone`).
+    #[serde(
+        deserialize_with = "deserialize_option_timezone",
+        serialize_with = "serialize_option_timezone",
+        default
+    )]
+    #[rkyv(with = RkyvOptionTz)]
+    pub timezone: Option<Tz>,
     /// Wheelchair boarding availability.
     pub wheelchair_boarding: Availability,
     /// Optional station level identifier.

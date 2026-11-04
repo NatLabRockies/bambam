@@ -1,6 +1,8 @@
 //! GTFS service-day time of day (`GtfsTime`).
 
 use crate::primitives::PrimitiveError;
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeDelta, Timelike};
+use chrono_tz::Tz;
 use serde::de::{self, Deserialize, Deserializer};
 use serde::ser::{Serialize, Serializer};
 use std::fmt;
@@ -69,6 +71,43 @@ impl GtfsTime {
         let t = t.clamp(0.0, 1.0);
         let delta = (end.0 as f64 - start.0 as f64) * t;
         Self((start.0 as f64 + delta).round().max(0.0) as u32)
+    }
+
+    /// Combines this `GtfsTime` (which may be `>= 24:00:00` for overnight trips) with `service_date`
+    /// into a [`NaiveDateTime`].
+    #[inline]
+    pub fn to_naive_datetime(self, service_date: NaiveDate) -> Option<NaiveDateTime> {
+        service_date
+            .and_hms_opt(0, 0, 0)?
+            .checked_add_signed(TimeDelta::seconds(self.0 as i64))
+    }
+
+    /// Combines this `GtfsTime` (which may be `>= 24:00:00` for overnight trips) with `service_date`
+    /// and a transit agency's IANA [`Tz`] into a timezone-aware [`DateTime<Tz>`].
+    ///
+    /// Resolves ambiguous wall-clock times (such as DST fall-back) to the earliest occurrence,
+    /// and handles spring-forward gaps by advancing from local service-day midnight.
+    pub fn to_zoned_datetime(self, service_date: NaiveDate, tz: Tz) -> Option<DateTime<Tz>> {
+        let naive = self.to_naive_datetime(service_date)?;
+        if let Some(dt) = naive.and_local_timezone(tz).earliest() {
+            return Some(dt);
+        }
+        // Fallback for spring-forward DST gap hours: anchor at local midnight of `service_date`
+        // and add the elapsed duration.
+        let midnight = service_date
+            .and_hms_opt(0, 0, 0)?
+            .and_local_timezone(tz)
+            .earliest()?;
+        midnight.checked_add_signed(TimeDelta::seconds(self.0 as i64))
+    }
+
+    /// Extracts the local `(NaiveDate, GtfsTime)` from a timezone-aware [`DateTime`].
+    #[inline]
+    pub fn from_datetime<T: chrono::TimeZone>(dt: &DateTime<T>) -> (NaiveDate, Self) {
+        (
+            dt.date_naive(),
+            Self::from_hms(dt.hour(), dt.minute(), dt.second()),
+        )
     }
 
     /// Parses a `HH:MM:SS` string into a `GtfsTime`.

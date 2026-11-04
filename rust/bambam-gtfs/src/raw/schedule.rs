@@ -11,7 +11,7 @@ use chrono::NaiveDate;
 use rgb::RGB8;
 
 /// Raw row from `agency.txt`.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RawAgency {
     /// Unique agency identifier (optional when feed has a single agency).
     #[serde(rename = "agency_id")]
@@ -22,9 +22,13 @@ pub struct RawAgency {
     /// URL of the transit agency.
     #[serde(rename = "agency_url")]
     pub url: String,
-    /// Timezone where the transit agency is located.
-    #[serde(rename = "agency_timezone")]
-    pub timezone: String,
+    /// IANA timezone where the transit agency is located (`agency_timezone`).
+    #[serde(
+        rename = "agency_timezone",
+        deserialize_with = "deserialize_timezone",
+        serialize_with = "serialize_timezone"
+    )]
+    pub timezone: Tz,
     /// Primary language used by this transit agency.
     #[serde(rename = "agency_lang")]
     pub lang: Option<String>,
@@ -37,6 +41,21 @@ pub struct RawAgency {
     /// Email address actively monitored by the agency’s customer service department.
     #[serde(rename = "agency_email")]
     pub email: Option<String>,
+}
+
+impl Default for RawAgency {
+    fn default() -> Self {
+        Self {
+            id: None,
+            name: String::new(),
+            url: String::new(),
+            timezone: Tz::UTC,
+            lang: None,
+            phone: None,
+            fare_url: None,
+            email: None,
+        }
+    }
 }
 
 /// Raw row from `stops.txt`.
@@ -80,9 +99,14 @@ pub struct RawStop {
         default
     )]
     pub latitude: Option<f64>,
-    /// Timezone of the location.
-    #[serde(rename = "stop_timezone")]
-    pub timezone: Option<String>,
+    /// Optional IANA timezone override for the location (`stop_timezone`).
+    #[serde(
+        rename = "stop_timezone",
+        deserialize_with = "deserialize_option_timezone",
+        serialize_with = "serialize_option_timezone",
+        default
+    )]
+    pub timezone: Option<Tz>,
     /// Indicates whether wheelchair boardings are possible from the location.
     #[serde(default)]
     pub wheelchair_boarding: Availability,
