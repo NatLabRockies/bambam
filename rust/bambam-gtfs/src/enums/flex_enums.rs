@@ -87,4 +87,3 @@ mod tests {
         assert_eq!(rows[4].booking_type, BookingType::Unknown(9));
     }
 }
-

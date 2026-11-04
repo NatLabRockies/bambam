@@ -136,7 +136,10 @@ pub(crate) fn flex_zone_within_radius(
     radius_meters: f64,
 ) -> bool {
     let check_ring = |ring: &[Coord]| -> bool {
-        if ring.iter().any(|&v| v.haversine_meters(target) <= radius_meters) {
+        if ring
+            .iter()
+            .any(|&v| v.haversine_meters(target) <= radius_meters)
+        {
             return true;
         }
         let cos_lat = target.lat.to_radians().cos().max(1e-6);
@@ -164,9 +167,9 @@ pub(crate) fn flex_zone_within_radius(
 
     match &zone.geometry {
         crate::raw::RawFlexGeometry::Polygon(rings) => rings.iter().any(|r| check_ring(r)),
-        crate::raw::RawFlexGeometry::MultiPolygon(polys) => {
-            polys.iter().any(|rings| rings.iter().any(|r| check_ring(r)))
-        }
+        crate::raw::RawFlexGeometry::MultiPolygon(polys) => polys
+            .iter()
+            .any(|rings| rings.iter().any(|r| check_ring(r))),
     }
 }
 
@@ -230,4 +233,3 @@ mod tests {
         );
     }
 }
-

@@ -73,7 +73,9 @@ impl BoardableDeparture {
         timetable: &RoutingTimetable,
         to_stop_offset: usize,
     ) -> Option<GtfsTime> {
-        let st = timetable.trip_stop_times(self.trip_idx).get(to_stop_offset)?;
+        let st = timetable
+            .trip_stop_times(self.trip_idx)
+            .get(to_stop_offset)?;
         let base = st.earliest_time()?;
         Some(base.add_signed_seconds(self.frequency_offset_secs))
     }
@@ -183,7 +185,11 @@ mod tests {
 
         let service_date = NaiveDate::from_ymd_opt(2017, 1, 8).unwrap();
         let zoned_overnight = validated
-            .resolve_trip_datetime("overnight_trip", service_date, GtfsTime::from_hms(24, 30, 0))
+            .resolve_trip_datetime(
+                "overnight_trip",
+                service_date,
+                GtfsTime::from_hms(24, 30, 0),
+            )
             .expect("should resolve zoned datetime for overnight trip");
         assert_eq!(zoned_overnight.timezone(), chrono_tz::Tz::Europe__Paris);
         assert_eq!(
@@ -272,4 +278,3 @@ mod tests {
         assert_eq!(la_win.time_of_day, GtfsTime::from_hms(22, 30, 0));
     }
 }
-

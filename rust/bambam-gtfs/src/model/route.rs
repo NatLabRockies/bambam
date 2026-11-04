@@ -8,8 +8,15 @@ use rgb::RGB8;
 
 /// A validated commercial transit line (`routes.txt`).
 #[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct Route {
     /// Unique identifier for the route.

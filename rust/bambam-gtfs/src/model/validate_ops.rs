@@ -944,11 +944,9 @@ mod tests {
         assert!(ValidatedFeed::from_raw_with_policy(strict_raw, ValidationPolicy::Strict).is_err());
 
         // Lenient mode succeeds in Phase 2, preserving valid trip1 and recording warnings
-        let validated = ValidatedFeed::from_raw_with_policy(
-            raw,
-            ValidationPolicy::DropInvalidTripsWithWarning,
-        )
-        .expect("Phase 2 lenient validation should succeed");
+        let validated =
+            ValidatedFeed::from_raw_with_policy(raw, ValidationPolicy::DropInvalidTripsWithWarning)
+                .expect("Phase 2 lenient validation should succeed");
         assert_eq!(validated.dropped_counts.empty_trips, 1);
         assert_eq!(validated.dropped_counts.single_stop_trips, 1);
         assert_eq!(validated.dropped_counts.duplicate_stop_sequences, 1);
@@ -956,4 +954,3 @@ mod tests {
         assert!(!validated.warnings.is_empty());
     }
 }
-

@@ -190,7 +190,10 @@ mod tests {
             "abc",
         ] {
             assert!(
-                matches!(GtfsTime::parse(invalid), Err(PrimitiveError::InvalidTime(_))),
+                matches!(
+                    GtfsTime::parse(invalid),
+                    Err(PrimitiveError::InvalidTime(_))
+                ),
                 "expected InvalidTime for '{invalid}'"
             );
         }
@@ -216,7 +219,10 @@ mod tests {
         let start = GtfsTime::from_hms(14, 0, 0);
         let end = GtfsTime::from_hms(15, 0, 0);
         assert_eq!(GtfsTime::lerp(start, end, 0.0), start);
-        assert_eq!(GtfsTime::lerp(start, end, 0.5), GtfsTime::from_hms(14, 30, 0));
+        assert_eq!(
+            GtfsTime::lerp(start, end, 0.5),
+            GtfsTime::from_hms(14, 30, 0)
+        );
         assert_eq!(GtfsTime::lerp(start, end, 1.0), end);
         assert_eq!(GtfsTime::lerp(start, end, -0.5), start);
         assert_eq!(GtfsTime::lerp(start, end, 1.5), end);
@@ -257,4 +263,3 @@ mod tests {
         assert_eq!((gap_dt - midnight).num_seconds(), 2 * 3600 + 30 * 60);
     }
 }
-

@@ -34,14 +34,7 @@ use crate::routing::spatial_index::flex_zone_within_radius;
 /// Phase 3: RAPTOR-style contiguous CSR timetable, multi-feed archive registry, and spatial/shape
 /// index ready for continental-scale vectorized multimodal A* graph search.
 #[derive(
-    Clone,
-    Debug,
-    Default,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Clone, Debug, Default, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 pub struct RoutingTimetable {
     /// Metadata and index ranges for every merged GTFS archive, indexed by [`FeedIdx`].
@@ -928,7 +921,12 @@ mod tests {
 
         // Pickup forbidden at stop_offset = 1 -> None
         assert!(timetable
-            .earliest_boardable_trip(PatternIdx::new(0), 1, GtfsTime::from_hms(0, 0, 0), &active_all)
+            .earliest_boardable_trip(
+                PatternIdx::new(0),
+                1,
+                GtfsTime::from_hms(0, 0, 0),
+                &active_all
+            )
             .is_none());
 
         // Service inactive -> None
@@ -1044,4 +1042,3 @@ mod tests {
         assert!(!nearby.is_empty());
     }
 }
-

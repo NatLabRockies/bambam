@@ -7,8 +7,15 @@ use chrono_tz::Tz;
 
 /// A validated transit agency (`agency.txt`).
 #[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct Agency {
     /// Optional unique agency identifier (mandatory when multiple agencies exist).
@@ -74,7 +81,10 @@ mod tests {
             email: None,
         };
         let agency = Agency::from(raw);
-        assert!(agency.id.is_none(), "empty agency_id should normalize to None");
+        assert!(
+            agency.id.is_none(),
+            "empty agency_id should normalize to None"
+        );
         assert_eq!(agency.time_zone(), Tz::America__Denver);
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&agency).unwrap();
@@ -82,4 +92,3 @@ mod tests {
         assert_eq!(restored, agency);
     }
 }
-

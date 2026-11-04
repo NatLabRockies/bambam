@@ -20,8 +20,17 @@ use std::sync::Arc;
 /// Enforces the GTFS and GTFS-Flex invariant that fixed arrival/departure times
 /// and flexible pickup/drop-off windows are mutually exclusive.
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub enum StopTimeTiming {
     /// Both arrival and departure times are explicitly scheduled (`arrival <= departure`).
@@ -46,8 +55,15 @@ pub enum StopTimeTiming {
 /// Boarding or alighting policy at a [`StopTime`], combining standard `PickupDropOffType`,
 /// `ContinuousPickupDropOff`, and optional GTFS-Flex `BookingRule` references.
 #[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct BoardingPolicy {
     /// Standard pickup/drop-off method (`0` = regular, `1` = none, `2` = phone agency, `3` = coordinate with driver).
@@ -69,8 +85,14 @@ impl BoardingPolicy {
 
 /// A relationally validated stop-time event along a [`Trip`].
 #[derive(
-    Clone, Debug, PartialEq, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct StopTime {
     /// Monotonically increasing sequence number along the trip.
@@ -150,8 +172,17 @@ impl TemporalStopTime for StopTime {
 
 /// Validated frequency headway window (`frequencies.txt`).
 #[derive(
-    Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct FrequencyWindow {
     /// Time window during which vehicles depart at `headway_secs` intervals.
@@ -164,8 +195,14 @@ pub struct FrequencyWindow {
 
 /// A validated transit trip (`trips.txt`) with ordered [`StopTime`]s and resolved shape linear references.
 #[derive(
-    Clone, Debug, PartialEq, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct Trip {
     /// Unique trip identifier.
@@ -294,4 +331,3 @@ mod tests {
         }
     }
 }
-

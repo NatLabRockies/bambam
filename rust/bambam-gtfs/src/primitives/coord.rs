@@ -77,4 +77,3 @@ mod tests {
         assert_eq!(Coord::lerp(a, b, 2.0), b);
     }
 }
-

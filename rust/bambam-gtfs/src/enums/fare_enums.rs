@@ -208,4 +208,3 @@ mod tests {
         assert_eq!(rows[4].transfers, Transfers::Other(5));
     }
 }
-

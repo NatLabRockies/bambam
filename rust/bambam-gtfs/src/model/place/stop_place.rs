@@ -1,9 +1,9 @@
 //! Polymorphic `StopPlace`, `PlaceMember`, and `StopArea` domain types.
 
 use crate::ids::AreaId;
+use crate::model::place::Stop;
 #[cfg(feature = "gtfs-flex")]
 use crate::model::place::{FlexLocation, LocationGroup};
-use crate::model::place::Stop;
 use crate::primitives::{BoundingBox, Coord};
 use crate::traits::Spatial;
 use std::sync::Arc;

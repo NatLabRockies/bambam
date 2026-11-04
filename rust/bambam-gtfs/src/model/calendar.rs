@@ -9,8 +9,15 @@ use std::collections::HashSet;
 
 /// Recurring weekly operating pattern from `calendar.txt`.
 #[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct WeeklyPattern {
     /// Bitmask of active weekdays (`bit 0 = Monday` .. `bit 6 = Sunday`).
@@ -74,8 +81,15 @@ impl From<&RawCalendar> for WeeklyPattern {
 
 /// Unified service schedule for a `ServiceId` combining `calendar.txt` and `calendar_dates.txt`.
 #[derive(
-    Clone, Debug, PartialEq, Eq, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct ServiceCalendar {
     /// Unique service identifier.
@@ -215,4 +229,3 @@ mod tests {
         assert!(!dates_only.is_active_on(mon));
     }
 }
-

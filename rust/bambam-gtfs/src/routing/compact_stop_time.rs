@@ -43,14 +43,7 @@ pub(crate) const NO_FLEX_DURATION_IDX: u16 = u16::MAX;
 ///   storing `place_idx` on every stop time is redundant with `pattern.stops[offset].place_idx`.
 #[repr(C)]
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    Serialize,
-    Deserialize,
-    rkyv::Archive,
-    rkyv::Serialize,
-    rkyv::Deserialize,
+    Clone, Copy, Debug, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 pub struct CompactStopTime {
     /// Scheduled/interpolated arrival time in seconds since midnight, or flex window `start` when `FLAG_IS_FLEX_WINDOW` is set.
@@ -203,7 +196,13 @@ mod tests {
         assert_eq!(fixed_nan.departure_time(), Some(dep));
         assert_eq!(fixed_nan.flex_window(), None);
         assert_eq!(fixed_nan.shape_meters(), None);
-        assert_eq!(fixed_nan.timing(), RoutableStopTiming::Fixed { arrival: arr, departure: dep });
+        assert_eq!(
+            fixed_nan.timing(),
+            RoutableStopTiming::Fixed {
+                arrival: arr,
+                departure: dep
+            }
+        );
         // Reflexivity with f32::NAN
         assert_eq!(fixed_nan, fixed_nan.clone());
 
@@ -213,7 +212,8 @@ mod tests {
 
         #[cfg(feature = "gtfs-flex")]
         {
-            let win = TimeWindow::new(GtfsTime::from_hms(9, 0, 0), GtfsTime::from_hms(10, 0, 0)).unwrap();
+            let win =
+                TimeWindow::new(GtfsTime::from_hms(9, 0, 0), GtfsTime::from_hms(10, 0, 0)).unwrap();
             let flex_st = CompactStopTime::new_flex_window(win, f32::NAN, 1);
             assert!(flex_st.is_flex_window());
             assert_eq!(flex_st.arrival_time(), None);
@@ -226,4 +226,3 @@ mod tests {
         }
     }
 }
-

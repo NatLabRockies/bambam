@@ -122,16 +122,10 @@ mod tests {
         assert!(bbox.contains(Coord::new(-106.0, 39.0))); // edge/corner
         assert!(!bbox.contains(Coord::new(-103.9, 40.0))); // exterior
 
-        let touching = BoundingBox::from_coords([
-            Coord::new(-104.0, 40.0),
-            Coord::new(-103.0, 42.0),
-        ])
-        .unwrap();
-        let disjoint = BoundingBox::from_coords([
-            Coord::new(-103.0, 40.0),
-            Coord::new(-102.0, 42.0),
-        ])
-        .unwrap();
+        let touching =
+            BoundingBox::from_coords([Coord::new(-104.0, 40.0), Coord::new(-103.0, 42.0)]).unwrap();
+        let disjoint =
+            BoundingBox::from_coords([Coord::new(-103.0, 40.0), Coord::new(-102.0, 42.0)]).unwrap();
         assert!(bbox.intersects(&touching));
         assert!(!bbox.intersects(&disjoint));
 
@@ -142,4 +136,3 @@ mod tests {
         assert_eq!(union.max_lat, 42.0);
     }
 }
-

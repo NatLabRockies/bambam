@@ -346,7 +346,9 @@ mod tests {
         let names: Vec<&str> = archive.file_names().collect();
         assert_eq!(names, vec!["stops.txt"]);
 
-        let mut iter = archive.table_iter::<RawStop>().expect("open stops.txt iter");
+        let mut iter = archive
+            .table_iter::<RawStop>()
+            .expect("open stops.txt iter");
         let first = iter.next().expect("row 1").expect("row 1 should parse");
         assert_eq!(first.id.as_str(), "s1");
 
@@ -376,4 +378,3 @@ mod tests {
         assert!(iter.next().is_none());
     }
 }
-

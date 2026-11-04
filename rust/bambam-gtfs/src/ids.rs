@@ -272,8 +272,18 @@ define_gtfs_index! {
 /// A GTFS identifier scoped to a specific archive ([`FeedId`]), preventing cross-feed ID collisions
 /// when merging hundreds or thousands of GTFS archives into a single [`RoutingTimetable`](crate::routing::RoutingTimetable).
 #[derive(
-    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-    rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct ScopedId<Id> {
     /// Archive / feed identifier.
@@ -330,4 +340,3 @@ mod tests {
         assert_eq!(format!("{scoped}"), "feed_a:stop_1");
     }
 }
-

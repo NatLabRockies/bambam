@@ -35,7 +35,8 @@ impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<ExtendedRoute
 }
 
 impl<D: rkyv::rancor::Fallible + ?Sized>
-    rkyv::with::DeserializeWith<rkyv::rend::i16_le, ExtendedRouteType, D> for RkyvExtendedRouteType
+    rkyv::with::DeserializeWith<rkyv::rend::i16_le, ExtendedRouteType, D>
+    for RkyvExtendedRouteType
 {
     #[inline]
     fn deserialize_with(
@@ -435,4 +436,3 @@ mod tests {
         }
     }
 }
-

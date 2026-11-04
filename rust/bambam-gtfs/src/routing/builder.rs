@@ -917,11 +917,9 @@ mod tests {
             ..Default::default()
         });
 
-        let validated = ValidatedFeed::from_raw_with_policy(
-            raw,
-            ValidationPolicy::DropInvalidTripsWithWarning,
-        )
-        .unwrap();
+        let validated =
+            ValidatedFeed::from_raw_with_policy(raw, ValidationPolicy::DropInvalidTripsWithWarning)
+                .unwrap();
         let mut builder = RoutingTimetable::builder()
             .with_validation_policy(ValidationPolicy::DropInvalidTripsWithWarning);
         builder.add_feed("test_feed", validated).unwrap();
@@ -943,4 +941,3 @@ mod tests {
         assert_eq!(timetable.feeds[0].dropped_counts.malformed_trips, 1);
     }
 }
-

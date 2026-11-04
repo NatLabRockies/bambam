@@ -130,7 +130,11 @@ impl ValidatedFeed {
 
     /// Appends this archive's primary `agency_timezone` to `(service_date, time)` to construct a
     /// timezone-aware [`DateTime<Tz>`].
-    pub fn resolve_datetime(&self, service_date: NaiveDate, time: GtfsTime) -> Option<DateTime<Tz>> {
+    pub fn resolve_datetime(
+        &self,
+        service_date: NaiveDate,
+        time: GtfsTime,
+    ) -> Option<DateTime<Tz>> {
         time.to_zoned_datetime(service_date, self.primary_timezone()?)
     }
 

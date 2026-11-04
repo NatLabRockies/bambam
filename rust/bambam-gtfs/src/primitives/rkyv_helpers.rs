@@ -71,11 +71,8 @@ impl<S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Siz
 }
 
 impl<D: rkyv::rancor::Fallible + ?Sized>
-    rkyv::with::DeserializeWith<
-        rkyv::vec::ArchivedVec<rkyv::rend::i32_le>,
-        HashSet<NaiveDate>,
-        D,
-    > for RkyvNaiveDateSet
+    rkyv::with::DeserializeWith<rkyv::vec::ArchivedVec<rkyv::rend::i32_le>, HashSet<NaiveDate>, D>
+    for RkyvNaiveDateSet
 {
     fn deserialize_with(
         field: &rkyv::vec::ArchivedVec<rkyv::rend::i32_le>,
@@ -245,5 +242,3 @@ mod tests {
         assert_eq!(restored, sample);
     }
 }
-
-

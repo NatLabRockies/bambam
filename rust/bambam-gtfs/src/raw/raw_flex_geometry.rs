@@ -82,8 +82,7 @@ fn ring_ray_cast(ring: &[Coord], coord: Coord) -> (bool, bool) {
             return (true, true);
         }
         if (pi.lat > coord.lat) != (pj.lat > coord.lat) {
-            let x_intersect =
-                (pj.lon - pi.lon) * (coord.lat - pi.lat) / (pj.lat - pi.lat) + pi.lon;
+            let x_intersect = (pj.lon - pi.lon) * (coord.lat - pi.lat) / (pj.lat - pi.lat) + pi.lon;
             if coord.lon < x_intersect {
                 inside = !inside;
             }
@@ -171,4 +170,3 @@ mod tests {
         assert!(!multi.contains_coord(Coord::new(3.0, 3.0)));
     }
 }
-
