@@ -221,7 +221,12 @@ mod tests {
         let validated = ValidatedFeed::try_from(raw).unwrap();
         let timetable = RaptorTimetable::try_from(validated).unwrap();
 
-        let l_zone_pidx = timetable.location_id_to_place[&LocationId::new("l_zone")];
+        let l_zone_pidx = timetable
+            .lookup_flex_location(
+                &crate::ids::FeedId::new("default"),
+                &LocationId::new("l_zone"),
+            )
+            .unwrap();
         assert!(timetable
             .places_near(inside_bottom, 0.0)
             .contains(&l_zone_pidx));

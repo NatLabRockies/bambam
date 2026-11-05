@@ -21,9 +21,6 @@ use chrono::{DateTime, Days, NaiveDate, NaiveDateTime};
 use chrono_tz::Tz;
 use rstar::{RTree, AABB};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
-use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(feature = "gtfs-flex")]
@@ -113,24 +110,6 @@ pub struct RaptorTimetable {
     pub scoped_service_to_idx: HashMap<(FeedIdx, ServiceId), ServiceIdx>,
     /// Scoped lookup from `(FeedIdx, ShapeId)` to [`ShapeIdx`].
     pub scoped_shape_to_idx: HashMap<(FeedIdx, ShapeId), ShapeIdx>,
-
-    // --- Convenience Single-Feed / Last-Write Lookup Maps ---
-    /// Convenience lookup from `StopId` to [`PlaceIdx`].
-    pub stop_id_to_place: HashMap<StopId, PlaceIdx>,
-    /// Convenience lookup from `LocationId` to [`PlaceIdx`] (GTFS-Flex).
-    #[cfg(feature = "gtfs-flex")]
-    pub location_id_to_place: HashMap<LocationId, PlaceIdx>,
-    /// Convenience lookup from `LocationGroupId` to [`PlaceIdx`] (GTFS-Flex).
-    #[cfg(feature = "gtfs-flex")]
-    pub location_group_id_to_place: HashMap<LocationGroupId, PlaceIdx>,
-    /// Convenience lookup from `RouteId` to [`RouteIdx`].
-    pub route_id_to_idx: HashMap<RouteId, RouteIdx>,
-    /// Convenience lookup from `TripId` to [`TripIdx`].
-    pub trip_id_to_idx: HashMap<TripId, TripIdx>,
-    /// Convenience lookup from `ServiceId` to [`ServiceIdx`].
-    pub service_id_to_idx: HashMap<ServiceId, ServiceIdx>,
-    /// Convenience lookup from `ShapeId` to [`ShapeIdx`].
-    pub shape_id_to_idx: HashMap<ShapeId, ShapeIdx>,
 }
 
 impl RaptorTimetable {
@@ -332,6 +311,22 @@ impl RaptorTimetable {
             .copied()
     }
 
+    /// Looks up a [`ServiceIdx`] by `(FeedId, ServiceId)` in $O(1)$ time.
+    pub fn lookup_service(&self, feed_id: &FeedId, service_id: &ServiceId) -> Option<ServiceIdx> {
+        let &feed_idx = self.feed_id_to_idx.get(feed_id)?;
+        self.scoped_service_to_idx
+            .get(&(feed_idx, service_id.clone()))
+            .copied()
+    }
+
+    /// Looks up a [`ShapeIdx`] by `(FeedId, ShapeId)` in $O(1)$ time.
+    pub fn lookup_shape(&self, feed_id: &FeedId, shape_id: &ShapeId) -> Option<ShapeIdx> {
+        let &feed_idx = self.feed_id_to_idx.get(feed_id)?;
+        self.scoped_shape_to_idx
+            .get(&(feed_idx, shape_id.clone()))
+            .copied()
+    }
+
     /// Resolves `target_date` to a representative active service date (`picked_date`) for `feed_idx`
     /// by applying `policy` across that feed's [`ServiceCalendar`] slice (`feed.services_span`).
     pub fn resolve_service_date_for_feed(
@@ -344,7 +339,7 @@ impl RaptorTimetable {
         let start = feed.services_span.start as usize;
         let end = feed.services_span.end as usize;
         let feed_services = self.services.get(start..end)?;
-        ServiceCalendar::resolve_service_date(feed_services, target_date, policy)
+        policy.resolve_date(target_date, feed_services)
     }
 
     fn populate_feed_active_services(
@@ -363,7 +358,7 @@ impl RaptorTimetable {
 
         let picked = match policy {
             DateMappingPolicy::Exact => Some(query_date),
-            _ => ServiceCalendar::resolve_service_date(feed_services, query_date, policy),
+            _ => policy.resolve_date(query_date, feed_services),
         };
 
         if let Some(picked_date) = picked {
@@ -875,63 +870,6 @@ impl RaptorTimetable {
         matches
     }
 
-    // --- Binary Snapshot Serialization (`rkyv`) for Instant HPC Cold-Starts ---
-
-    /// Serializes this [`RaptorTimetable`] into a compact `rkyv` byte vector.
-    pub fn to_rkyv_bytes(&self) -> Result<Vec<u8>, RoutingError> {
-        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        Ok(aligned.into_vec())
-    }
-
-    /// Validates and returns a zero-copy [`ArchivedRaptorTimetable`] reference directly from a
-    /// 16-byte-aligned `rkyv` byte slice (such as an [`rkyv::util::AlignedVec`] or memory-mapped buffer)
-    /// without allocating or copying the timetable's vectors.
-    pub fn access_rkyv_bytes(bytes: &[u8]) -> Result<&ArchivedRaptorTimetable, RoutingError> {
-        rkyv::access::<ArchivedRaptorTimetable, rkyv::rancor::Error>(bytes)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Deserializes a [`RaptorTimetable`] from an `rkyv` byte slice (validating the archive via `bytecheck`).
-    pub fn from_rkyv_bytes(bytes: &[u8]) -> Result<Self, RoutingError> {
-        let mut aligned = rkyv::util::AlignedVec::<16>::with_capacity(bytes.len());
-        aligned.extend_from_slice(bytes);
-        rkyv::from_bytes::<Self, rkyv::rancor::Error>(&aligned)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Writes this [`RaptorTimetable`] as a binary `rkyv` snapshot to `writer`.
-    pub fn write_rkyv<W: Write>(&self, mut writer: W) -> Result<(), RoutingError> {
-        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        writer
-            .write_all(&aligned)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Reads a [`RaptorTimetable`] from a binary `rkyv` snapshot `reader`.
-    pub fn read_rkyv<R: Read>(mut reader: R) -> Result<Self, RoutingError> {
-        let mut bytes = Vec::new();
-        reader
-            .read_to_end(&mut bytes)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        Self::from_rkyv_bytes(&bytes)
-    }
-
-    /// Saves this [`RaptorTimetable`] to a file on disk in `rkyv` format.
-    pub fn save_rkyv(&self, path: impl AsRef<Path>) -> Result<(), RoutingError> {
-        let file = File::create(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        let writer = BufWriter::new(file);
-        self.write_rkyv(writer)
-    }
-
-    /// Loads a [`RaptorTimetable`] from an `rkyv` snapshot file on disk.
-    pub fn load_rkyv(path: impl AsRef<Path>) -> Result<Self, RoutingError> {
-        let file = File::open(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        let reader = BufReader::new(file);
-        Self::read_rkyv(reader)
-    }
-
     /// Reconstructs the geographic linestring (`Vec<Coord>`) for a transit traversal along `trip_idx`
     /// from `from_stop_offset` to `to_stop_offset` (inclusive 0-based indices into the trip's stops).
     pub fn reconstruct_leg_linestring(
@@ -987,6 +925,8 @@ impl RaptorTimetable {
         Ok(coords)
     }
 }
+
+impl_rkyv_snapshot!(RaptorTimetable, ArchivedRaptorTimetable);
 
 #[cfg(test)]
 mod tests {
@@ -1183,7 +1123,10 @@ mod tests {
         assert_eq!(restored.trips, original.trips);
         assert_eq!(restored.stop_times, original.stop_times);
 
-        let stop1_coord = restored.places[restored.stop_id_to_place[&StopId::new("stop1")].index()]
+        let stop1_pidx = restored
+            .lookup_stop(&FeedId::new("default"), &StopId::new("stop1"))
+            .unwrap();
+        let stop1_coord = restored.places[stop1_pidx.index()]
             .representative_coord()
             .unwrap();
         let nearby = restored.places_near(stop1_coord, 50.0);

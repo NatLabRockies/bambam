@@ -1042,7 +1042,9 @@ mod tests {
         assert!(ba_stop.bounding_box().is_some());
 
         let timetable = RaptorTimetable::try_from(validated).unwrap();
-        let ba_pidx = timetable.stop_id_to_place[&StopId::new("boarding_area_3a")];
+        let ba_pidx = timetable
+            .lookup_stop(&FeedId::new("default"), &StopId::new("boarding_area_3a"))
+            .unwrap();
 
         let nearby = timetable.places_near(parent_coord.unwrap(), 10.0);
         assert!(

@@ -74,17 +74,6 @@ impl DateMappingPolicy {
         self.resolve_from_slice(target_date, &services)
     }
 
-    /// Resolves `target_date` to a representative active service date (`picked_date`) across
-    /// a slice of [`ServiceCalendar`]s.
-    pub fn resolve_space_slice(
-        &self,
-        target_date: NaiveDate,
-        services: &[ServiceCalendar],
-    ) -> Option<NaiveDate> {
-        let refs: Vec<&ServiceCalendar> = services.iter().collect();
-        self.resolve_from_slice(target_date, &refs)
-    }
-
     fn resolve_from_slice(
         &self,
         target_date: NaiveDate,
@@ -248,8 +237,7 @@ mod tests {
 
         // 1. Target inside range (Wednesday 2026-11-04): resolves to 2026-11-04; sat_only is inactive!
         let wed = NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
-        let picked_exact =
-            ServiceCalendar::resolve_service_date(&services, wed, DateMappingPolicy::Exact);
+        let picked_exact = DateMappingPolicy::Exact.resolve_date(wed, &services);
         assert_eq!(picked_exact, Some(wed));
         assert!(services[0].is_active_on(wed));
         assert!(!services[1].is_active_on(wed));
@@ -259,26 +247,19 @@ mod tests {
         //    - Nearest with match_weekday = true steps by 7 days and picks Wednesday 2026-11-04 (not Saturday 2026-11-07!)
         let future_wed = NaiveDate::from_ymd_opt(2026, 11, 18).unwrap();
         assert_eq!(
-            ServiceCalendar::resolve_service_date(&services, future_wed, DateMappingPolicy::Exact),
+            DateMappingPolicy::Exact.resolve_date(future_wed, &services),
             None
         );
         assert_eq!(
-            ServiceCalendar::resolve_service_date(
-                &services,
-                future_wed,
-                DateMappingPolicy::Nearest {
-                    tolerance_days: 30,
-                    match_weekday: true
-                }
-            ),
+            DateMappingPolicy::Nearest {
+                tolerance_days: 30,
+                match_weekday: true,
+            }
+            .resolve_date(future_wed, &services),
             Some(wed)
         );
         assert_eq!(
-            ServiceCalendar::resolve_service_date(
-                &services,
-                future_wed,
-                DateMappingPolicy::BestCase { tolerance_days: 30 }
-            ),
+            DateMappingPolicy::BestCase { tolerance_days: 30 }.resolve_date(future_wed, &services),
             Some(wed)
         );
 
@@ -287,49 +268,36 @@ mod tests {
         //    - BestCase falls back to match_weekday: false and picks Saturday 2026-11-07 (7 days away)
         let sun = NaiveDate::from_ymd_opt(2026, 11, 15).unwrap();
         assert_eq!(
-            ServiceCalendar::resolve_service_date(
-                &services,
-                sun,
-                DateMappingPolicy::Nearest {
-                    tolerance_days: 30,
-                    match_weekday: true
-                }
-            ),
+            DateMappingPolicy::Nearest {
+                tolerance_days: 30,
+                match_weekday: true,
+            }
+            .resolve_date(sun, &services),
             None
         );
         assert_eq!(
-            ServiceCalendar::resolve_service_date(
-                &services,
-                sun,
-                DateMappingPolicy::BestCase { tolerance_days: 30 }
-            ),
+            DateMappingPolicy::BestCase { tolerance_days: 30 }.resolve_date(sun, &services),
             Some(NaiveDate::from_ymd_opt(2026, 11, 7).unwrap())
         );
 
         // 4. Nonempty calendar with no active dates and tolerance_days = u64::MAX terminates immediately
         let empty_cal = vec![ServiceCalendar::new(ServiceId::new("inactive"))];
         assert_eq!(
-            ServiceCalendar::resolve_service_date(
-                &empty_cal,
-                wed,
-                DateMappingPolicy::Nearest {
-                    tolerance_days: u64::MAX,
-                    match_weekday: false,
-                }
-            ),
+            DateMappingPolicy::Nearest {
+                tolerance_days: u64::MAX,
+                match_weekday: false,
+            }
+            .resolve_date(wed, &empty_cal),
             None
         );
 
         // 5. Calendar with bounded dates but no matching weekday terminates once bounds are exhausted
         assert_eq!(
-            ServiceCalendar::resolve_service_date(
-                &services,
-                sun,
-                DateMappingPolicy::Nearest {
-                    tolerance_days: u64::MAX,
-                    match_weekday: true,
-                }
-            ),
+            DateMappingPolicy::Nearest {
+                tolerance_days: u64::MAX,
+                match_weekday: true,
+            }
+            .resolve_date(sun, &services),
             None
         );
     }

@@ -121,7 +121,6 @@ impl RaptorTimetableBuilder {
             self.timetable
                 .scoped_stop_to_place
                 .insert((feed_idx, stop.id.clone()), idx);
-            self.timetable.stop_id_to_place.insert(stop.id.clone(), idx);
             self.timetable.places.push(StopPlace::Stop(stop));
             self.timetable.place_feed.push(feed_idx);
             self.timetable.place_to_patterns.push(Vec::new());
@@ -139,9 +138,6 @@ impl RaptorTimetableBuilder {
                 self.timetable
                     .scoped_location_to_place
                     .insert((feed_idx, loc.id.clone()), idx);
-                self.timetable
-                    .location_id_to_place
-                    .insert(loc.id.clone(), idx);
                 self.timetable.places.push(StopPlace::FlexZone(loc));
                 self.timetable.place_feed.push(feed_idx);
                 self.timetable.place_to_patterns.push(Vec::new());
@@ -157,9 +153,6 @@ impl RaptorTimetableBuilder {
                 self.timetable
                     .scoped_location_group_to_place
                     .insert((feed_idx, grp.id.clone()), idx);
-                self.timetable
-                    .location_group_id_to_place
-                    .insert(grp.id.clone(), idx);
 
                 let mut member_indices = Vec::with_capacity(grp.members.len());
                 for m in &grp.members {
@@ -230,9 +223,6 @@ impl RaptorTimetableBuilder {
             self.timetable
                 .scoped_route_to_idx
                 .insert((feed_idx, route.id.clone()), ridx);
-            self.timetable
-                .route_id_to_idx
-                .insert(route.id.clone(), ridx);
             self.timetable.routes.push(route);
             self.timetable.route_feed.push(feed_idx);
             self.timetable.route_to_patterns.push(Vec::new());
@@ -250,9 +240,6 @@ impl RaptorTimetableBuilder {
             self.timetable
                 .scoped_service_to_idx
                 .insert((feed_idx, svc.id.clone()), sidx);
-            self.timetable
-                .service_id_to_idx
-                .insert(svc.id.clone(), sidx);
             self.timetable.services.push(svc);
             self.timetable.service_feed.push(feed_idx);
         }
@@ -268,7 +255,6 @@ impl RaptorTimetableBuilder {
             self.timetable
                 .scoped_shape_to_idx
                 .insert((feed_idx, shp.id.clone()), shidx);
-            self.timetable.shape_id_to_idx.insert(shp.id.clone(), shidx);
             self.timetable.shapes.push(shp);
             self.timetable.shape_feed.push(feed_idx);
         }
@@ -306,9 +292,6 @@ impl RaptorTimetableBuilder {
                     self.timetable
                         .scoped_service_to_idx
                         .insert((feed_idx, trip.service_id.clone()), sidx);
-                    self.timetable
-                        .service_id_to_idx
-                        .insert(trip.service_id.clone(), sidx);
                     self.timetable
                         .services
                         .push(ServiceCalendar::new(trip.service_id.clone()));
@@ -445,9 +428,6 @@ impl RaptorTimetableBuilder {
                         self.timetable
                             .scoped_trip_to_idx
                             .insert((feed_idx, expanded_id.clone()), trip_idx);
-                        self.timetable
-                            .trip_id_to_idx
-                            .insert(expanded_id.clone(), trip_idx);
                         self.timetable.patterns[pattern_idx.index()]
                             .trips
                             .push(trip_idx);
@@ -479,9 +459,6 @@ impl RaptorTimetableBuilder {
                 self.timetable
                     .scoped_trip_to_idx
                     .insert((feed_idx, trip.id.clone()), trip_idx);
-                self.timetable
-                    .trip_id_to_idx
-                    .insert(trip.id.clone(), trip_idx);
                 self.timetable.patterns[pattern_idx.index()]
                     .trips
                     .push(trip_idx);
@@ -927,9 +904,10 @@ mod tests {
 
         assert_eq!(timetable.trips.len(), 3);
         assert_eq!(timetable.patterns.len(), 2);
-        let t1 = timetable.trip_id_to_idx[&TripId::new("trip1")];
-        let t2 = timetable.trip_id_to_idx[&TripId::new("trip2")];
-        let t3 = timetable.trip_id_to_idx[&TripId::new("trip3")];
+        let feed_id = FeedId::new("test_feed");
+        let t1 = timetable.lookup_trip(&feed_id, &TripId::new("trip1")).unwrap();
+        let t2 = timetable.lookup_trip(&feed_id, &TripId::new("trip2")).unwrap();
+        let t3 = timetable.lookup_trip(&feed_id, &TripId::new("trip3")).unwrap();
         assert_eq!(
             timetable.trips[t1.index()].pattern_idx,
             timetable.trips[t2.index()].pattern_idx

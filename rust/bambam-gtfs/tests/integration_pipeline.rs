@@ -64,13 +64,18 @@ fn test_phased_pipeline_basic_fixture() {
     assert_eq!(timetable.trips.len(), 1);
 
     // Verify reverse lookup from PlaceIdx -> PatternIdx (stop2 is the first stop on trip1)
-    let stop2_pidx = timetable.stop_id_to_place[&StopId::new("stop2")];
+    let default_feed = FeedId::new("default");
+    let stop2_pidx = timetable
+        .lookup_stop(&default_feed, &StopId::new("stop2"))
+        .unwrap();
     let occurrences = timetable.patterns_serving_place(stop2_pidx);
     assert_eq!(occurrences.len(), 1);
     assert_eq!(occurrences[0].stop_offset_in_pattern, 0);
 
     // Verify transfers and pathways were indexed on PlaceIdx (stop1 has transfers & pathways)
-    let stop1_pidx = timetable.stop_id_to_place[&StopId::new("stop1")];
+    let stop1_pidx = timetable
+        .lookup_stop(&default_feed, &StopId::new("stop1"))
+        .unwrap();
     assert!(!timetable.place_to_transfers[stop1_pidx.index()].is_empty());
 
     // Verify DateMappingPolicy directly against the unaltered fixtures/basic archive:
@@ -271,7 +276,7 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     // 1. Read the existing fixtures/flex feed through all 3 phases
     let timetable = RaptorTimetable::from_path(fixture_path("fixtures/flex"))
         .expect("fixtures/flex should pass Phases 1, 2, and 3");
-    assert_eq!(timetable.location_id_to_place.len(), 2);
+    assert_eq!(timetable.scoped_location_to_place.len(), 2);
     assert!(!timetable.trips.is_empty());
 
     // Verify holiday exception + date mapping on unaltered fixtures/flex:
@@ -359,8 +364,13 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
 
     let flex_timetable =
         RaptorTimetable::try_from(validated).expect("Phase 3 with location group should succeed");
-    let lg_pidx = flex_timetable.location_group_id_to_place[&LocationGroupId::new("lg_1")];
-    let area_708_pidx = flex_timetable.location_id_to_place[&LocationId::new("area_708")];
+    let default_feed = FeedId::new("default");
+    let lg_pidx = flex_timetable
+        .lookup_location_group(&default_feed, &LocationGroupId::new("lg_1"))
+        .unwrap();
+    let area_708_pidx = flex_timetable
+        .lookup_flex_location(&default_feed, &LocationId::new("area_708"))
+        .unwrap();
 
     // Both the group's PlaceIdx AND its member area_708's PlaceIdx should index the pattern!
     assert!(!flex_timetable.patterns_serving_place(lg_pidx).is_empty());

@@ -2,7 +2,6 @@
 
 use crate::enums::Exception;
 use crate::ids::ServiceId;
-use crate::model::DateMappingPolicy;
 use crate::raw::{RawCalendar, RawCalendarDate};
 use crate::traits::Identifiable;
 use chrono::{Datelike, NaiveDate, Weekday};
@@ -144,16 +143,6 @@ impl ServiceCalendar {
             }
         }
         false
-    }
-
-    /// Resolves `target_date` to a representative active service date (`picked_date`) across
-    /// a slice of [`ServiceCalendar`]s using `policy`.
-    pub fn resolve_service_date(
-        services: &[ServiceCalendar],
-        target_date: NaiveDate,
-        policy: DateMappingPolicy,
-    ) -> Option<NaiveDate> {
-        policy.resolve_space_slice(target_date, services)
     }
 }
 

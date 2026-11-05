@@ -36,10 +36,7 @@ use crate::primitives::{RkyvLengthMeters, RkyvNaiveDateTime};
 use crate::routing::RoutingError;
 use chrono::{Duration, NaiveDateTime};
 use std::collections::BTreeMap;
-use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
 use std::ops::Range;
-use std::path::Path;
 use uom::si::f64::{Length, Time, Velocity};
 use uom::si::length::meter;
 use uom::si::time::second;
@@ -292,63 +289,9 @@ impl EdgeTimetable {
 
         Ok(best)
     }
-
-    // --- Binary Snapshot Serialization (`rkyv`) ---
-
-    /// Serializes this [`EdgeTimetable`] into a compact `rkyv` byte vector.
-    pub fn to_rkyv_bytes(&self) -> Result<Vec<u8>, RoutingError> {
-        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        Ok(aligned.into_vec())
-    }
-
-    /// Validates and returns a zero-copy [`ArchivedEdgeTimetable`] reference directly from a
-    /// 16-byte-aligned `rkyv` byte slice without allocating or copying the CSR vectors.
-    pub fn access_rkyv_bytes(bytes: &[u8]) -> Result<&ArchivedEdgeTimetable, RoutingError> {
-        rkyv::access::<ArchivedEdgeTimetable, rkyv::rancor::Error>(bytes)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Deserializes an [`EdgeTimetable`] from an `rkyv` byte slice.
-    pub fn from_rkyv_bytes(bytes: &[u8]) -> Result<Self, RoutingError> {
-        let mut aligned = rkyv::util::AlignedVec::<16>::with_capacity(bytes.len());
-        aligned.extend_from_slice(bytes);
-        rkyv::from_bytes::<Self, rkyv::rancor::Error>(&aligned)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Writes this [`EdgeTimetable`] as a binary `rkyv` snapshot to `writer`.
-    pub fn write_rkyv<W: Write>(&self, mut writer: W) -> Result<(), RoutingError> {
-        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        writer
-            .write_all(&aligned)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Reads an [`EdgeTimetable`] from a binary `rkyv` snapshot `reader`.
-    pub fn read_rkyv<R: Read>(mut reader: R) -> Result<Self, RoutingError> {
-        let mut bytes = Vec::new();
-        reader
-            .read_to_end(&mut bytes)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        Self::from_rkyv_bytes(&bytes)
-    }
-
-    /// Saves this [`EdgeTimetable`] to a file on disk in `rkyv` format.
-    pub fn save_rkyv(&self, path: impl AsRef<Path>) -> Result<(), RoutingError> {
-        let file = File::create(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        let writer = BufWriter::new(file);
-        self.write_rkyv(writer)
-    }
-
-    /// Loads an [`EdgeTimetable`] from an `rkyv` snapshot file on disk.
-    pub fn load_rkyv(path: impl AsRef<Path>) -> Result<Self, RoutingError> {
-        let file = File::open(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        let reader = BufReader::new(file);
-        Self::read_rkyv(reader)
-    }
 }
+
+impl_rkyv_snapshot!(EdgeTimetable, ArchivedEdgeTimetable);
 
 fn find_best_route_departure(
     current_datetime: NaiveDateTime,
