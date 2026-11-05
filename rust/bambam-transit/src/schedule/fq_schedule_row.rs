@@ -1,5 +1,6 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use uom::si::f64::Length;
 
 use crate::schedule::{fq_ops, ScheduleRow};
 
@@ -25,6 +26,12 @@ pub struct FullyQualifiedScheduleRow {
     pub src_departure_time: NaiveDateTime,
     /// arrival time at end of this edge.
     pub dst_arrival_time: NaiveDateTime,
+    /// walking distance from the source road vertex to the boarding GTFS stop.
+    #[serde(default)]
+    pub src_walk_distance: Length,
+    /// walking distance from the alighting GTFS stop to the destination road vertex.
+    #[serde(default)]
+    pub dst_walk_distance: Length,
 }
 
 impl FullyQualifiedScheduleRow {
@@ -44,6 +51,8 @@ impl FullyQualifiedScheduleRow {
             agency_id: row.agency_id.clone(),
             src_departure_time: row.src_departure_time,
             dst_arrival_time: row.dst_arrival_time,
+            src_walk_distance: row.src_walk_distance,
+            dst_walk_distance: row.dst_walk_distance,
         }
     }
 }

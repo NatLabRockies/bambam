@@ -11,5 +11,9 @@ pub enum DistanceCalculationPolicy {
 
 pub fn compute_haversine(src_point: Point<f64>, dst_point: Point<f64>) -> uom::si::f64::Length {
     let line: LineString<f64> = line_string![src_point.0, dst_point.0];
-    uom::si::f64::Length::new::<uom::si::length::meter>(Haversine.length(&line))
+    compute_linestring_length(&line)
+}
+
+pub fn compute_linestring_length(line: &LineString<f64>) -> uom::si::f64::Length {
+    uom::si::f64::Length::new::<uom::si::length::meter>(Haversine.length(line))
 }

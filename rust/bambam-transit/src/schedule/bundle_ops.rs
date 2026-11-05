@@ -12,7 +12,7 @@ use kdam::{Bar, BarBuilder, BarExt};
 use rayon::prelude::*;
 use routee_compass_core::model::{
     map::{NearestSearchResult, SpatialIndex},
-    network::{EdgeConfig, EdgeId, VertexId},
+    network::{EdgeConfig, EdgeId, Vertex, VertexId},
 };
 use serde_json::json;
 use std::{
@@ -21,13 +21,15 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use uom::si::f64::Length;
+use uom::{si::f64::Length, ConstZero};
 
 use super::{GtfsBundle, GtfsEdge};
 use crate::schedule::{
     batch_processing_error,
     date::DateMapping,
-    distance_calculation_policy::{compute_haversine, DistanceCalculationPolicy},
+    distance_calculation_policy::{
+        compute_haversine, compute_linestring_length, DistanceCalculationPolicy,
+    },
     fq_ops,
     fq_schedule_row::FullyQualifiedScheduleRow,
     schedule_error::ScheduleError,
@@ -41,6 +43,8 @@ pub struct ProcessBundlesConfig {
     pub start_date: String,
     /// upper value of date range for collecting a schedule for route planning
     pub end_date: String,
+    /// road network vertices used to compute vertex-to-stop walking distances
+    pub vertices: Arc<[Vertex]>,
     /// used for map matching into the Compass graph.
     pub spatial_index: Arc<SpatialIndex>,
     /// app logic applied when a missing stop is encountered
@@ -211,6 +215,8 @@ pub fn process_bundle(
     let mut edges: HashMap<(VertexId, VertexId), GtfsEdge> = HashMap::new();
     let mut date_mapping: HashSet<DateMapping> = HashSet::new();
     for target_date in c.date_mapping_policy.iter() {
+        let picked_date = c.date_mapping_policy.resolve_feed_date(&target_date, &gtfs)?;
+
         for raw_trip in gtfs.trips.values() {
             // sort the stop_time sequence of the trip before proceeding
             let trip = match SortedTrip::new(raw_trip)? {
@@ -218,20 +224,24 @@ pub fn process_bundle(
                 None => continue,
             };
 
-            // apply date mapping
-            let picked_date_result =
-                c.date_mapping_policy
-                    .pick_date(&target_date, &trip, gtfs.clone());
-
-            // if the trip was malformed in a way that we can catch, then we can handle it here.
-            // otherwise, unpack the mapping result.
-            let picked_date = match (picked_date_result, &c.malformed_trip_policy) {
-                (Err(ScheduleError::TripWithInvalidServiceId(_)), MalformedTripPolicy::Drop) => {
-                    continue
+            let service = match (
+                gtfs.services.get(trip.service_id.as_str()),
+                &c.malformed_trip_policy,
+            ) {
+                (None, MalformedTripPolicy::Drop) => continue,
+                (None, MalformedTripPolicy::Fail) => {
+                    return Err(ScheduleError::TripWithInvalidServiceId(
+                        trip.trip_id.clone(),
+                    ));
                 }
-                (Ok(date), _) => date,
-                (Err(e), _) => return Err(e),
+                (Some(s), _) => s,
             };
+
+            // Skip trips whose service calendar is not active on the feed's resolved picked_date
+            if !service.is_active_on(picked_date) {
+                continue;
+            }
+
             if target_date != picked_date {
                 let route = gtfs.get_route(&trip.route_id).ok_or_else(|| {
                     ScheduleError::MalformedGtfs(format!(
@@ -250,9 +260,15 @@ pub fn process_bundle(
                 let _ = date_mapping.insert(dm);
             }
 
-            for (src, dst) in trip.stop_times.windows(2).map(|w| (&w[0], &w[1])) {
+            for (stop_idx, (src, dst)) in trip
+                .stop_times
+                .windows(2)
+                .map(|w| (&w[0], &w[1]))
+                .enumerate()
+            {
                 process_schedule(
-                    &picked_date,
+                    &target_date,
+                    stop_idx,
                     src,
                     dst,
                     &trip,
@@ -454,7 +470,8 @@ fn is_not_zip(entry: &DirEntry) -> bool {
 ///  - adds this schedule row to our GtfsEdge
 #[allow(clippy::too_many_arguments)]
 fn process_schedule(
-    picked_date: &NaiveDate,
+    schedule_date: &NaiveDate,
+    stop_idx: usize,
     src: &StopTime,
     dst: &StopTime,
     trip: &SortedTrip,
@@ -471,24 +488,21 @@ fn process_schedule(
     }
 
     // match this stop time pair to the graph or apply optional fallback policy
-    let ((src_id, src_point), (dst_id, dst_point)) =
-        map_match(src, dst, stop_locations, c.spatial_index.clone())?;
+    let ((src_id, src_point, src_walk_distance), (dst_id, dst_point, dst_walk_distance)) =
+        map_match(src, dst, stop_locations, &c.vertices, c.spatial_index.clone())?;
 
-    // This only gets to run if all previous conditions are met
-    // it adds the edge if it has not yet been added.
-    let gtfs_edge = edges.entry((src_id, dst_id)).or_insert_with(|| {
-        let geometry = match &c.distance_calculation_policy {
-            DistanceCalculationPolicy::Haversine => LineString::new(vec![src_point.0, dst_point.0]),
-            DistanceCalculationPolicy::Shape => todo!(),
-            DistanceCalculationPolicy::Fallback => todo!(),
-        };
-
-        // Estimate distance
-        let distance: Length = match &c.distance_calculation_policy {
-            DistanceCalculationPolicy::Haversine => compute_haversine(src_point, dst_point),
-            DistanceCalculationPolicy::Shape => todo!(),
-            DistanceCalculationPolicy::Fallback => todo!(),
-        };
+    // Build stop-to-stop geometry and distance according to policy if this edge is new
+    if !edges.contains_key(&(src_id, dst_id)) {
+        let (geometry, distance) = build_edge_geometry_and_distance(
+            &c.distance_calculation_policy,
+            &gtfs,
+            trip,
+            stop_idx,
+            src,
+            dst,
+            src_point,
+            dst_point,
+        )?;
 
         let edge = EdgeConfig {
             edge_id: *edge_id,
@@ -502,20 +516,24 @@ fn process_schedule(
         // NOTE: edge id update completed after creating this Edge
         *edge_id = EdgeId(edge_id.0 + 1);
 
-        gtfs_edge
-    });
+        edges.insert((src_id, dst_id), gtfs_edge);
+    }
+
+    let gtfs_edge = edges
+        .get_mut(&(src_id, dst_id))
+        .expect("edge inserted above");
 
     let (src_departure_time, dst_arrival_time) = match (
         src.departure_time().map(|t| t.seconds()),
         dst.arrival_time().map(|t| t.seconds()),
     ) {
         (None, Some(t)) | (Some(t), None) => {
-            let dt = create_datetime(t, picked_date)?;
+            let dt = create_datetime(t, schedule_date)?;
             Ok((dt, dt))
         }
         (Some(dep), Some(arr)) => {
-            let dep_dt = create_datetime(dep, picked_date)?;
-            let arr_dt = create_datetime(arr, picked_date)?;
+            let dep_dt = create_datetime(dep, schedule_date)?;
+            let arr_dt = create_datetime(arr, schedule_date)?;
             Ok((dep_dt, arr_dt))
         }
         (None, None) => {
@@ -535,7 +553,7 @@ fn process_schedule(
     })?;
 
     // update schedules + date mapping
-    let schedule = ScheduleRow::new(
+    let schedule = ScheduleRow::new_with_walk_distance(
         gtfs_edge.edge.edge_id.0,
         feed_id.map(|s| s.to_string()),
         trip.route_id.clone(),
@@ -543,11 +561,84 @@ fn process_schedule(
         route.agency_id.as_ref().map(ToString::to_string),
         src_departure_time,
         dst_arrival_time,
+        src_walk_distance,
+        dst_walk_distance,
     );
 
     gtfs_edge.add_schedule(schedule.clone());
 
     Ok(Some(schedule))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_edge_geometry_and_distance(
+    policy: &DistanceCalculationPolicy,
+    gtfs: &Gtfs,
+    trip: &SortedTrip,
+    stop_idx: usize,
+    src: &StopTime,
+    dst: &StopTime,
+    src_point: Point<f64>,
+    dst_point: Point<f64>,
+) -> Result<(LineString<f64>, Length), ScheduleError> {
+    match policy {
+        DistanceCalculationPolicy::Haversine => {
+            let geometry = LineString::new(vec![src_point.0, dst_point.0]);
+            let distance = compute_haversine(src_point, dst_point);
+            Ok((geometry, distance))
+        }
+        DistanceCalculationPolicy::Shape => {
+            let raw_trip = gtfs.trips.get(trip.trip_id.as_str()).ok_or_else(|| {
+                ScheduleError::MalformedGtfs(format!("trip '{}' not found in feed", trip.trip_id))
+            })?;
+            let shape_id = raw_trip.shape_id.as_ref().ok_or_else(|| {
+                ScheduleError::MalformedGtfs(format!(
+                    "trip '{}' has no shape_id, which is required by DistanceCalculationPolicy::Shape",
+                    trip.trip_id
+                ))
+            })?;
+            let shape = gtfs.shapes.get(shape_id).ok_or_else(|| {
+                ScheduleError::MalformedGtfs(format!(
+                    "trip '{}' references missing shape_id '{}'",
+                    trip.trip_id, shape_id
+                ))
+            })?;
+            let (Some(s_ref), Some(e_ref)) = (src.shape_ref, dst.shape_ref) else {
+                return Err(ScheduleError::MalformedGtfs(format!(
+                    "trip '{}' stop pair at index {} lacks linear-referenced shape distances",
+                    trip.trip_id, stop_idx
+                )));
+            };
+            let coords: Vec<geo::Coord<f64>> = shape
+                .slice_linestring(s_ref.arc_meters, e_ref.arc_meters)
+                .into_iter()
+                .map(|c| geo::Coord { x: c.lon, y: c.lat })
+                .collect();
+            let geometry = LineString::new(coords);
+            let distance = compute_linestring_length(&geometry);
+            Ok((geometry, distance))
+        }
+        DistanceCalculationPolicy::Fallback => {
+            if let Some(coords) = gtfs.reconstruct_trip_leg_linestring(
+                &bambam_gtfs::TripId::new(&trip.trip_id),
+                stop_idx,
+                stop_idx + 1,
+            ) {
+                if coords.len() >= 2 {
+                    let geo_coords: Vec<geo::Coord<f64>> = coords
+                        .into_iter()
+                        .map(|c| geo::Coord { x: c.lon, y: c.lat })
+                        .collect();
+                    let geometry = LineString::new(geo_coords);
+                    let distance = compute_linestring_length(&geometry);
+                    return Ok((geometry, distance));
+                }
+            }
+            let geometry = LineString::new(vec![src_point.0, dst_point.0]);
+            let distance = compute_haversine(src_point, dst_point);
+            Ok((geometry, distance))
+        }
+    }
 }
 
 /// helper to build a datetime value from the gtfs time of day and some
@@ -625,16 +716,25 @@ fn construct_fq_date_mapping(
         .collect()
 }
 
-pub type MapMatchResult = ((VertexId, Point<f64>), (VertexId, Point<f64>));
-/// finds the vertex and point associated with src and dst StopTime entry.
-///
-/// # Result
-///
-/// the source and destination, each a tuple of (VertexId, Coordinate)
+pub type MapMatchResult = (
+    (VertexId, Point<f64>, Length),
+    (VertexId, Point<f64>, Length),
+);
+
+fn lookup_vertex_point(vertices: &[Vertex], vertex_id: VertexId) -> Option<Point<f64>> {
+    vertices
+        .get(vertex_id.0)
+        .filter(|v| v.vertex_id == vertex_id)
+        .or_else(|| vertices.iter().find(|v| v.vertex_id == vertex_id))
+        .map(|v| Point::new(v.x() as f64, v.y() as f64))
+}
+
+/// finds the vertex, point, and vertex-to-stop walking distance associated with src and dst StopTime entry.
 fn map_match(
     src: &StopTime,
     dst: &StopTime,
     stop_locations: &HashMap<String, Option<Point<f64>>>,
+    vertices: &[Vertex],
     spatial_index: Arc<SpatialIndex>,
 ) -> Result<MapMatchResult, ScheduleError> {
     let src_stop = src
@@ -667,12 +767,19 @@ fn map_match(
             let src_compass = match_closest_graph_id(src_point_, spatial_index.clone())?;
             let dst_compass = match_closest_graph_id(dst_point_, spatial_index.clone())?;
 
-            // These points are used to compute the distance
-            // Should we instead be using the graph node?
-            // For instance, what happens if src_compass == dst_compass?
             let src_point = src_point_.to_owned();
             let dst_point = dst_point_.to_owned();
-            Ok(((src_compass, src_point), (dst_compass, dst_point)))
+            let src_walk_distance = lookup_vertex_point(vertices, src_compass)
+                .map(|vp| compute_haversine(vp, src_point))
+                .unwrap_or(Length::ZERO);
+            let dst_walk_distance = lookup_vertex_point(vertices, dst_compass)
+                .map(|vp| compute_haversine(vp, dst_point))
+                .unwrap_or(Length::ZERO);
+
+            Ok((
+                (src_compass, src_point, src_walk_distance),
+                (dst_compass, dst_point, dst_walk_distance),
+            ))
         }
         _ => {
             let msg = format!(
@@ -805,6 +912,7 @@ mod tests {
         let conf = Arc::new(ProcessBundlesConfig {
             start_date: "01-01-2025".to_string(),
             end_date: "01-01-2025".to_string(),
+            vertices: Arc::from([]),
             spatial_index: Arc::new(SpatialIndex::new_vertex_oriented(&[], None)),
             missing_stop_location_policy: MissingStopLocationPolicy::Fail,
             distance_calculation_policy: DistanceCalculationPolicy::Haversine,
@@ -915,19 +1023,22 @@ mod tests {
             gtfs_metadata_input_file: metadata_path.to_string_lossy().to_string(),
             schedule_loading_policy: ScheduleLoadingPolicy::All,
             route_ids_input_file: None,
+            walk_speed: None,
         };
 
         let engine = TransitTraversalEngine::try_from(transit_config)
             .expect("TransitTraversalEngine failed to build from merged output");
 
         // There were 3 unique edges: (1->2), (2->3), (3->4)
-        assert_eq!(engine.edge_schedules.len(), 3);
+        assert_eq!(engine.num_edges(), 3);
 
         // Edge 0 (1->2) has departures from both feeds: 08:00 (Feed A) and 08:10 (Feed B)
         let dep = engine
             .get_next_departure(
                 0,
                 &NaiveDateTime::parse_from_str("2025-01-01 07:55:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+                None,
+                None,
             )
             .unwrap()
             .expect("expected departure at 08:00");

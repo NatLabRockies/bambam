@@ -37,7 +37,7 @@ pub use routing::{
     ActiveServiceWindow, ArchivedEdgeTimetable, ArchivedRaptorTimetable, BoardableDeparture,
     CompactStopTime, EdgeDeparture, EdgeRouteSchedule, EdgeTimetable, EdgeTimetableBuilder,
     FeedMetadata, FullyQualifiedPlaceId, FullyQualifiedRouteId, FullyQualifiedTripId, PlaceIdKind,
-    PlaceSpatialEntry, RaptorTimetable, RaptorTimetableBuilder,
+    PlaceSpatialEntry, RaptorTimetable, RaptorTimetableBuilder, RoutingError,
 };
 pub use traits::{Identifiable, Spatial, TemporalStopTime};
 

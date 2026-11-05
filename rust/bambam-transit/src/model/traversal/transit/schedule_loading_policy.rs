@@ -1,3 +1,4 @@
+use bambam_gtfs::{EdgeDeparture, EdgeTimetableBuilder};
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
@@ -18,30 +19,48 @@ pub enum ScheduleLoadingPolicy {
 }
 
 impl ScheduleLoadingPolicy {
-    pub fn insert_if_valid(&self, schedule_skiplist: &mut Schedule, element: Departure) {
-        if element.src_departure_time > element.dst_arrival_time {
+    /// Returns `true` if a departure with `(src_departure_time, dst_arrival_time)` is valid
+    /// and within this policy's date range.
+    pub fn accepts(
+        &self,
+        src_departure_time: NaiveDateTime,
+        dst_arrival_time: NaiveDateTime,
+    ) -> bool {
+        if src_departure_time > dst_arrival_time {
             SRC_DST_ORDERING_ERROR_LOCK.get_or_init(|| {
-                let src_time = element.src_departure_time.format("%Y-%m-%d %H:%M:%S");
-                let dst_time = element.dst_arrival_time.format("%Y-%m-%d %H:%M:%S");
+                let src_time = src_departure_time.format("%Y-%m-%d %H:%M:%S");
+                let dst_time = dst_arrival_time.format("%Y-%m-%d %H:%M:%S");
                 let msg = format!("encountered at least one schedule row where src time {src_time} is not earlier than {dst_time}. the schedule may be corrupted.");
                 log::warn!("{msg}");
             });
-            return;
+            return false;
         }
 
-        let should_insert = match self {
+        match self {
             ScheduleLoadingPolicy::All => true,
             ScheduleLoadingPolicy::InDateRange {
                 start_date,
                 end_date,
-            } => {
-                (element.src_departure_time <= *end_date)
-                    && (*start_date <= element.src_departure_time)
-            }
-        };
+            } => (src_departure_time <= *end_date) && (*start_date <= src_departure_time),
+        }
+    }
 
-        if should_insert {
+    pub fn insert_if_valid(&self, schedule_skiplist: &mut Schedule, element: Departure) {
+        if self.accepts(element.src_departure_time, element.dst_arrival_time) {
             schedule_skiplist.insert(element);
+        }
+    }
+
+    pub fn insert_into_edge_timetable(
+        &self,
+        builder: &mut EdgeTimetableBuilder,
+        edge_id: usize,
+        route_label: i64,
+        departure: EdgeDeparture,
+    ) {
+        builder.ensure_edge(edge_id);
+        if self.accepts(departure.src_departure_time, departure.dst_arrival_time) {
+            builder.add_departure(edge_id, route_label, departure);
         }
     }
 }

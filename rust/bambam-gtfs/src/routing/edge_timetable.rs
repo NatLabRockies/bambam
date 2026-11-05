@@ -257,12 +257,12 @@ impl EdgeTimetable {
         current_route_id: Option<i64>,
         walk_speed: Option<Velocity>,
     ) -> Result<Option<(i64, EdgeDeparture, Time)>, RoutingError> {
-        let schedules =
-            self.edge_route_schedules(edge_id)
-                .ok_or(RoutingError::InvalidEdgeId {
-                    edge_id,
-                    num_edges: self.num_edges(),
-                })?;
+        let schedules = self
+            .edge_route_schedules(edge_id)
+            .ok_or(RoutingError::InvalidEdgeId {
+                edge_id,
+                num_edges: self.num_edges(),
+            })?;
 
         let mut best: Option<(i64, EdgeDeparture, Time)> = None;
 

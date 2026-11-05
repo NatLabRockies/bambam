@@ -4,12 +4,13 @@
 // - If Schedules = Box<[Schedule]>, how do we access the correct schedule if I have an edge_id? edge_id is usize
 
 use serde::{Deserialize, Serialize};
+use uom::si::f64::Velocity;
 
 use crate::model::traversal::transit::schedule_loading_policy::ScheduleLoadingPolicy;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransitTraversalConfig {
-    /// edges-schedules file path from gtfs preprocessing
+    /// edges-schedules file path from gtfs preprocessing (.csv.gz or .rkyv)
     pub edges_schedules_input_file: String,
     /// metadata file path from gtfs preprocessing
     pub gtfs_metadata_input_file: String,
@@ -18,4 +19,7 @@ pub struct TransitTraversalConfig {
     /// if provided, overrides the metadata entry for fully-qualified
     /// route ids, in the case of running multiple transit models simultaneously.
     pub route_ids_input_file: Option<String>,
+    /// optional walking speed used to compute the vertex-to-stop boarding delay
+    #[serde(default)]
+    pub walk_speed: Option<Velocity>,
 }

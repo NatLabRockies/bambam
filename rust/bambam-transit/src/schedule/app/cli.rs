@@ -191,7 +191,7 @@ impl GtfsOperation {
                 date_mapping_date_tolerance,
                 date_mapping_match_weekday,
             } => {
-                let spatial_index = load_vertices_and_create_spatial_index(
+                let (vertices, spatial_index) = load_vertices_and_create_spatial_index(
                     vertices_compass_filename,
                     *vertex_match_tolerance,
                 )
@@ -224,6 +224,7 @@ impl GtfsOperation {
                 let config = Arc::new(ProcessBundlesConfig {
                     start_date: start_date.clone(),
                     end_date: end_date.clone(),
+                    vertices,
                     spatial_index,
                     missing_stop_location_policy: missing_stop_location_policy.clone(),
                     distance_calculation_policy: distance_calculation_policy.clone(),
@@ -259,7 +260,7 @@ impl GtfsOperation {
 fn load_vertices_and_create_spatial_index(
     vertices_compass_filename: &str,
     tolerance_meters: f64,
-) -> Result<Arc<SpatialIndex>, ScheduleError> {
+) -> Result<(Arc<[Vertex]>, Arc<SpatialIndex>), ScheduleError> {
     let bar_builder = Bar::builder().desc("read vertices file");
     let vertices: Box<[Vertex]> = read_utils::from_csv(
         &Path::new(vertices_compass_filename),
@@ -269,10 +270,9 @@ fn load_vertices_and_create_spatial_index(
     )
     .map_err(|e| ScheduleError::FailedToCreateVertexIndex(format!("{e}")))?;
     let tol: Length = uom::si::f64::Length::new::<uom::si::length::meter>(tolerance_meters);
-    Ok(Arc::new(SpatialIndex::new_vertex_oriented(
-        &vertices,
-        Some(tol),
-    )))
+    let spatial_index = Arc::new(SpatialIndex::new_vertex_oriented(&vertices, Some(tol)));
+    let vertices_arc: Arc<[Vertex]> = Arc::from(vertices);
+    Ok((vertices_arc, spatial_index))
 }
 
 /// reads rows from a GTFS manifest in the format of Mobility Data Catalog

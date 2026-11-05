@@ -394,6 +394,7 @@ pub fn gtfs_traversal_model_config(
         gtfs_metadata_input_file: edges_metadata.to_string(),
         schedule_loading_policy: ScheduleLoadingPolicy::All,
         route_ids_input_file,
+        walk_speed: None,
     };
     let mtc_conf = MultimodalTraversalConfig {
         this_mode: "transit".to_string(),

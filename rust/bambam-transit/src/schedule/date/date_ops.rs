@@ -2,7 +2,7 @@ use std::collections::BinaryHeap;
 
 use bambam_gtfs::{
     raw::{RawCalendar as Calendar, RawCalendarDate as CalendarDate},
-    Exception,
+    Exception, WeeklyPattern,
 };
 use chrono::{Datelike, Days, NaiveDate};
 
@@ -70,6 +70,32 @@ pub fn date_range_intersection(
     Ok(candidates.into_iter().map(|(_, date)| date).collect())
 }
 
+/// Returns `true` if `calendar` operates on `date.weekday()` according to its `monday`..`sunday` flags.
+pub fn is_valid_calendar_weekday(date: &NaiveDate, calendar: &Calendar) -> bool {
+    WeeklyPattern::from(calendar).runs_on_weekday(date.weekday())
+}
+
+/// Tests intersection (inclusive) of `target` with `calendar`'s `[start_date, end_date]` range,
+/// filtering by `date_tolerance`, optional `match_weekday`, and `calendar`'s active `monday`..`sunday` flags.
+pub fn calendar_date_range_intersection(
+    target: &NaiveDate,
+    calendar: &Calendar,
+    date_tolerance: u64,
+    match_weekday: bool,
+) -> Result<Vec<NaiveDate>, ScheduleError> {
+    let candidates = date_range_intersection(
+        target,
+        &calendar.start_date,
+        &calendar.end_date,
+        date_tolerance,
+        match_weekday,
+    )?;
+    Ok(candidates
+        .into_iter()
+        .filter(|d| is_valid_calendar_weekday(d, calendar))
+        .collect())
+}
+
 /// helper function to find some expected date in the calendar.txt of a GTFS archive
 pub fn find_in_calendar(
     target: &NaiveDate,
@@ -78,7 +104,8 @@ pub fn find_in_calendar(
     let start = &calendar.start_date;
     let end = &calendar.end_date;
     let within_service_date_range = start <= target && target <= end;
-    if within_service_date_range {
+    let valid_weekday = is_valid_calendar_weekday(target, calendar);
+    if within_service_date_range && valid_weekday {
         Ok(*target)
     } else {
         let msg = error_msg_suffix(target, start, end);
