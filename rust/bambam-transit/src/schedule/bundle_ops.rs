@@ -492,7 +492,7 @@ fn process_schedule(
         )?;
 
     // Build stop-to-stop geometry and distance according to policy if this edge is new
-    if !edges.contains_key(&(src_id, dst_id)) {
+    if let std::collections::hash_map::Entry::Vacant(e) = edges.entry((src_id, dst_id)) {
         let (geometry, distance) = build_edge_geometry_and_distance(
             &c.distance_calculation_policy,
             &gtfs,
@@ -516,7 +516,7 @@ fn process_schedule(
         // NOTE: edge id update completed after creating this Edge
         *edge_id = EdgeId(edge_id.0 + 1);
 
-        edges.insert((src_id, dst_id), gtfs_edge);
+        e.insert(gtfs_edge);
     }
 
     let gtfs_edge = edges
