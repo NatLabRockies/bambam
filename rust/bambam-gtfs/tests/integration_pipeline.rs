@@ -151,7 +151,10 @@ fn test_phased_pipeline_basic_fixture() {
         )
         .unwrap();
     assert_eq!(mapped_sat_win.date, sat_out_of_range);
-    assert_eq!(mapped_sat_win.picked_date, sat_2017_01_14);
+    assert_eq!(
+        mapped_sat_win.picked_date_for_feed(FeedIdx::new(0)),
+        Some(sat_2017_01_14)
+    );
     let dep = timetable
         .earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &mapped_sat_win)
         .expect("trip1 should be boardable on mapped Saturday 2017-01-14");
@@ -307,7 +310,10 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
             },
         )
         .unwrap();
-    assert_eq!(flex_wed_win.picked_date, wed_july_3);
+    assert_eq!(
+        flex_wed_win.picked_date_for_feed(FeedIdx::new(0)),
+        Some(wed_july_3)
+    );
     assert_eq!(
         flex_wed_win.today_active.iter().filter(|&&b| b).count(),
         1,

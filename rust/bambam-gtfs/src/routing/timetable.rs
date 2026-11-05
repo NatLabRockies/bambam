@@ -366,10 +366,9 @@ impl RaptorTimetable {
         let yesterday_overnight_time = time_of_day.add_seconds(86_400);
         ActiveServiceWindow {
             date,
-            picked_date: date,
+            feed_picked_dates: vec![Some(date); self.feeds.len()],
             time_of_day,
             today_active,
-            yesterday_date,
             yesterday_overnight_time,
             yesterday_active,
         }
@@ -382,11 +381,12 @@ impl RaptorTimetable {
     /// [`ActiveServiceWindow`], and `window.date` preserves the rider's `query_date` so boarding
     /// and arrival [`DateTime`]s are resolved on the rider's actual query date.
     ///
-    /// Under [`DateMappingPolicy::Exact`], `picked_date` is `query_date` and both `query_date`
-    /// (`today_active`) and `query_date - 1` (`yesterday_active`) are evaluated directly even when
-    /// no service starts on `query_date`, preserving overnight (`>= 24:00:00`) departures from the
-    /// previous calendar day. For non-exact policies, if no date satisfies `policy` for `feed_idx`,
-    /// `today_active` and `yesterday_active` will be all `false`.
+    /// Under [`DateMappingPolicy::Exact`], `feed_picked_dates[feed_idx]` is `Some(query_date)` and
+    /// both `query_date` (`today_active`) and `query_date - 1` (`yesterday_active`) are evaluated
+    /// directly even when no service starts on `query_date`, preserving overnight (`>= 24:00:00`)
+    /// departures from the previous calendar day. For non-exact policies, if no date satisfies
+    /// `policy` for `feed_idx`, `feed_picked_dates[feed_idx]` is `None` and `today_active` and
+    /// `yesterday_active` will be all `false`.
     pub fn active_services_for_feed_with_policy(
         &self,
         feed_idx: FeedIdx,
@@ -398,6 +398,7 @@ impl RaptorTimetable {
         let n_services = self.services.len();
         let mut today_active = vec![false; n_services];
         let mut yesterday_active = vec![false; n_services];
+        let mut feed_picked_dates = vec![None; self.feeds.len()];
         let yesterday_overnight_time = time_of_day.add_seconds(86_400);
 
         let start = feed.services_span.start as usize;
@@ -410,6 +411,7 @@ impl RaptorTimetable {
         };
 
         if let Some(picked_date) = picked {
+            feed_picked_dates[feed_idx.index()] = Some(picked_date);
             let yesterday_date = picked_date
                 .checked_sub_days(Days::new(1))
                 .unwrap_or(picked_date);
@@ -418,37 +420,26 @@ impl RaptorTimetable {
                 today_active[sidx] = service.is_active_on(picked_date);
                 yesterday_active[sidx] = service.is_active_on(yesterday_date);
             }
-            Some(ActiveServiceWindow {
-                date: query_date,
-                picked_date,
-                time_of_day,
-                today_active,
-                yesterday_date,
-                yesterday_overnight_time,
-                yesterday_active,
-            })
-        } else {
-            let yesterday_date = query_date
-                .checked_sub_days(Days::new(1))
-                .unwrap_or(query_date);
-            Some(ActiveServiceWindow {
-                date: query_date,
-                picked_date: query_date,
-                time_of_day,
-                today_active,
-                yesterday_date,
-                yesterday_overnight_time,
-                yesterday_active,
-            })
         }
+
+        Some(ActiveServiceWindow {
+            date: query_date,
+            feed_picked_dates,
+            time_of_day,
+            today_active,
+            yesterday_overnight_time,
+            yesterday_active,
+        })
     }
 
     /// Evaluates active services across **all** feeds in this [`RaptorTimetable`] for a local
-    /// `(query_date, time_of_day)` by resolving each feed's `picked_date` independently using `policy`.
+    /// `(query_date, time_of_day)` by resolving each feed's representative date independently
+    /// using `policy` and recording it in [`ActiveServiceWindow::feed_picked_dates`].
     ///
     /// Under [`DateMappingPolicy::Exact`], both `query_date` and `query_date - 1` are evaluated
     /// directly for every feed even when no service starts on `query_date`. For non-exact policies,
-    /// feeds with no matching active date within tolerance have both masks left `false`.
+    /// feeds with no matching active date within tolerance have `feed_picked_dates[feed_idx] == None`
+    /// and both masks left `false`.
     pub fn active_services_at_time_with_policy(
         &self,
         query_date: NaiveDate,
@@ -458,7 +449,7 @@ impl RaptorTimetable {
         let n_services = self.services.len();
         let mut today_active = vec![false; n_services];
         let mut yesterday_active = vec![false; n_services];
-        let mut first_picked = query_date;
+        let mut feed_picked_dates = vec![None; self.feeds.len()];
 
         for (i, feed) in self.feeds.iter().enumerate() {
             let start = feed.services_span.start as usize;
@@ -471,9 +462,7 @@ impl RaptorTimetable {
                 _ => ServiceCalendar::resolve_service_date(feed_services, query_date, policy),
             };
             if let Some(picked_date) = picked {
-                if i == 0 {
-                    first_picked = picked_date;
-                }
+                feed_picked_dates[i] = Some(picked_date);
                 let yesterday_date = picked_date
                     .checked_sub_days(Days::new(1))
                     .unwrap_or(picked_date);
@@ -485,15 +474,11 @@ impl RaptorTimetable {
             }
         }
 
-        let yesterday_date = first_picked
-            .checked_sub_days(Days::new(1))
-            .unwrap_or(first_picked);
         ActiveServiceWindow {
             date: query_date,
-            picked_date: first_picked,
+            feed_picked_dates,
             time_of_day,
             today_active,
-            yesterday_date,
             yesterday_overnight_time: time_of_day.add_seconds(86_400),
             yesterday_active,
         }

@@ -87,6 +87,60 @@ impl<D: rkyv::rancor::Fallible + ?Sized>
     }
 }
 
+/// `rkyv::with` wrapper that serializes `Vec<Option<NaiveDate>>` as `Vec<i32>` (`num_days_from_ce`, or `i32::MIN` for `None`).
+pub struct RkyvOptionNaiveDateVec;
+
+impl rkyv::with::ArchiveWith<Vec<Option<NaiveDate>>> for RkyvOptionNaiveDateVec {
+    type Archived = rkyv::vec::ArchivedVec<rkyv::rend::i32_le>;
+    type Resolver = rkyv::vec::VecResolver;
+
+    fn resolve_with(
+        field: &Vec<Option<NaiveDate>>,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let days: Vec<i32> = field
+            .iter()
+            .map(|opt| opt.map_or(i32::MIN, |d| d.num_days_from_ce()))
+            .collect();
+        rkyv::vec::ArchivedVec::resolve_from_slice(&days, resolver, out);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized>
+    rkyv::with::SerializeWith<Vec<Option<NaiveDate>>, S> for RkyvOptionNaiveDateVec
+{
+    fn serialize_with(
+        field: &Vec<Option<NaiveDate>>,
+        serializer: &mut S,
+    ) -> Result<Self::Resolver, S::Error> {
+        let days: Vec<i32> = field
+            .iter()
+            .map(|opt| opt.map_or(i32::MIN, |d| d.num_days_from_ce()))
+            .collect();
+        rkyv::vec::ArchivedVec::serialize_from_slice(&days, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::with::DeserializeWith<
+        rkyv::vec::ArchivedVec<rkyv::rend::i32_le>,
+        Vec<Option<NaiveDate>>,
+        D,
+    > for RkyvOptionNaiveDateVec
+{
+    fn deserialize_with(
+        field: &rkyv::vec::ArchivedVec<rkyv::rend::i32_le>,
+        _deserializer: &mut D,
+    ) -> Result<Vec<Option<NaiveDate>>, D::Error> {
+        Ok(field
+            .as_slice()
+            .iter()
+            .map(|d| NaiveDate::from_num_days_from_ce_opt(d.to_native()))
+            .collect())
+    }
+}
+
 /// `rkyv::with` wrapper that serializes `rgb::RGB8` as `[u8; 3]`.
 pub struct RkyvRgb8;
 

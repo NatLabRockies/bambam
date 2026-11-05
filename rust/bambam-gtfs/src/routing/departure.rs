@@ -1,6 +1,6 @@
 //! Active service window (`ActiveServiceWindow`) and earliest boardable departure (`BoardableDeparture`).
 
-use crate::ids::TripIdx;
+use crate::ids::{FeedIdx, TripIdx};
 use crate::primitives::GtfsTime;
 use crate::routing::RaptorTimetable;
 use crate::traits::TemporalStopTime;
@@ -8,7 +8,7 @@ use chrono::{DateTime, Days, NaiveDate};
 use chrono_tz::Tz;
 
 /// Active service evaluation window for a local `(date, time_of_day)` query, supporting both
-/// current-day schedules and previous-day overnight trips (`>= 24:00:00` on `date - 1`).
+/// current-day schedules and previous-day overnight trips (`>= 24:00:00` on `picked_date - 1`).
 #[derive(
     Clone,
     Debug,
@@ -24,22 +24,39 @@ pub struct ActiveServiceWindow {
     /// Local calendar date of the rider's query.
     #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub date: NaiveDate,
-    /// Representative calendar date evaluated against [`crate::model::ServiceCalendar`]s
-    /// (equals `date` under [`crate::model::DateMappingPolicy::Exact`], or the mapped active
-    /// service date when resolved via a [`crate::model::DateMappingPolicy`]).
-    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
-    pub picked_date: NaiveDate,
+    /// Representative calendar date evaluated for each feed, indexed by [`FeedIdx`]
+    /// (`Some(date)` under [`crate::model::DateMappingPolicy::Exact`], `Some(picked_date)` when
+    /// resolved via a [`crate::model::DateMappingPolicy`], or `None` when a feed was not evaluated
+    /// or had no matching active date).
+    #[rkyv(with = crate::primitives::RkyvOptionNaiveDateVec)]
+    pub feed_picked_dates: Vec<Option<NaiveDate>>,
     /// Local time of day on `date` (`0..86_400` seconds).
     pub time_of_day: GtfsTime,
-    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on `picked_date`.
+    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on their
+    /// owning feed's resolved representative date (`feed_picked_dates[feed_idx]`).
     pub today_active: Vec<bool>,
-    /// Previous calendar date relative to `picked_date` (`picked_date - 1 day`).
-    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
-    pub yesterday_date: NaiveDate,
-    /// Query time expressed on `yesterday_date`'s service clock (`time_of_day + 86_400` seconds).
+    /// Query time expressed on the previous calendar day's service clock (`time_of_day + 86_400` seconds).
     pub yesterday_overnight_time: GtfsTime,
-    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on `yesterday_date`.
+    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on the
+    /// calendar day preceding their owning feed's resolved representative date (`picked_date - 1 day`).
     pub yesterday_active: Vec<bool>,
+}
+
+impl ActiveServiceWindow {
+    /// Returns the representative active calendar date (`picked_date`) evaluated for `feed_idx`,
+    /// or `None` if `feed_idx` was not evaluated or had no matching date under the policy.
+    #[inline]
+    pub fn picked_date_for_feed(&self, feed_idx: FeedIdx) -> Option<NaiveDate> {
+        self.feed_picked_dates.get(feed_idx.index()).copied().flatten()
+    }
+
+    /// Returns the previous calendar date (`picked_date - 1 day`) evaluated for overnight services
+    /// on `feed_idx`, or `None` if `feed_idx` has no resolved `picked_date`.
+    #[inline]
+    pub fn yesterday_date_for_feed(&self, feed_idx: FeedIdx) -> Option<NaiveDate> {
+        let picked = self.picked_date_for_feed(feed_idx)?;
+        Some(picked.checked_sub_days(Days::new(1)).unwrap_or(picked))
+    }
 }
 
 /// Earliest boardable trip or frequency/flex departure returned by
@@ -464,7 +481,7 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(window.date, query_wed);
-                    assert_eq!(window.picked_date, in_range_wed);
+                    assert_eq!(window.picked_date_for_feed(FeedIdx::new(0)), Some(in_range_wed));
 
                     // Count how many trips in the pattern are active on this Wednesday window:
                     // Must be exactly the 4 Wednesday trips (never the 2 Saturday or 1 Sunday trips!)
@@ -512,5 +529,64 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_multi_feed_independent_picked_dates_in_active_service_window() {
+        use crate::enums::Exception;
+        use crate::model::DateMappingPolicy;
+        use crate::raw::RawCalendarDate;
+
+        // Feed 0 only operates on Saturday 2017-01-07; Feed 1 only operates on Saturday 2017-01-14
+        let sat_jan_7 = NaiveDate::from_ymd_opt(2017, 1, 7).unwrap();
+        let sat_jan_14 = NaiveDate::from_ymd_opt(2017, 1, 14).unwrap();
+        let query_sat_jan_21 = NaiveDate::from_ymd_opt(2017, 1, 21).unwrap();
+
+        let mut raw0 = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        raw0.calendar = None;
+        raw0.calendar_dates = Some(vec![RawCalendarDate {
+            service_id: ServiceId::new("service1"),
+            date: sat_jan_7,
+            exception_type: Exception::Added,
+        }]);
+
+        let mut raw1 = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        raw1.calendar = None;
+        raw1.calendar_dates = Some(vec![RawCalendarDate {
+            service_id: ServiceId::new("service1"),
+            date: sat_jan_14,
+            exception_type: Exception::Added,
+        }]);
+
+        let mut builder = RaptorTimetable::builder();
+        let f0 = builder
+            .add_feed("feed_jan7", ValidatedFeed::try_from(raw0).unwrap())
+            .unwrap();
+        let f1 = builder
+            .add_feed("feed_jan14", ValidatedFeed::try_from(raw1).unwrap())
+            .unwrap();
+        let timetable = builder.build();
+
+        let win = timetable.active_services_at_time_with_policy(
+            query_sat_jan_21,
+            GtfsTime::from_hms(8, 0, 0),
+            DateMappingPolicy::Nearest {
+                tolerance_days: 30,
+                match_weekday: true,
+            },
+        );
+
+        assert_eq!(win.date, query_sat_jan_21);
+        assert_eq!(win.picked_date_for_feed(f0), Some(sat_jan_7));
+        assert_eq!(win.picked_date_for_feed(f1), Some(sat_jan_14));
+        assert_eq!(
+            win.yesterday_date_for_feed(f0),
+            Some(NaiveDate::from_ymd_opt(2017, 1, 6).unwrap())
+        );
+        assert_eq!(
+            win.yesterday_date_for_feed(f1),
+            Some(NaiveDate::from_ymd_opt(2017, 1, 13).unwrap())
+        );
+        assert_eq!(win.today_active, vec![true, true]);
     }
 }

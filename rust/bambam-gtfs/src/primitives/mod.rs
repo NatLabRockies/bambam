@@ -15,8 +15,8 @@ pub use coord::Coord;
 pub use error::PrimitiveError;
 pub use gtfs_time::GtfsTime;
 pub use rkyv_helpers::{
-    RkyvLengthMeters, RkyvNaiveDate, RkyvNaiveDateSet, RkyvNaiveDateTime, RkyvOptionTz, RkyvRgb8,
-    RkyvTimeSeconds, RkyvTz,
+    RkyvLengthMeters, RkyvNaiveDate, RkyvNaiveDateSet, RkyvNaiveDateTime, RkyvOptionNaiveDateVec,
+    RkyvOptionTz, RkyvRgb8, RkyvTimeSeconds, RkyvTz,
 };
 pub use time_window::TimeWindow;
 
