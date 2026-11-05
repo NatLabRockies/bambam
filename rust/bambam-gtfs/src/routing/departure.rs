@@ -243,6 +243,36 @@ mod tests {
                 GtfsTime::from_hms(24, 50, 0)
             )
         );
+
+        // Even though no service starts on Monday 2017-01-09 (`today_active` is all false),
+        // `DateMappingPolicy::Exact` evaluates both `query_date` and `query_date - 1` so Sunday's
+        // 24:30 overnight trip is still found via the policy and datetime APIs at Monday 00:15.
+        assert!(window.today_active.iter().all(|&b| !b));
+        let exact_all_win = timetable.active_services_at_time_with_policy(
+            query_date,
+            query_time,
+             crate::model::DateMappingPolicy::Exact,
+        );
+        assert_eq!(exact_all_win, window);
+
+        let exact_feed_win = timetable
+            .active_services_for_feed_with_policy(
+                FeedIdx::new(0),
+                query_date,
+                query_time,
+                crate::model::DateMappingPolicy::Exact,
+            )
+            .unwrap();
+        assert_eq!(exact_feed_win, window);
+
+        let query_dt = chrono_tz::Tz::Europe__Paris
+            .with_ymd_and_hms(2017, 1, 9, 0, 15, 0)
+            .unwrap();
+        let (dt_board, dt_dep) = timetable
+            .earliest_boardable_trip_at_datetime(PatternIdx::new(0), 0, &query_dt)
+            .expect("should find Sunday's 24:30 overnight trip at Monday 00:15 under Exact");
+        assert_eq!(dt_board, board);
+        assert_eq!(dt_dep, zoned_overnight);
     }
 
     #[test]

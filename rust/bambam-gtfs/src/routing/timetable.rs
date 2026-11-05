@@ -382,8 +382,11 @@ impl RaptorTimetable {
     /// [`ActiveServiceWindow`], and `window.date` preserves the rider's `query_date` so boarding
     /// and arrival [`DateTime`]s are resolved on the rider's actual query date.
     ///
-    /// If no date satisfies `policy` for `feed_idx`, `today_active` and `yesterday_active` will
-    /// be all `false`.
+    /// Under [`DateMappingPolicy::Exact`], `picked_date` is `query_date` and both `query_date`
+    /// (`today_active`) and `query_date - 1` (`yesterday_active`) are evaluated directly even when
+    /// no service starts on `query_date`, preserving overnight (`>= 24:00:00`) departures from the
+    /// previous calendar day. For non-exact policies, if no date satisfies `policy` for `feed_idx`,
+    /// `today_active` and `yesterday_active` will be all `false`.
     pub fn active_services_for_feed_with_policy(
         &self,
         feed_idx: FeedIdx,
@@ -401,9 +404,12 @@ impl RaptorTimetable {
         let end = feed.services_span.end as usize;
         let feed_services = self.services.get(start..end)?;
 
-        if let Some(picked_date) =
-            ServiceCalendar::resolve_service_date(feed_services, query_date, policy)
-        {
+        let picked = match policy {
+            DateMappingPolicy::Exact => Some(query_date),
+            _ => ServiceCalendar::resolve_service_date(feed_services, query_date, policy),
+        };
+
+        if let Some(picked_date) = picked {
             let yesterday_date = picked_date
                 .checked_sub_days(Days::new(1))
                 .unwrap_or(picked_date);
@@ -439,6 +445,10 @@ impl RaptorTimetable {
 
     /// Evaluates active services across **all** feeds in this [`RaptorTimetable`] for a local
     /// `(query_date, time_of_day)` by resolving each feed's `picked_date` independently using `policy`.
+    ///
+    /// Under [`DateMappingPolicy::Exact`], both `query_date` and `query_date - 1` are evaluated
+    /// directly for every feed even when no service starts on `query_date`. For non-exact policies,
+    /// feeds with no matching active date within tolerance have both masks left `false`.
     pub fn active_services_at_time_with_policy(
         &self,
         query_date: NaiveDate,
@@ -456,9 +466,11 @@ impl RaptorTimetable {
             let Some(feed_services) = self.services.get(start..end) else {
                 continue;
             };
-            if let Some(picked_date) =
-                ServiceCalendar::resolve_service_date(feed_services, query_date, policy)
-            {
+            let picked = match policy {
+                DateMappingPolicy::Exact => Some(query_date),
+                _ => ServiceCalendar::resolve_service_date(feed_services, query_date, policy),
+            };
+            if let Some(picked_date) = picked {
                 if i == 0 {
                     first_picked = picked_date;
                 }
