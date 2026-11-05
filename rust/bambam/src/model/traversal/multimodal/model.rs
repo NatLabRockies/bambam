@@ -623,7 +623,9 @@ mod test {
             0
         );
         assert_eq!(
-            state_model.get_custom_i64(&state, "leg_0_route_id").unwrap(),
+            state_model
+                .get_custom_i64(&state, "leg_0_route_id")
+                .unwrap(),
             0
         );
 
@@ -638,12 +640,16 @@ mod test {
             variable::EMPTY_CATEGORICAL_VALUE
         );
         assert_eq!(
-            state_model.get_custom_i64(&state, "leg_1_route_id").unwrap(),
+            state_model
+                .get_custom_i64(&state, "leg_1_route_id")
+                .unwrap(),
             variable::EMPTY_CATEGORICAL_VALUE
         );
         // And leg_0_route_id remains 0
         assert_eq!(
-            state_model.get_custom_i64(&state, "leg_0_route_id").unwrap(),
+            state_model
+                .get_custom_i64(&state, "leg_0_route_id")
+                .unwrap(),
             0
         );
     }
