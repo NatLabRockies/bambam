@@ -268,8 +268,8 @@ impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<Length, S> fo
     }
 }
 
-impl<D: rkyv::rancor::Fallible + ?Sized>
-    rkyv::with::DeserializeWith<rkyv::rend::f64_le, Length, D> for RkyvLengthMeters
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::with::DeserializeWith<rkyv::rend::f64_le, Length, D>
+    for RkyvLengthMeters
 {
     fn deserialize_with(
         field: &rkyv::rend::f64_le,

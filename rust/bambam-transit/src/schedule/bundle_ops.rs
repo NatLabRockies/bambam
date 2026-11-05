@@ -215,7 +215,9 @@ pub fn process_bundle(
     let mut edges: HashMap<(VertexId, VertexId), GtfsEdge> = HashMap::new();
     let mut date_mapping: HashSet<DateMapping> = HashSet::new();
     for target_date in c.date_mapping_policy.iter() {
-        let picked_date = c.date_mapping_policy.resolve_feed_date(&target_date, &gtfs)?;
+        let picked_date = c
+            .date_mapping_policy
+            .resolve_feed_date(&target_date, &gtfs)?;
 
         for trip in gtfs.trips.values() {
             let service = match (
@@ -224,9 +226,7 @@ pub fn process_bundle(
             ) {
                 (None, MalformedTripPolicy::Drop) => continue,
                 (None, MalformedTripPolicy::Fail) => {
-                    return Err(ScheduleError::TripWithInvalidServiceId(
-                        trip.id.to_string(),
-                    ));
+                    return Err(ScheduleError::TripWithInvalidServiceId(trip.id.to_string()));
                 }
                 (Some(s), _) => s,
             };
@@ -483,7 +483,13 @@ fn process_schedule(
 
     // match this stop time pair to the graph or apply optional fallback policy
     let ((src_id, src_point, src_walk_distance), (dst_id, dst_point, dst_walk_distance)) =
-        map_match(src, dst, stop_locations, &c.vertices, c.spatial_index.clone())?;
+        map_match(
+            src,
+            dst,
+            stop_locations,
+            &c.vertices,
+            c.spatial_index.clone(),
+        )?;
 
     // Build stop-to-stop geometry and distance according to policy if this edge is new
     if !edges.contains_key(&(src_id, dst_id)) {
