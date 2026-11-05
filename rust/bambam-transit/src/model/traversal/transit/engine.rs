@@ -60,6 +60,8 @@ impl TryFrom<TransitTraversalConfig> for TransitTraversalEngine {
             value.gtfs_metadata_input_file
         );
 
+        let walk_speed = value.walk_speed.map(|ws| ws.to_uom());
+
         if value.edges_schedules_input_file.ends_with(".rkyv") {
             let timetable =
                 EdgeTimetable::load_rkyv(&value.edges_schedules_input_file).map_err(|e| {
@@ -70,7 +72,7 @@ impl TryFrom<TransitTraversalConfig> for TransitTraversalEngine {
                 })?;
             return Ok(Self {
                 timetable,
-                walk_speed: value.walk_speed,
+                walk_speed,
             });
         }
 
@@ -104,7 +106,7 @@ impl TryFrom<TransitTraversalConfig> for TransitTraversalEngine {
 
         Ok(Self {
             timetable,
-            walk_speed: value.walk_speed,
+            walk_speed,
         })
     }
 }
