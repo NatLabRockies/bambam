@@ -57,9 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Departure query: find the earliest boardable trip on pattern 0 at stop offset 0
     let date = NaiveDate::from_ymd_opt(2017, 1, 7).unwrap();
     let window = timetable.active_services_at_time(date, GtfsTime::from_hms(8, 30, 0));
-    if let Some(dep) =
-        timetable.earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &window)
-    {
+    if let Some(dep) = timetable.earliest_boardable_trip(PatternIdx::new(0), 0, &window) {
         // Reconstruct the exact geographic linestring between stop 0 and stop 1
         let leg_geometry = timetable.reconstruct_leg_linestring(dep.trip_idx, 0, 1)?;
         println!(

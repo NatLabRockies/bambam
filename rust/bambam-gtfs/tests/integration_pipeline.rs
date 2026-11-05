@@ -115,7 +115,7 @@ fn test_phased_pipeline_basic_fixture() {
         )
         .unwrap();
     assert!(timetable
-        .earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &wed_exact_win)
+        .earliest_boardable_trip(PatternIdx::new(0), 0, &wed_exact_win)
         .is_none());
 
     // 2. BestCase on Wednesday 2017-01-04 falls back to match_weekday: false and picks Sunday 2017-01-01 (3 days earlier, tie-breaker over Saturday 2017-01-07 which is 3 days later)
@@ -156,7 +156,7 @@ fn test_phased_pipeline_basic_fixture() {
         Some(sat_2017_01_14)
     );
     let dep = timetable
-        .earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &mapped_sat_win)
+        .earliest_boardable_trip(PatternIdx::new(0), 0, &mapped_sat_win)
         .expect("trip1 should be boardable on mapped Saturday 2017-01-14");
     assert_eq!(
         dep.departure_datetime(&timetable, mapped_sat_win.date)

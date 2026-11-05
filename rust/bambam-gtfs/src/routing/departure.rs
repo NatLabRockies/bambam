@@ -60,7 +60,7 @@ impl ActiveServiceWindow {
 }
 
 /// Earliest boardable trip or frequency/flex departure returned by
-/// [`RaptorTimetable::earliest_boardable_trip`] or [`RaptorTimetable::earliest_boardable_trip_with_overnight`].
+/// [`RaptorTimetable::earliest_boardable_trip`] or [`RaptorTimetable::earliest_boardable_trip_in_mask`].
 #[derive(
     Clone,
     Copy,
@@ -240,7 +240,7 @@ mod tests {
         );
 
         let board = timetable
-            .earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &window)
+            .earliest_boardable_trip(PatternIdx::new(0), 0, &window)
             .expect("should board yesterday's overnight trip at 00:30 AM");
         assert!(board.is_overnight_from_yesterday);
         assert_eq!(board.departure_time, GtfsTime::from_hms(24, 30, 0));
@@ -502,7 +502,7 @@ mod tests {
                     while cursor <= GtfsTime::from_hms(10, 0, 0) {
                         let mut step_win = window.clone();
                         step_win.time_of_day = cursor;
-                        if let Some(dep) = timetable.earliest_boardable_trip_with_overnight(
+                        if let Some(dep) = timetable.earliest_boardable_trip(
                             PatternIdx::new(0),
                             0,
                             &step_win,

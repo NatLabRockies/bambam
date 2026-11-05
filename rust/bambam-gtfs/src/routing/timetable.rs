@@ -332,11 +332,6 @@ impl RaptorTimetable {
             .copied()
     }
 
-    /// Returns a boolean mask indexed by [`ServiceIdx`] indicating which services are active on `date`.
-    pub fn active_services_mask(&self, date: NaiveDate) -> Vec<bool> {
-        self.services.iter().map(|s| s.is_active_on(date)).collect()
-    }
-
     /// Resolves `target_date` to a representative active service date (`picked_date`) for `feed_idx`
     /// by applying `policy` across that feed's [`ServiceCalendar`] slice (`feed.services_span`).
     pub fn resolve_service_date_for_feed(
@@ -352,26 +347,48 @@ impl RaptorTimetable {
         ServiceCalendar::resolve_service_date(feed_services, target_date, policy)
     }
 
-    /// Evaluates active services for a local `(date, time_of_day)` query, including previous-day
-    /// (`date - 1`) services that may still be running overnight with GTFS timestamps `>= 24:00:00`
-    /// (`time_of_day + 86_400` seconds).
+    fn populate_feed_active_services(
+        &self,
+        feed_idx: FeedIdx,
+        query_date: NaiveDate,
+        policy: DateMappingPolicy,
+        today_active: &mut [bool],
+        yesterday_active: &mut [bool],
+        feed_picked_dates: &mut [Option<NaiveDate>],
+    ) -> Option<()> {
+        let feed = self.feeds.get(feed_idx.index())?;
+        let start = feed.services_span.start as usize;
+        let end = feed.services_span.end as usize;
+        let feed_services = self.services.get(start..end)?;
+
+        let picked = match policy {
+            DateMappingPolicy::Exact => Some(query_date),
+            _ => ServiceCalendar::resolve_service_date(feed_services, query_date, policy),
+        };
+
+        if let Some(picked_date) = picked {
+            feed_picked_dates[feed_idx.index()] = Some(picked_date);
+            let yesterday_date = picked_date
+                .checked_sub_days(Days::new(1))
+                .unwrap_or(picked_date);
+            for (offset, service) in feed_services.iter().enumerate() {
+                let sidx = start + offset;
+                today_active[sidx] = service.is_active_on(picked_date);
+                yesterday_active[sidx] = service.is_active_on(yesterday_date);
+            }
+        }
+        Some(())
+    }
+
+    /// Evaluates active services across all feeds for a local `(date, time_of_day)` query using
+    /// [`DateMappingPolicy::Exact`], including previous-day (`date - 1`) services that may still
+    /// be running overnight with GTFS timestamps `>= 24:00:00` (`time_of_day + 86_400` seconds).
     pub fn active_services_at_time(
         &self,
         date: NaiveDate,
         time_of_day: GtfsTime,
     ) -> ActiveServiceWindow {
-        let today_active = self.active_services_mask(date);
-        let yesterday_date = date.checked_sub_days(Days::new(1)).unwrap_or(date);
-        let yesterday_active = self.active_services_mask(yesterday_date);
-        let yesterday_overnight_time = time_of_day.add_seconds(86_400);
-        ActiveServiceWindow {
-            date,
-            feed_picked_dates: vec![Some(date); self.feeds.len()],
-            time_of_day,
-            today_active,
-            yesterday_overnight_time,
-            yesterday_active,
-        }
+        self.active_services_at_time_with_policy(date, time_of_day, DateMappingPolicy::Exact)
     }
 
     /// Evaluates active services for `feed_idx` at a local `(query_date, time_of_day)` using `policy`
@@ -394,40 +411,26 @@ impl RaptorTimetable {
         time_of_day: GtfsTime,
         policy: DateMappingPolicy,
     ) -> Option<ActiveServiceWindow> {
-        let feed = self.feeds.get(feed_idx.index())?;
         let n_services = self.services.len();
         let mut today_active = vec![false; n_services];
         let mut yesterday_active = vec![false; n_services];
         let mut feed_picked_dates = vec![None; self.feeds.len()];
-        let yesterday_overnight_time = time_of_day.add_seconds(86_400);
 
-        let start = feed.services_span.start as usize;
-        let end = feed.services_span.end as usize;
-        let feed_services = self.services.get(start..end)?;
-
-        let picked = match policy {
-            DateMappingPolicy::Exact => Some(query_date),
-            _ => ServiceCalendar::resolve_service_date(feed_services, query_date, policy),
-        };
-
-        if let Some(picked_date) = picked {
-            feed_picked_dates[feed_idx.index()] = Some(picked_date);
-            let yesterday_date = picked_date
-                .checked_sub_days(Days::new(1))
-                .unwrap_or(picked_date);
-            for (offset, service) in feed_services.iter().enumerate() {
-                let sidx = start + offset;
-                today_active[sidx] = service.is_active_on(picked_date);
-                yesterday_active[sidx] = service.is_active_on(yesterday_date);
-            }
-        }
+        self.populate_feed_active_services(
+            feed_idx,
+            query_date,
+            policy,
+            &mut today_active,
+            &mut yesterday_active,
+            &mut feed_picked_dates,
+        )?;
 
         Some(ActiveServiceWindow {
             date: query_date,
             feed_picked_dates,
             time_of_day,
             today_active,
-            yesterday_overnight_time,
+            yesterday_overnight_time: time_of_day.add_seconds(86_400),
             yesterday_active,
         })
     }
@@ -451,27 +454,15 @@ impl RaptorTimetable {
         let mut yesterday_active = vec![false; n_services];
         let mut feed_picked_dates = vec![None; self.feeds.len()];
 
-        for (i, feed) in self.feeds.iter().enumerate() {
-            let start = feed.services_span.start as usize;
-            let end = feed.services_span.end as usize;
-            let Some(feed_services) = self.services.get(start..end) else {
-                continue;
-            };
-            let picked = match policy {
-                DateMappingPolicy::Exact => Some(query_date),
-                _ => ServiceCalendar::resolve_service_date(feed_services, query_date, policy),
-            };
-            if let Some(picked_date) = picked {
-                feed_picked_dates[i] = Some(picked_date);
-                let yesterday_date = picked_date
-                    .checked_sub_days(Days::new(1))
-                    .unwrap_or(picked_date);
-                for (offset, service) in feed_services.iter().enumerate() {
-                    let sidx = start + offset;
-                    today_active[sidx] = service.is_active_on(picked_date);
-                    yesterday_active[sidx] = service.is_active_on(yesterday_date);
-                }
-            }
+        for i in 0..self.feeds.len() {
+            let _ = self.populate_feed_active_services(
+                FeedIdx::from_usize(i),
+                query_date,
+                policy,
+                &mut today_active,
+                &mut yesterday_active,
+                &mut feed_picked_dates,
+            );
         }
 
         ActiveServiceWindow {
@@ -547,7 +538,7 @@ impl RaptorTimetable {
         let pattern = self.patterns.get(pattern_idx.index())?;
         let window =
             self.active_services_for_feed_at_datetime_with_policy(pattern.feed_idx, dt, policy)?;
-        let dep = self.earliest_boardable_trip_with_overnight(pattern_idx, stop_offset, &window)?;
+        let dep = self.earliest_boardable_trip(pattern_idx, stop_offset, &window)?;
         let dep_dt = dep.departure_datetime(self, window.date)?;
         Some((dep, dep_dt))
     }
@@ -594,7 +585,10 @@ impl RaptorTimetable {
     }
 
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` departing at or after `after_time`
-    /// among trips whose `service_idx` is enabled in `active_services`.
+    /// within a single service-day boolean mask `active_services` (indexed by [`ServiceIdx`]).
+    ///
+    /// For full service-window queries that also evaluate previous-day overnight trips (`>= 24:00:00`),
+    /// use [`RaptorTimetable::earliest_boardable_trip`].
     ///
     /// Seamlessly handles:
     /// 1. **Fixed-schedule trips** (and materialized frequency trips) via `partition_point` binary search
@@ -602,7 +596,7 @@ impl RaptorTimetable {
     /// 2. **Headway-based `frequencies.txt` trips** by computing the first headway departure `>= after_time`
     ///    within each `FrequencyWindow`, and
     /// 3. **GTFS-Flex `FlexWindow` trips** where `after_time <= window.end` (boarding at `max(after_time, window.start)`).
-    pub fn earliest_boardable_trip(
+    pub fn earliest_boardable_trip_in_mask(
         &self,
         pattern_idx: PatternIdx,
         stop_offset: usize,
@@ -749,20 +743,20 @@ impl RaptorTimetable {
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` using an [`ActiveServiceWindow`],
     /// checking both today's schedule (`after_time = window.time_of_day`) and yesterday's overnight
     /// trips (`after_time = window.time_of_day + 86_400`) and returning whichever boards earlier.
-    pub fn earliest_boardable_trip_with_overnight(
+    pub fn earliest_boardable_trip(
         &self,
         pattern_idx: PatternIdx,
         stop_offset: usize,
         window: &ActiveServiceWindow,
     ) -> Option<BoardableDeparture> {
-        let today_cand = self.earliest_boardable_trip(
+        let today_cand = self.earliest_boardable_trip_in_mask(
             pattern_idx,
             stop_offset,
             window.time_of_day,
             &window.today_active,
         );
         let overnight_cand = self
-            .earliest_boardable_trip(
+            .earliest_boardable_trip_in_mask(
                 pattern_idx,
                 stop_offset,
                 window.yesterday_overnight_time,
@@ -1018,13 +1012,13 @@ mod tests {
         }]);
         let validated = ValidatedFeed::try_from(raw).unwrap();
 
-        // 1. Non-materialized frequency query via earliest_boardable_trip
+        // 1. Non-materialized frequency query via earliest_boardable_trip_in_mask
         let timetable = RaptorTimetable::try_from(validated.clone()).unwrap();
         let active_mask = vec![true; timetable.services.len()];
         let pat_idx = PatternIdx::new(0);
 
         let dep0 = timetable
-            .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &active_mask)
+            .earliest_boardable_trip_in_mask(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &active_mask)
             .expect("should find frequency departure at stop 0");
         assert_eq!(dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
         assert_eq!(
@@ -1033,7 +1027,7 @@ mod tests {
         );
 
         let dep1 = timetable
-            .earliest_boardable_trip(pat_idx, 1, GtfsTime::from_hms(7, 12, 0), &active_mask)
+            .earliest_boardable_trip_in_mask(pat_idx, 1, GtfsTime::from_hms(7, 12, 0), &active_mask)
             .expect("should find frequency departure at stop 1");
         assert_eq!(dep1.departure_time, GtfsTime::from_hms(7, 20, 0));
         assert_eq!(
@@ -1051,7 +1045,7 @@ mod tests {
 
         let mat_active = vec![true; mat_timetable.services.len()];
         let mat_dep0 = mat_timetable
-            .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &mat_active)
+            .earliest_boardable_trip_in_mask(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &mat_active)
             .expect("should binary-search materialized frequency trips");
         assert_eq!(mat_dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
         assert_eq!(mat_dep0.frequency_offset_secs, 0);
@@ -1075,7 +1069,7 @@ mod tests {
 
         // Pickup forbidden at stop_offset = 1 -> None
         assert!(timetable
-            .earliest_boardable_trip(
+            .earliest_boardable_trip_in_mask(
                 PatternIdx::new(0),
                 1,
                 GtfsTime::from_hms(0, 0, 0),
@@ -1085,7 +1079,7 @@ mod tests {
 
         // Service inactive -> None
         assert!(timetable
-            .earliest_boardable_trip(
+            .earliest_boardable_trip_in_mask(
                 PatternIdx::new(0),
                 0,
                 GtfsTime::from_hms(0, 0, 0),
