@@ -1,12 +1,9 @@
-use std::collections::HashMap;
-
-use chrono::{Duration, NaiveDate, NaiveDateTime};
+use chrono::{Duration, NaiveDateTime};
 use routee_compass_core::model::{
     state::{StateModel, StateVariable},
     traversal::TraversalModelError,
 };
 
-use crate::model::traversal::transit::Departure;
 use bambam_core::model::state::fieldname;
 
 /// composes the start time and the current trip_time into a new datetime value.
@@ -35,37 +32,9 @@ pub fn get_current_time(
     Ok(current_datetime)
 }
 
-/// checks for any date mapping for the current date/time value and applies it if found.
-pub fn apply_date_mapping(
-    date_mapping: &HashMap<i64, HashMap<NaiveDate, NaiveDate>>,
-    route_id_label: &i64,
-    current_datetime: &NaiveDateTime,
-) -> NaiveDateTime {
-    date_mapping
-        .get(route_id_label)
-        .and_then(|date_map| date_map.get(&current_datetime.date()))
-        .unwrap_or(&current_datetime.date())
-        .and_time(current_datetime.time())
-}
-
-/// finds the difference in days between the current and the mapped date and uses that
-/// difference to modify the departure time to make it relevant for this search.
-pub fn reverse_date_mapping(
-    current_datetime: &NaiveDateTime,
-    mapped_datetime: &NaiveDateTime,
-    departure: Departure,
-) -> Departure {
-    if departure.is_pos_infinity() {
-        return departure;
-    }
-    let diff = current_datetime.signed_duration_since(*mapped_datetime);
-
-    departure + &diff
-}
-
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike, Duration, NaiveDateTime};
+    use chrono::NaiveDateTime;
     use routee_compass_core::model::{
         state::{StateModel, StateVariable, StateVariableConfig},
         unit::TimeUnit,
@@ -271,204 +240,5 @@ mod tests {
                 ));
             }
         }
-    }
-
-    #[test]
-    fn test_reverse_date_mapping_normal_cases() {
-        let test_cases = vec![
-            // (name, current, search, departure_src, departure_dst, expected_src, expected_dst)
-            (
-                "basic_positive_delay",
-                "2023-06-15 14:30:00",
-                "2023-06-15 10:00:00",
-                "2023-06-15 11:00:00",
-                "2023-06-15 11:30:00",
-                "2023-06-15 15:30:00",
-                "2023-06-15 16:00:00",
-            ),
-            (
-                "search_after_current",
-                "2023-06-15 14:30:00",
-                "2023-06-20 10:00:00",
-                "2023-06-20 15:00:00",
-                "2023-06-20 15:30:00",
-                "2023-06-15 19:30:00",
-                "2023-06-15 20:00:00",
-            ),
-            (
-                "negative_delay",
-                "2023-06-15 14:30:00",
-                "2023-06-15 12:00:00",
-                "2023-06-15 10:00:00",
-                "2023-06-15 10:30:00",
-                "2023-06-15 12:30:00",
-                "2023-06-15 13:00:00",
-            ),
-        ];
-
-        for (name, current_str, search_str, dep_src_str, dep_dst_str, exp_src_str, exp_dst_str) in
-            test_cases
-        {
-            let current_datetime =
-                NaiveDateTime::parse_from_str(current_str, "%Y-%m-%d %H:%M:%S").unwrap();
-            let search_datetime =
-                NaiveDateTime::parse_from_str(search_str, "%Y-%m-%d %H:%M:%S").unwrap();
-            let departure = super::Departure {
-                src_departure_time: NaiveDateTime::parse_from_str(dep_src_str, "%Y-%m-%d %H:%M:%S")
-                    .unwrap(),
-                dst_arrival_time: NaiveDateTime::parse_from_str(dep_dst_str, "%Y-%m-%d %H:%M:%S")
-                    .unwrap(),
-            };
-            let expected_src =
-                NaiveDateTime::parse_from_str(exp_src_str, "%Y-%m-%d %H:%M:%S").unwrap();
-            let expected_dst =
-                NaiveDateTime::parse_from_str(exp_dst_str, "%Y-%m-%d %H:%M:%S").unwrap();
-
-            let result =
-                super::reverse_date_mapping(&current_datetime, &search_datetime, departure);
-
-            assert_eq!(
-                result.src_departure_time, expected_src,
-                "{name}: src_departure_time"
-            );
-            assert_eq!(
-                result.dst_arrival_time, expected_dst,
-                "{name}: dst_arrival_time"
-            );
-        }
-    }
-
-    #[test]
-    fn test_reverse_date_mapping_with_infinity_past_date() {
-        // Test that reverse_date_mapping correctly handles Departure::infinity()
-        let current_datetime =
-            NaiveDateTime::parse_from_str("2023-06-15 14:30:00", "%Y-%m-%d %H:%M:%S")
-                .expect("Failed to parse current datetime");
-        let search_datetime =
-            NaiveDateTime::parse_from_str("2023-06-20 10:00:00", "%Y-%m-%d %H:%M:%S")
-                .expect("Failed to parse search datetime");
-
-        // Use Departure::infinity() which has NaiveDateTime::MAX for both times
-        let infinity_departure = super::Departure::infinity();
-
-        let result =
-            super::reverse_date_mapping(&current_datetime, &search_datetime, infinity_departure);
-
-        // With overflow protection, infinity should return infinity
-        assert_eq!(result, super::Departure::infinity());
-    }
-
-    #[test]
-    fn test_reverse_date_mapping_large_future_departure() {
-        // Test with a departure far in the future
-        let current_datetime =
-            NaiveDateTime::parse_from_str("2023-06-15 14:30:00", "%Y-%m-%d %H:%M:%S")
-                .expect("Failed to parse current datetime");
-        let search_datetime =
-            NaiveDateTime::parse_from_str("2023-06-15 10:00:00", "%Y-%m-%d %H:%M:%S")
-                .expect("Failed to parse search datetime");
-
-        // Create a departure very far in the future (year 9999)
-        let departure = super::Departure {
-            src_departure_time: NaiveDateTime::parse_from_str(
-                "9999-12-31 23:59:59",
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap(),
-            dst_arrival_time: NaiveDateTime::parse_from_str(
-                "9999-12-31 23:59:59",
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap(),
-        };
-
-        let result = super::reverse_date_mapping(&current_datetime, &search_datetime, departure);
-
-        // The delay is ~7976 years, adding to 2023 gives ~10000
-        // This doesn't overflow, it produces a valid far-future date
-        assert!(
-            result.src_departure_time.year() >= 10000,
-            "Expected year 10000+, got {}",
-            result.src_departure_time.year()
-        );
-        assert_eq!(result.src_departure_time, result.dst_arrival_time);
-    }
-
-    #[test]
-    fn test_reverse_date_mapping_search_after_current_with_large_departure() {
-        // Test case 3 with extreme values that would cause overflow without protection
-        let current_datetime =
-            NaiveDateTime::parse_from_str("2023-06-15 14:30:00", "%Y-%m-%d %H:%M:%S")
-                .expect("Failed to parse current datetime");
-        let search_datetime =
-            NaiveDateTime::parse_from_str("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-                .expect("Failed to parse search datetime");
-
-        // Departure is very far in the future relative to search
-        let departure = super::Departure {
-            src_departure_time: NaiveDateTime::parse_from_str(
-                "9999-12-31 23:59:59",
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap(),
-            dst_arrival_time: NaiveDateTime::parse_from_str(
-                "9999-12-31 23:59:59",
-                "%Y-%m-%d %H:%M:%S",
-            )
-            .unwrap(),
-        };
-
-        let result = super::reverse_date_mapping(&current_datetime, &search_datetime, departure);
-
-        // The delay from search to departure is ~8000 years
-        // Adding this to current_datetime (2023) gives ~10023
-        // This doesn't overflow, but produces a very far future date
-        assert!(
-            result.src_departure_time.year() >= 10000,
-            "Expected year 10000+, got {}",
-            result.src_departure_time.year()
-        );
-        assert_eq!(result.src_departure_time, result.dst_arrival_time);
-    }
-
-    #[test]
-    fn test_reverse_date_mapping_overflow_to_max() {
-        // Test with values that will actually cause overflow and clamp to MAX
-        // Construct a far-future date by adding duration to a base date
-        let base_date = NaiveDateTime::parse_from_str("2020-01-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-            .expect("Failed to parse base datetime");
-
-        // Add 50,000 years worth of days
-        let current_datetime = base_date
-            .checked_add_signed(Duration::days(50000 * 365))
-            .expect("Failed to create far-future current datetime");
-
-        let search_datetime = base_date;
-
-        // Create a departure close to MAX to ensure overflow
-        // MAX is year +262142
-        let near_max = NaiveDateTime::MAX
-            .checked_sub_signed(Duration::days(365))
-            .unwrap();
-        let departure = super::Departure {
-            src_departure_time: near_max,
-            dst_arrival_time: near_max,
-        };
-
-        let result = super::reverse_date_mapping(&current_datetime, &search_datetime, departure);
-
-        // The delay from base_date to near-MAX is ~260,000 years
-        // Adding it to current_datetime (50,000 years in future) will overflow
-        // This should clamp to MAX
-        assert_eq!(
-            result.src_departure_time,
-            NaiveDateTime::MAX,
-            "Should clamp to MAX on overflow"
-        );
-        assert_eq!(
-            result.dst_arrival_time,
-            NaiveDateTime::MAX,
-            "Should clamp to MAX on overflow"
-        );
     }
 }

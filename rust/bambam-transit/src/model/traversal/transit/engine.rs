@@ -160,10 +160,7 @@ fn read_schedules_from_file(
 
 #[cfg(test)]
 mod test {
-    use crate::model::traversal::transit::{
-        engine::TransitTraversalEngine,
-        schedule::{Departure, Schedule},
-    };
+    use crate::model::traversal::transit::engine::TransitTraversalEngine;
     use bambam_gtfs::{EdgeDeparture, EdgeTimetable};
     use chrono::NaiveDateTime;
 
@@ -211,14 +208,6 @@ mod test {
         );
 
         TransitTraversalEngine::new(builder.build().unwrap(), None)
-    }
-
-    fn dummy_schedule(times: &[(&str, &str)]) -> Schedule {
-        let departures = times.iter().map(|(src, dst)| Departure {
-            src_departure_time: internal_date(src),
-            dst_arrival_time: internal_date(dst),
-        });
-        Schedule::from_iter(departures)
     }
 
     #[test]
@@ -271,36 +260,9 @@ mod test {
     }
 
     #[test]
-    fn test_schedule_from_iter() {
-        let departures = vec![
-            Departure {
-                src_departure_time: internal_date("10:00:00"),
-                dst_arrival_time: internal_date("10:15:00"),
-            },
-            Departure {
-                src_departure_time: internal_date("08:00:00"),
-                dst_arrival_time: internal_date("08:20:00"),
-            },
-            Departure {
-                src_departure_time: internal_date("09:00:00"),
-                dst_arrival_time: internal_date("09:10:00"),
-            },
-        ];
-
-        let schedule = Schedule::from_iter(departures);
-        assert_eq!(schedule.len(), 3);
-
-        // Should be ordered automatically
-        let ordered: Vec<&Departure> = schedule.iter().collect();
-        assert_eq!(ordered[0].src_departure_time, internal_date("08:00:00"));
-        assert_eq!(ordered[1].src_departure_time, internal_date("09:00:00"));
-        assert_eq!(ordered[2].src_departure_time, internal_date("10:00:00"));
-    }
-
-    #[test]
-    fn test_schedule_comprehensive_search_scenario() {
-        // Create a realistic bus schedule with multiple departures throughout the day
-        let schedule = dummy_schedule(&[
+    fn test_edge_timetable_comprehensive_search_scenario() {
+        let mut builder = EdgeTimetable::builder();
+        for (src, dst) in [
             ("06:00:00", "06:25:00"), // Early morning
             ("06:30:00", "06:55:00"),
             ("07:00:00", "07:25:00"), // Rush hour starts
@@ -313,9 +275,15 @@ mod test {
             ("17:30:00", "17:55:00"),
             ("18:00:00", "18:25:00"),
             ("22:00:00", "22:25:00"), // Late evening
-        ]);
+        ] {
+            builder.add_departure(
+                0,
+                0,
+                EdgeDeparture::without_walk_distance(internal_date(src), internal_date(dst)),
+            );
+        }
+        let engine = TransitTraversalEngine::new(builder.build().unwrap(), None);
 
-        // Test various search scenarios
         let test_cases = vec![
             ("05:30:00", Some("06:00:00")), // Before service starts
             ("06:00:00", Some("06:00:00")), // Exact match
@@ -327,12 +295,9 @@ mod test {
         ];
 
         for (search_time, expected_time) in test_cases {
-            let search_departure = Departure {
-                src_departure_time: internal_date(search_time),
-                dst_arrival_time: internal_date(search_time),
-            };
-
-            let result = schedule.lower_bound(std::ops::Bound::Included(&search_departure));
+            let result = engine
+                .get_next_departure(0, &internal_date(search_time), None, None)
+                .unwrap();
 
             match expected_time {
                 Some(expected) => {
@@ -341,7 +306,7 @@ mod test {
                         "Expected departure at {expected} for search time {search_time}"
                     );
                     assert_eq!(
-                        result.unwrap().src_departure_time,
+                        result.unwrap().1.src_departure_time,
                         internal_date(expected),
                         "Search time {search_time} should find departure at {expected}"
                     );

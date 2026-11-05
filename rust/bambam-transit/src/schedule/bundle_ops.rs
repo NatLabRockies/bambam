@@ -1,5 +1,5 @@
 use bambam_gtfs::{
-    model::{Stop, StopTime},
+    model::{Stop, StopTime, Trip},
     TemporalStopTime, ValidatedFeed as Gtfs,
 };
 use chrono::{Duration, NaiveDate, NaiveDateTime};
@@ -33,7 +33,7 @@ use crate::schedule::{
     fq_ops,
     fq_schedule_row::FullyQualifiedScheduleRow,
     schedule_error::ScheduleError,
-    DateMappingPolicy, MalformedTripPolicy, MissingStopLocationPolicy, ScheduleRow, SortedTrip,
+    DateMappingPolicy, MalformedTripPolicy, MissingStopLocationPolicy, ScheduleRow,
 };
 
 /// API for running batch or single bundle processing. configures the run of the GTFS import.
@@ -217,21 +217,15 @@ pub fn process_bundle(
     for target_date in c.date_mapping_policy.iter() {
         let picked_date = c.date_mapping_policy.resolve_feed_date(&target_date, &gtfs)?;
 
-        for raw_trip in gtfs.trips.values() {
-            // sort the stop_time sequence of the trip before proceeding
-            let trip = match SortedTrip::new(raw_trip)? {
-                Some(t) => t,
-                None => continue,
-            };
-
+        for trip in gtfs.trips.values() {
             let service = match (
-                gtfs.services.get(trip.service_id.as_str()),
+                gtfs.services.get(&trip.service_id),
                 &c.malformed_trip_policy,
             ) {
                 (None, MalformedTripPolicy::Drop) => continue,
                 (None, MalformedTripPolicy::Fail) => {
                     return Err(ScheduleError::TripWithInvalidServiceId(
-                        trip.trip_id.clone(),
+                        trip.id.to_string(),
                     ));
                 }
                 (Some(s), _) => s,
@@ -243,17 +237,17 @@ pub fn process_bundle(
             }
 
             if target_date != picked_date {
-                let route = gtfs.get_route(&trip.route_id).ok_or_else(|| {
+                let route = gtfs.get_route(trip.route_id.as_str()).ok_or_else(|| {
                     ScheduleError::MalformedGtfs(format!(
                         "trip {} references route id {} that does not exist",
-                        trip.trip_id, trip.route_id
+                        trip.id, trip.route_id
                     ))
                 })?;
                 let dm = DateMapping {
                     feed_id: feed_id.clone(),
                     agency_id: route.agency_id.as_ref().map(ToString::to_string),
-                    route_id: trip.route_id.clone(),
-                    service_id: trip.service_id.clone(),
+                    route_id: trip.route_id.to_string(),
+                    service_id: trip.service_id.to_string(),
                     target_date,
                     picked_date,
                 };
@@ -271,7 +265,7 @@ pub fn process_bundle(
                     stop_idx,
                     src,
                     dst,
-                    &trip,
+                    trip,
                     &mut edges,
                     &mut edge_id,
                     c.clone(),
@@ -474,7 +468,7 @@ fn process_schedule(
     stop_idx: usize,
     src: &StopTime,
     dst: &StopTime,
-    trip: &SortedTrip,
+    trip: &Trip,
     edges: &mut HashMap<(VertexId, VertexId), GtfsEdge>,
     edge_id: &mut EdgeId,
     c: Arc<ProcessBundlesConfig>,
@@ -545,10 +539,10 @@ fn process_schedule(
         }
     }?;
 
-    let route = gtfs.routes.get(trip.route_id.as_str()).ok_or_else(|| {
+    let route = gtfs.routes.get(&trip.route_id).ok_or_else(|| {
         ScheduleError::MalformedGtfs(format!(
             "trip {} has route id {} which is missing from the archive",
-            trip.trip_id, trip.route_id
+            trip.id, trip.route_id
         ))
     })?;
 
@@ -556,8 +550,8 @@ fn process_schedule(
     let schedule = ScheduleRow::new_with_walk_distance(
         gtfs_edge.edge.edge_id.0,
         feed_id.map(|s| s.to_string()),
-        trip.route_id.clone(),
-        trip.service_id.clone(),
+        trip.route_id.to_string(),
+        trip.service_id.to_string(),
         route.agency_id.as_ref().map(ToString::to_string),
         src_departure_time,
         dst_arrival_time,
@@ -574,7 +568,7 @@ fn process_schedule(
 fn build_edge_geometry_and_distance(
     policy: &DistanceCalculationPolicy,
     gtfs: &Gtfs,
-    trip: &SortedTrip,
+    trip: &Trip,
     stop_idx: usize,
     src: &StopTime,
     dst: &StopTime,
@@ -588,25 +582,22 @@ fn build_edge_geometry_and_distance(
             Ok((geometry, distance))
         }
         DistanceCalculationPolicy::Shape => {
-            let raw_trip = gtfs.trips.get(trip.trip_id.as_str()).ok_or_else(|| {
-                ScheduleError::MalformedGtfs(format!("trip '{}' not found in feed", trip.trip_id))
-            })?;
-            let shape_id = raw_trip.shape_id.as_ref().ok_or_else(|| {
+            let shape_id = trip.shape_id.as_ref().ok_or_else(|| {
                 ScheduleError::MalformedGtfs(format!(
                     "trip '{}' has no shape_id, which is required by DistanceCalculationPolicy::Shape",
-                    trip.trip_id
+                    trip.id
                 ))
             })?;
             let shape = gtfs.shapes.get(shape_id).ok_or_else(|| {
                 ScheduleError::MalformedGtfs(format!(
                     "trip '{}' references missing shape_id '{}'",
-                    trip.trip_id, shape_id
+                    trip.id, shape_id
                 ))
             })?;
             let (Some(s_ref), Some(e_ref)) = (src.shape_ref, dst.shape_ref) else {
                 return Err(ScheduleError::MalformedGtfs(format!(
                     "trip '{}' stop pair at index {} lacks linear-referenced shape distances",
-                    trip.trip_id, stop_idx
+                    trip.id, stop_idx
                 )));
             };
             let coords: Vec<geo::Coord<f64>> = shape
@@ -619,11 +610,9 @@ fn build_edge_geometry_and_distance(
             Ok((geometry, distance))
         }
         DistanceCalculationPolicy::Fallback => {
-            if let Some(coords) = gtfs.reconstruct_trip_leg_linestring(
-                &bambam_gtfs::TripId::new(&trip.trip_id),
-                stop_idx,
-                stop_idx + 1,
-            ) {
+            if let Some(coords) =
+                gtfs.reconstruct_trip_leg_linestring(&trip.id, stop_idx, stop_idx + 1)
+            {
                 if coords.len() >= 2 {
                     let geo_coords: Vec<geo::Coord<f64>> = coords
                         .into_iter()

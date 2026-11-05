@@ -3,8 +3,6 @@ use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use crate::model::traversal::transit::schedule::{Departure, Schedule};
-
 /// guarantees we only log a dst < src data error ONCE
 static SRC_DST_ORDERING_ERROR_LOCK: OnceLock<()> = OnceLock::new();
 
@@ -45,12 +43,6 @@ impl ScheduleLoadingPolicy {
         }
     }
 
-    pub fn insert_if_valid(&self, schedule_skiplist: &mut Schedule, element: Departure) {
-        if self.accepts(element.src_departure_time, element.dst_arrival_time) {
-            schedule_skiplist.insert(element);
-        }
-    }
-
     pub fn insert_into_edge_timetable(
         &self,
         builder: &mut EdgeTimetableBuilder,
@@ -68,31 +60,31 @@ impl ScheduleLoadingPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bambam_gtfs::EdgeTimetable;
     use chrono::NaiveDate;
 
     #[test]
     fn test_invalid_midnight_wraparound_rejection() {
         let policy = ScheduleLoadingPolicy::All;
-        let mut schedule = Schedule::new();
+        let mut builder = EdgeTimetable::builder();
 
         // GTFS departure at 23:55, arriving incorrectly at unpadded 00:05 the same day
-        let invalid_departure = Departure {
-            src_departure_time: NaiveDate::from_ymd_opt(2025, 1, 1)
+        let invalid_departure = EdgeDeparture::without_walk_distance(
+            NaiveDate::from_ymd_opt(2025, 1, 1)
                 .unwrap()
                 .and_hms_opt(23, 55, 0)
                 .unwrap(),
-            dst_arrival_time: NaiveDate::from_ymd_opt(2025, 1, 1)
+            NaiveDate::from_ymd_opt(2025, 1, 1)
                 .unwrap()
                 .and_hms_opt(0, 5, 0)
                 .unwrap(),
-        };
+        );
 
-        policy.insert_if_valid(&mut schedule, invalid_departure);
+        policy.insert_into_edge_timetable(&mut builder, 0, 1, invalid_departure);
+        let timetable = builder.build().unwrap();
 
-        // Without the bug fix restricting src <= dst, this will fail if we assert it should be empty
-        // The expected behavior once fixed is for the schedule to remain length 0
         assert_eq!(
-            schedule.len(),
+            timetable.departures.len(),
             0,
             "Schedule should reject departures where arrival happens before departure"
         );
