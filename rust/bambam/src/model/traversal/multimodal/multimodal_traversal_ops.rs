@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use bambam_core::model::bambam_state;
 use bambam_core::model::state::{
-    fieldname, multimodal_state_ops as state_ops, CategoricalStateMapping, LegIdx,
+    fieldname, multimodal_state_ops as state_ops, variable, CategoricalStateMapping, LegIdx,
 };
 use routee_compass_core::model::state::{StateModel, StateModelError, StateVariable};
 use serde_json::json;
@@ -85,16 +85,33 @@ pub fn update_accumulators(
 }
 
 /// tests if route_id is set, and if so, copies it to the current trip leg.
+/// when traversing a non-transit edge, resets route_id to EMPTY_CATEGORICAL_VALUE (-1)
+/// so non-transit legs do not inherit a stale transit route_id and subsequent transit
+/// boardings are treated as new boardings.
 pub fn update_route_id(
     state: &mut [StateVariable],
     state_model: &StateModel,
     mode: &str,
     leg_idx: LegIdx,
-    max_trip_legs: NonZeroU64,
+    _max_trip_legs: NonZeroU64,
 ) -> Result<(), StateModelError> {
     if state_model.contains_key(bambam_state::ROUTE_ID) {
-        let route_id_label = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
-        state_ops::set_leg_route_id_raw(state, leg_idx, route_id_label, state_model)
+        if mode != "transit" {
+            state_model.set_custom_i64(
+                state,
+                bambam_state::ROUTE_ID,
+                &variable::EMPTY_CATEGORICAL_VALUE,
+            )?;
+            state_ops::set_leg_route_id_raw(
+                state,
+                leg_idx,
+                variable::EMPTY_CATEGORICAL_VALUE,
+                state_model,
+            )
+        } else {
+            let route_id_label = state_model.get_custom_i64(state, bambam_state::ROUTE_ID)?;
+            state_ops::set_leg_route_id_raw(state, leg_idx, route_id_label, state_model)
+        }
     } else {
         Ok(())
     }

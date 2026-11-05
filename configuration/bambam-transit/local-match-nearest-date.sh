@@ -3,6 +3,7 @@
 ./rust/target/release/bambam-transit import \
     --input "boulder_co/ucb-gtfs.zip" \
     --parallelism 1 \
+    --distance-calculation-policy fallback \
     --date-mapping-policy nearest-date \
     --date-mapping-date-tolerance 7 \
     --date-mapping-match-weekday true \
