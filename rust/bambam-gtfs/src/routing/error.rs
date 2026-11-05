@@ -1,10 +1,10 @@
-//! Phase 3 (`routing`) errors when constructing the [`RoutingTimetable`](crate::routing::RoutingTimetable)
-//! or querying trip sub-segment linestrings.
+//! Phase 3 (`routing`) errors when constructing [`RaptorTimetable`](crate::routing::RaptorTimetable)
+//! or [`EdgeTimetable`](crate::routing::EdgeTimetable), or querying trip sub-segment linestrings.
 
 use crate::ids::TripIdx;
 use thiserror::Error;
 
-/// Errors occurring during Phase 3 (`RoutingTimetable` construction and routing queries).
+/// Errors occurring during Phase 3 (`RaptorTimetable` / `EdgeTimetable` construction and routing queries).
 #[derive(Error, Debug)]
 pub enum RoutingError {
     /// A trip has fixed/interpolated stop times at intermediate stops, but its first or last stop
@@ -37,6 +37,24 @@ pub enum RoutingError {
         to_offset: usize,
         /// Total number of stops in the trip's pattern.
         num_stops: usize,
+    },
+
+    /// Requested `edge_id` exceeds the number of edges in [`crate::routing::EdgeTimetable`].
+    #[error("EdgeId {edge_id} exceeds edge timetable length ({num_edges})")]
+    InvalidEdgeId {
+        /// Requested edge index.
+        edge_id: usize,
+        /// Total number of edges in the timetable.
+        num_edges: usize,
+    },
+
+    /// A departure in [`crate::routing::EdgeTimetable`] has `dst_arrival_time < src_departure_time`.
+    #[error("schedule invariant violated: dst_arrival_time must be >= src_departure_time, but found {dst_arrival_time} < {src_departure_time}")]
+    NegativeEdgeTravelTime {
+        /// Formatted departure timestamp.
+        src_departure_time: String,
+        /// Formatted arrival timestamp.
+        dst_arrival_time: String,
     },
 
     /// Binary snapshot serialization or deserialization error (`rkyv` / I/O).

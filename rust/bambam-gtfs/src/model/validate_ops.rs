@@ -897,7 +897,7 @@ mod tests {
     use crate::enums::LocationType;
     use crate::primitives::GtfsTime;
     use crate::raw::{RawStop, RawTrip};
-    use crate::routing::RoutingTimetable;
+    use crate::routing::RaptorTimetable;
     use std::path::PathBuf;
 
     fn fixture_path(rel_path: &str) -> PathBuf {
@@ -1041,7 +1041,7 @@ mod tests {
         assert_eq!(ba_stop.representative_coord(), parent_coord);
         assert!(ba_stop.bounding_box().is_some());
 
-        let timetable = RoutingTimetable::try_from(validated).unwrap();
+        let timetable = RaptorTimetable::try_from(validated).unwrap();
         let ba_pidx = timetable.stop_id_to_place[&StopId::new("boarding_area_3a")];
 
         let nearby = timetable.places_near(parent_coord.unwrap(), 10.0);

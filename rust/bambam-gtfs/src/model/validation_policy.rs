@@ -1,6 +1,6 @@
 //! Validation policy (`ValidationPolicy`), structured warnings (`ValidationWarning`), and dropped entity summary counts (`DroppedEntityCounts`).
 
-/// Policy governing how Phase 2 ([`crate::model::ValidatedFeed`]) and Phase 3 ([`crate::routing::RoutingTimetableBuilder`])
+/// Policy governing how Phase 2 ([`crate::model::ValidatedFeed`]) and Phase 3 ([`crate::routing::RaptorTimetableBuilder`])
 /// handle real-world "dirty GTFS" minor specification violations (such as trips with 0 or 1 stops,
 /// non-monotonic stop timestamps, missing boundary timestamps, duplicate `stop_sequence` numbers,
 /// or broken foreign keys on individual trips/rows).

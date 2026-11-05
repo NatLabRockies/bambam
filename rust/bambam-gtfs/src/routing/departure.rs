@@ -2,7 +2,7 @@
 
 use crate::ids::TripIdx;
 use crate::primitives::GtfsTime;
-use crate::routing::RoutingTimetable;
+use crate::routing::RaptorTimetable;
 use crate::traits::TemporalStopTime;
 use chrono::{DateTime, Days, NaiveDate};
 use chrono_tz::Tz;
@@ -43,7 +43,7 @@ pub struct ActiveServiceWindow {
 }
 
 /// Earliest boardable trip or frequency/flex departure returned by
-/// [`RoutingTimetable::earliest_boardable_trip`] or [`RoutingTimetable::earliest_boardable_trip_with_overnight`].
+/// [`RaptorTimetable::earliest_boardable_trip`] or [`RaptorTimetable::earliest_boardable_trip_with_overnight`].
 #[derive(
     Clone,
     Copy,
@@ -75,7 +75,7 @@ impl BoardableDeparture {
     /// automatically applying `self.frequency_offset_secs`.
     pub fn arrival_time_at(
         &self,
-        timetable: &RoutingTimetable,
+        timetable: &RaptorTimetable,
         to_stop_offset: usize,
     ) -> Option<GtfsTime> {
         let st = timetable
@@ -101,7 +101,7 @@ impl BoardableDeparture {
     /// `self.is_overnight_from_yesterday`).
     pub fn departure_datetime(
         &self,
-        timetable: &RoutingTimetable,
+        timetable: &RaptorTimetable,
         query_date: NaiveDate,
     ) -> Option<DateTime<Tz>> {
         let tz = timetable.trip_timezone(self.trip_idx)?;
@@ -117,7 +117,7 @@ impl BoardableDeparture {
     /// in the trip's agency timezone, given the `query_date` of the [`ActiveServiceWindow`].
     pub fn arrival_datetime_at(
         &self,
-        timetable: &RoutingTimetable,
+        timetable: &RaptorTimetable,
         query_date: NaiveDate,
         to_stop_offset: usize,
     ) -> Option<DateTime<Tz>> {
@@ -202,7 +202,7 @@ mod tests {
             NaiveDate::from_ymd_opt(2017, 1, 9).unwrap()
         );
 
-        let timetable = RoutingTimetable::try_from(validated.clone()).unwrap();
+        let timetable = RaptorTimetable::try_from(validated.clone()).unwrap();
         assert_eq!(
             timetable.feeds[0].primary_timezone,
             Some(chrono_tz::Tz::Europe__Paris)
@@ -256,7 +256,7 @@ mod tests {
             ag.timezone = Tz::America__Los_Angeles;
         }
 
-        let mut builder = RoutingTimetable::builder();
+        let mut builder = RaptorTimetable::builder();
         let ny_idx = builder
             .add_feed("ny", ValidatedFeed::try_from(raw_ny).unwrap())
             .unwrap();
@@ -406,7 +406,7 @@ mod tests {
 
         for use_calendar_dates_only in [false, true] {
             let feed = build_test_feed(use_calendar_dates_only);
-            let timetable = RoutingTimetable::try_from(feed).unwrap();
+            let timetable = RaptorTimetable::try_from(feed).unwrap();
             assert_eq!(timetable.trips.len(), 7);
 
             // Query on a Wednesday (both in-range 2023-08-30 and out-of-range 2023-09-06)

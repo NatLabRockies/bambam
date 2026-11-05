@@ -1,4 +1,4 @@
-//! Phase 3 RAPTOR-style contiguous CSR timetable (`RoutingTimetable`), spatial/departure query methods,
+//! Phase 3 RAPTOR-style contiguous CSR timetable (`RaptorTimetable`), spatial/departure query methods,
 //! and `rkyv` binary snapshot serialization.
 
 use crate::ids::*;
@@ -13,8 +13,8 @@ use crate::routing::spatial_index::{
 use crate::routing::{
     ActiveServiceWindow, BoardableDeparture, CompactStopTime, FeedMetadata, FullyQualifiedPlaceId,
     FullyQualifiedRouteId, FullyQualifiedTripId, IndexedTransfer, PlaceIdKind,
-    PlacePatternOccurrence, PlaceSpatialEntry, RoutableTrip, RoutePattern, RoutingError,
-    RoutingTimetableBuilder,
+    PlacePatternOccurrence, PlaceSpatialEntry, RaptorTimetableBuilder, RoutableTrip, RoutePattern,
+    RoutingError,
 };
 use crate::traits::Spatial;
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime};
@@ -32,11 +32,11 @@ use crate::model::FlexDurationParams;
 use crate::routing::spatial_index::flex_zone_within_radius;
 
 /// Phase 3: RAPTOR-style contiguous CSR timetable, multi-feed archive registry, and spatial/shape
-/// index ready for continental-scale vectorized multimodal A* graph search.
+/// index ready for continental-scale vectorized multimodal graph search.
 #[derive(
     Clone, Debug, Default, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
-pub struct RoutingTimetable {
+pub struct RaptorTimetable {
     /// Metadata and index ranges for every merged GTFS archive, indexed by [`FeedIdx`].
     pub feeds: Vec<FeedMetadata>,
 
@@ -66,7 +66,7 @@ pub struct RoutingTimetable {
 
     /// Flat CSR arena of all `16-byte` [`CompactStopTime`] events across all trips.
     ///
-    /// Use [`RoutingTimetable::trip_stop_times`] or `timetable.stop_times[trip.stop_times_range()]`
+    /// Use [`RaptorTimetable::trip_stop_times`] or `timetable.stop_times[trip.stop_times_range()]`
     /// for $O(1)$ slice access without pointer chasing.
     pub stop_times: Vec<CompactStopTime>,
 
@@ -133,11 +133,11 @@ pub struct RoutingTimetable {
     pub shape_id_to_idx: HashMap<ShapeId, ShapeIdx>,
 }
 
-impl RoutingTimetable {
-    /// Creates a new [`RoutingTimetableBuilder`] for merging one or more [`crate::model::ValidatedFeed`]s
-    /// into a single contiguous national/regional [`RoutingTimetable`].
-    pub fn builder() -> RoutingTimetableBuilder {
-        RoutingTimetableBuilder::new()
+impl RaptorTimetable {
+    /// Creates a new [`RaptorTimetableBuilder`] for merging one or more [`crate::model::ValidatedFeed`]s
+    /// into a single contiguous national/regional [`RaptorTimetable`].
+    pub fn builder() -> RaptorTimetableBuilder {
+        RaptorTimetableBuilder::new()
     }
 
     /// Returns the contiguous slice of [`CompactStopTime`]s for `trip_idx` in $O(1)$ time.
@@ -437,7 +437,7 @@ impl RoutingTimetable {
         }
     }
 
-    /// Evaluates active services across **all** feeds in this [`RoutingTimetable`] for a local
+    /// Evaluates active services across **all** feeds in this [`RaptorTimetable`] for a local
     /// `(query_date, time_of_day)` by resolving each feed's `picked_date` independently using `policy`.
     pub fn active_services_at_time_with_policy(
         &self,
@@ -518,7 +518,7 @@ impl RoutingTimetable {
     }
 
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` at or after a timezone-aware
-    /// [`DateTime`] across a merged multi-timezone [`RoutingTimetable`] using [`DateMappingPolicy::Exact`].
+    /// [`DateTime`] across a merged multi-timezone [`RaptorTimetable`] using [`DateMappingPolicy::Exact`].
     ///
     /// Automatically converts `dt` into the pattern's owning feed's local [`chrono_tz::Tz`] timezone,
     /// evaluates both current-day and previous-day overnight services in that feed's local service day,
@@ -538,7 +538,7 @@ impl RoutingTimetable {
     }
 
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` at or after a timezone-aware
-    /// [`DateTime`] across a merged multi-timezone [`RoutingTimetable`], resolving the owning feed's
+    /// [`DateTime`] across a merged multi-timezone [`RaptorTimetable`], resolving the owning feed's
     /// active service date using `policy`.
     pub fn earliest_boardable_trip_at_datetime_with_policy<T: chrono::TimeZone>(
         &self,
@@ -886,22 +886,22 @@ impl RoutingTimetable {
 
     // --- Binary Snapshot Serialization (`rkyv`) for Instant HPC Cold-Starts ---
 
-    /// Serializes this [`RoutingTimetable`] into a compact `rkyv` byte vector.
+    /// Serializes this [`RaptorTimetable`] into a compact `rkyv` byte vector.
     pub fn to_rkyv_bytes(&self) -> Result<Vec<u8>, RoutingError> {
         let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
             .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
         Ok(aligned.into_vec())
     }
 
-    /// Validates and returns a zero-copy [`ArchivedRoutingTimetable`] reference directly from a
+    /// Validates and returns a zero-copy [`ArchivedRaptorTimetable`] reference directly from a
     /// 16-byte-aligned `rkyv` byte slice (such as an [`rkyv::util::AlignedVec`] or memory-mapped buffer)
     /// without allocating or copying the timetable's vectors.
-    pub fn access_rkyv_bytes(bytes: &[u8]) -> Result<&ArchivedRoutingTimetable, RoutingError> {
-        rkyv::access::<ArchivedRoutingTimetable, rkyv::rancor::Error>(bytes)
+    pub fn access_rkyv_bytes(bytes: &[u8]) -> Result<&ArchivedRaptorTimetable, RoutingError> {
+        rkyv::access::<ArchivedRaptorTimetable, rkyv::rancor::Error>(bytes)
             .map_err(|e| RoutingError::Snapshot(e.to_string()))
     }
 
-    /// Deserializes a [`RoutingTimetable`] from an `rkyv` byte slice (validating the archive via `bytecheck`).
+    /// Deserializes a [`RaptorTimetable`] from an `rkyv` byte slice (validating the archive via `bytecheck`).
     pub fn from_rkyv_bytes(bytes: &[u8]) -> Result<Self, RoutingError> {
         let mut aligned = rkyv::util::AlignedVec::<16>::with_capacity(bytes.len());
         aligned.extend_from_slice(bytes);
@@ -909,7 +909,7 @@ impl RoutingTimetable {
             .map_err(|e| RoutingError::Snapshot(e.to_string()))
     }
 
-    /// Writes this [`RoutingTimetable`] as a binary `rkyv` snapshot to `writer`.
+    /// Writes this [`RaptorTimetable`] as a binary `rkyv` snapshot to `writer`.
     pub fn write_rkyv<W: Write>(&self, mut writer: W) -> Result<(), RoutingError> {
         let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
             .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
@@ -918,7 +918,7 @@ impl RoutingTimetable {
             .map_err(|e| RoutingError::Snapshot(e.to_string()))
     }
 
-    /// Reads a [`RoutingTimetable`] from a binary `rkyv` snapshot `reader`.
+    /// Reads a [`RaptorTimetable`] from a binary `rkyv` snapshot `reader`.
     pub fn read_rkyv<R: Read>(mut reader: R) -> Result<Self, RoutingError> {
         let mut bytes = Vec::new();
         reader
@@ -927,14 +927,14 @@ impl RoutingTimetable {
         Self::from_rkyv_bytes(&bytes)
     }
 
-    /// Saves this [`RoutingTimetable`] to a file on disk in `rkyv` format.
+    /// Saves this [`RaptorTimetable`] to a file on disk in `rkyv` format.
     pub fn save_rkyv(&self, path: impl AsRef<Path>) -> Result<(), RoutingError> {
         let file = File::create(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
         let writer = BufWriter::new(file);
         self.write_rkyv(writer)
     }
 
-    /// Loads a [`RoutingTimetable`] from an `rkyv` snapshot file on disk.
+    /// Loads a [`RaptorTimetable`] from an `rkyv` snapshot file on disk.
     pub fn load_rkyv(path: impl AsRef<Path>) -> Result<Self, RoutingError> {
         let file = File::open(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
         let reader = BufReader::new(file);
@@ -1022,7 +1022,7 @@ mod tests {
         let validated = ValidatedFeed::try_from(raw).unwrap();
 
         // 1. Non-materialized frequency query via earliest_boardable_trip
-        let timetable = RoutingTimetable::try_from(validated.clone()).unwrap();
+        let timetable = RaptorTimetable::try_from(validated.clone()).unwrap();
         let active_mask = vec![true; timetable.services.len()];
         let pat_idx = PatternIdx::new(0);
 
@@ -1044,8 +1044,8 @@ mod tests {
             Some(GtfsTime::from_hms(8, 20, 0))
         );
 
-        // 2. Materialized frequency trips in RoutingTimetableBuilder
-        let mut builder = RoutingTimetable::builder().with_materialize_frequencies(true);
+        // 2. Materialized frequency trips in RaptorTimetableBuilder
+        let mut builder = RaptorTimetable::builder().with_materialize_frequencies(true);
         builder.add_feed("basic_mat", validated).unwrap();
         let mat_timetable = builder.build();
 
@@ -1071,7 +1071,7 @@ mod tests {
         // Forbid pickup at stop_offset = 1
         raw.stop_times[1].pickup_type = PickupDropOffType::NotAvailable;
         let validated = ValidatedFeed::try_from(raw).unwrap();
-        let timetable = RoutingTimetable::try_from(validated).unwrap();
+        let timetable = RaptorTimetable::try_from(validated).unwrap();
 
         let active_all = vec![true; timetable.services.len()];
         let inactive_all = vec![false; timetable.services.len()];
@@ -1128,7 +1128,7 @@ mod tests {
         }
         let feed_denver = ValidatedFeed::try_from(raw_denver).unwrap();
 
-        let mut builder = RoutingTimetable::builder();
+        let mut builder = RaptorTimetable::builder();
         let paris_idx = builder.add_feed("paris", feed_paris).unwrap();
         let denver_idx = builder.add_feed("denver", feed_denver).unwrap();
         let timetable = builder.build();
@@ -1168,21 +1168,21 @@ mod tests {
     #[test]
     fn test_rkyv_snapshot_roundtrip() {
         let feed = ValidatedFeed::from_path(fixture_path("fixtures/basic")).unwrap();
-        let original = RoutingTimetable::try_from(feed).unwrap();
+        let original = RaptorTimetable::try_from(feed).unwrap();
 
         let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
-            .expect("should serialize RoutingTimetable to aligned rkyv buffer");
-        let archived = RoutingTimetable::access_rkyv_bytes(&aligned)
-            .expect("should zero-copy access ArchivedRoutingTimetable");
+            .expect("should serialize RaptorTimetable to aligned rkyv buffer");
+        let archived = RaptorTimetable::access_rkyv_bytes(&aligned)
+            .expect("should zero-copy access ArchivedRaptorTimetable");
         assert_eq!(archived.places.len(), original.places.len());
 
         let bytes = original
             .to_rkyv_bytes()
-            .expect("should serialize RoutingTimetable to rkyv");
+            .expect("should serialize RaptorTimetable to rkyv");
         assert!(!bytes.is_empty());
 
-        let restored = RoutingTimetable::from_rkyv_bytes(&bytes)
-            .expect("should deserialize RoutingTimetable from rkyv");
+        let restored = RaptorTimetable::from_rkyv_bytes(&bytes)
+            .expect("should deserialize RaptorTimetable from rkyv");
 
         assert_eq!(restored.feeds, original.feeds);
         assert_eq!(restored.places, original.places);

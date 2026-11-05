@@ -7,10 +7,10 @@
 //! 2. **Phase 2 ([`model::ValidatedFeed`])**: Relational foreign-key validation, namespace
 //!    collision checks, sum-type normalization ([`model::StopPlace`], [`model::StopTimeTiming`]),
 //!    and [`model::ShapePolyline`] linear referencing (`ShapeLinearRef`).
-//! 3. **Phase 3 ([`routing::RoutingTimetable`])**: Contiguous `0..N` typed indices (`PlaceIdx`,
-//!    `RouteIdx`, `PatternIdx`, `TripIdx`), intermediate stop-time interpolation, RAPTOR-style
-//!    [`routing::RoutePattern`] grouping, reverse adjacency tables, and sub-segment linestring
-//!    slicing for multimodal A* graph search.
+//! 3. **Phase 3 ([`routing::RaptorTimetable`] and [`routing::EdgeTimetable`])**: Contiguous `0..N`
+//!    typed indices (`PlaceIdx`, `RouteIdx`, `PatternIdx`, `TripIdx`), intermediate stop-time
+//!    interpolation, RAPTOR-style [`routing::RoutePattern`] grouping, edge-oriented CSR schedules,
+//!    reverse adjacency tables, and sub-segment linestring slicing for multimodal graph search.
 
 #[macro_use]
 extern crate serde;
@@ -34,9 +34,10 @@ pub use model::{
 pub use primitives::{BoundingBox, Coord, GtfsTime, PrimitiveError, TimeWindow, Tz};
 pub use raw::{CsvRowIter, GtfsArchive, GtfsTable, RawFeed, RawFeedReader, TableBundle};
 pub use routing::{
-    ActiveServiceWindow, ArchivedRoutingTimetable, BoardableDeparture, CompactStopTime,
+    ActiveServiceWindow, ArchivedEdgeTimetable, ArchivedRaptorTimetable, BoardableDeparture,
+    CompactStopTime, EdgeDeparture, EdgeRouteSchedule, EdgeTimetable, EdgeTimetableBuilder,
     FeedMetadata, FullyQualifiedPlaceId, FullyQualifiedRouteId, FullyQualifiedTripId, PlaceIdKind,
-    PlaceSpatialEntry, RoutingTimetable, RoutingTimetableBuilder,
+    PlaceSpatialEntry, RaptorTimetable, RaptorTimetableBuilder,
 };
 pub use traits::{Identifiable, Spatial, TemporalStopTime};
 
@@ -64,21 +65,21 @@ impl ValidatedFeed {
     }
 }
 
-impl RoutingTimetable {
-    /// Reads, validates, and indexes a [`RoutingTimetable`] (Phase 1 -> Phase 2 -> Phase 3)
+impl RaptorTimetable {
+    /// Reads, validates, and indexes a [`RaptorTimetable`] (Phase 1 -> Phase 2 -> Phase 3)
     /// from a directory or `.zip` path using [`ValidationPolicy::Strict`].
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self, Gtfs2Error> {
         Self::from_path_with_policy(path, ValidationPolicy::Strict)
     }
 
-    /// Reads, validates, and indexes a [`RoutingTimetable`] (Phase 1 -> Phase 2 -> Phase 3)
+    /// Reads, validates, and indexes a [`RaptorTimetable`] (Phase 1 -> Phase 2 -> Phase 3)
     /// from a directory or `.zip` path using the specified [`ValidationPolicy`].
     pub fn from_path_with_policy(
         path: impl AsRef<Path>,
         policy: ValidationPolicy,
     ) -> Result<Self, Gtfs2Error> {
         let validated = ValidatedFeed::from_path_with_policy(path, policy)?;
-        let mut builder = RoutingTimetableBuilder::new().with_validation_policy(policy);
+        let mut builder = RaptorTimetableBuilder::new().with_validation_policy(policy);
         builder.add_feed(FeedId::new("default"), validated)?;
         Ok(builder.build())
     }

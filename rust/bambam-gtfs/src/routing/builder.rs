@@ -1,4 +1,4 @@
-//! Multi-feed [`RoutingTimetableBuilder`] for compiling [`ValidatedFeed`]s into a contiguous [`RoutingTimetable`].
+//! Multi-feed [`RaptorTimetableBuilder`] for compiling [`ValidatedFeed`]s into a contiguous [`RaptorTimetable`].
 
 use crate::enums::TransferType;
 use crate::ids::*;
@@ -11,7 +11,7 @@ use crate::routing::compact_stop_time::NO_FLEX_DURATION_IDX;
 use crate::routing::spatial_index::build_place_spatial_index;
 use crate::routing::{
     CompactStopTime, FeedMetadata, IndexedTransfer, PatternStopProfile, PlacePatternOccurrence,
-    RoutableTrip, RoutePattern, RoutingError, RoutingTimetable,
+    RaptorTimetable, RoutableTrip, RoutePattern, RoutingError,
 };
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -40,14 +40,14 @@ fn pickup_code(p: &BoardingPolicy) -> i16 {
 }
 
 /// Multi-feed builder that incrementally compiles and merges one or more [`ValidatedFeed`]s
-/// into a single contiguous [`RoutingTimetable`].
+/// into a single contiguous [`RaptorTimetable`].
 ///
 /// Designed for HPC workflows where each GTFS archive is parsed and validated into a
-/// [`ValidatedFeed`], appended via [`RoutingTimetableBuilder::add_feed`], and immediately dropped
+/// [`ValidatedFeed`], appended via [`RaptorTimetableBuilder::add_feed`], and immediately dropped
 /// so peak memory never exceeds the compact CSR arena.
 #[derive(Default)]
-pub struct RoutingTimetableBuilder {
-    timetable: RoutingTimetable,
+pub struct RaptorTimetableBuilder {
+    timetable: RaptorTimetable,
     pattern_lookup: HashMap<PatternKey, PatternIdx>,
     validation_policy: ValidationPolicy,
     materialize_frequency_trips: bool,
@@ -55,8 +55,8 @@ pub struct RoutingTimetableBuilder {
     flex_duration_lookup: HashMap<[u64; 4], u16>,
 }
 
-impl RoutingTimetableBuilder {
-    /// Creates an empty [`RoutingTimetableBuilder`].
+impl RaptorTimetableBuilder {
+    /// Creates an empty [`RaptorTimetableBuilder`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -76,14 +76,14 @@ impl RoutingTimetableBuilder {
     /// [`RoutableTrip`] instances (with `CompactStopTime` entries shifted for each headway departure
     /// and `frequencies` cleared on the expanded trips).
     ///
-    /// Note that [`RoutingTimetable::earliest_boardable_trip`] supports both materialized and
+    /// Note that [`RaptorTimetable::earliest_boardable_trip`] supports both materialized and
     /// unexpanded frequency trips automatically.
     pub fn with_materialize_frequencies(mut self, materialize: bool) -> Self {
         self.materialize_frequency_trips = materialize;
         self
     }
 
-    /// Appends a [`ValidatedFeed`] under `feed_id` into the contiguous [`RoutingTimetable`] arena,
+    /// Appends a [`ValidatedFeed`] under `feed_id` into the contiguous [`RaptorTimetable`] arena,
     /// returning its assigned [`FeedIdx`].
     pub fn add_feed(
         &mut self,
@@ -542,8 +542,8 @@ impl RoutingTimetableBuilder {
     }
 
     /// Consumes the builder, bulk-loads the [`rstar::RTree`] spatial index over all places,
-    /// and returns the completed [`RoutingTimetable`].
-    pub fn build(mut self) -> RoutingTimetable {
+    /// and returns the completed [`RaptorTimetable`].
+    pub fn build(mut self) -> RaptorTimetable {
         self.timetable.stop_times.shrink_to_fit();
         self.timetable.places.shrink_to_fit();
         self.timetable.trips.shrink_to_fit();
@@ -747,11 +747,11 @@ impl RoutingTimetableBuilder {
     }
 }
 
-impl TryFrom<ValidatedFeed> for RoutingTimetable {
+impl TryFrom<ValidatedFeed> for RaptorTimetable {
     type Error = RoutingError;
 
     fn try_from(feed: ValidatedFeed) -> Result<Self, Self::Error> {
-        let mut builder = RoutingTimetableBuilder::new();
+        let mut builder = RaptorTimetableBuilder::new();
         builder.add_feed(FeedId::new("default"), feed)?;
         Ok(builder.build())
     }
@@ -800,7 +800,7 @@ mod tests {
 
         // Phase 3 interpolates the missing intermediate stop time between 14:00:00 and 15:00:00
         let timetable =
-            RoutingTimetable::try_from(validated).expect("Phase 3 should interpolate stop times");
+            RaptorTimetable::try_from(validated).expect("Phase 3 should interpolate stop times");
         let st_slice = timetable.trip_stop_times(TripIdx::new(0));
         assert_eq!(st_slice.len(), 3);
 
@@ -824,7 +824,7 @@ mod tests {
         raw.stop_times[2].shape_dist_traveled = Some(20.0);
 
         let validated = ValidatedFeed::try_from(raw).unwrap();
-        let timetable = RoutingTimetable::try_from(validated).unwrap();
+        let timetable = RaptorTimetable::try_from(validated).unwrap();
         let st1 = timetable.trip_stop_times(TripIdx::new(0))[1];
         // Since shape_ref is populated asymmetrically near the start, interpolated time is closer to 14:00 than 14:30
         assert!(st1.arrival_time().unwrap() < GtfsTime::from_hms(14, 30, 0));
@@ -836,7 +836,7 @@ mod tests {
         bad_boundary_raw.stop_times[0].departure_time = None;
         let bad_boundary_val = ValidatedFeed::try_from(bad_boundary_raw).unwrap();
         assert!(matches!(
-            RoutingTimetable::try_from(bad_boundary_val),
+            RaptorTimetable::try_from(bad_boundary_val),
             Err(RoutingError::UninterpolatableTripBoundary { .. })
         ));
 
@@ -846,7 +846,7 @@ mod tests {
         dec_raw.stop_times[1].departure_time = Some(GtfsTime::from_hms(13, 0, 0));
         let dec_val = ValidatedFeed::try_from(dec_raw).unwrap();
         assert!(matches!(
-            RoutingTimetable::try_from(dec_val),
+            RaptorTimetable::try_from(dec_val),
             Err(RoutingError::DecreasingStopTimes { .. })
         ));
     }
@@ -920,7 +920,7 @@ mod tests {
         let validated =
             ValidatedFeed::from_raw_with_policy(raw, ValidationPolicy::DropInvalidTripsWithWarning)
                 .unwrap();
-        let mut builder = RoutingTimetable::builder()
+        let mut builder = RaptorTimetable::builder()
             .with_validation_policy(ValidationPolicy::DropInvalidTripsWithWarning);
         builder.add_feed("test_feed", validated).unwrap();
         let timetable = builder.build();

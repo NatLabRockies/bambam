@@ -6,7 +6,7 @@ use crate::primitives::{deserialize_option_timezone, serialize_option_timezone, 
 use chrono_tz::Tz;
 use std::ops::Range;
 
-/// Metadata and contiguous index spans for a single GTFS archive inside a merged [`crate::routing::RoutingTimetable`].
+/// Metadata and contiguous index spans for a single GTFS archive inside a merged [`crate::routing::RaptorTimetable`].
 #[derive(
     Clone,
     Debug,

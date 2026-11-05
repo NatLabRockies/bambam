@@ -55,9 +55,9 @@ fn test_phased_pipeline_basic_fixture() {
     assert!(trip1.stop_times[0].place.as_stop().is_some());
     assert!(trip1.stop_times[0].shape_ref.is_some());
 
-    // Phase 3: RoutingTimetable
+    // Phase 3: RaptorTimetable
     let timetable =
-        RoutingTimetable::try_from(validated).expect("Phase 3 RoutingTimetable should succeed");
+        RaptorTimetable::try_from(validated).expect("Phase 3 RaptorTimetable should succeed");
     assert_eq!(timetable.places.len(), 6);
     assert_eq!(timetable.routes.len(), 4);
     assert_eq!(timetable.patterns.len(), 1);
@@ -165,7 +165,7 @@ fn test_phased_pipeline_basic_fixture() {
 
 #[test]
 fn test_zip_archive_reading() {
-    let timetable = RoutingTimetable::from_path(fixture_path("fixtures/zips/gtfs.zip"))
+    let timetable = RaptorTimetable::from_path(fixture_path("fixtures/zips/gtfs.zip"))
         .expect("should read zip archive");
     assert_eq!(timetable.places.len(), 5);
     assert!(!timetable.routes.is_empty());
@@ -196,7 +196,7 @@ fn test_compact_memory_layout_and_multi_feed_merger() {
     let feed_b = ValidatedFeed::from_path(fixture_path("fixtures/interpolated_stop_times"))
         .expect("load feed B");
 
-    let mut builder = RoutingTimetable::builder();
+    let mut builder = RaptorTimetable::builder();
     let fidx_a = builder
         .add_feed("agency_alpha", feed_a)
         .expect("add feed A");
@@ -266,7 +266,7 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     assert_eq!(flex_only.booking_rules.as_ref().map(Vec::len), Some(1));
 
     // 1. Read the existing fixtures/flex feed through all 3 phases
-    let timetable = RoutingTimetable::from_path(fixture_path("fixtures/flex"))
+    let timetable = RaptorTimetable::from_path(fixture_path("fixtures/flex"))
         .expect("fixtures/flex should pass Phases 1, 2, and 3");
     assert_eq!(timetable.location_id_to_place.len(), 2);
     assert!(!timetable.trips.is_empty());
@@ -352,7 +352,7 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     assert!(lg.representative_coord().is_some());
 
     let flex_timetable =
-        RoutingTimetable::try_from(validated).expect("Phase 3 with location group should succeed");
+        RaptorTimetable::try_from(validated).expect("Phase 3 with location group should succeed");
     let lg_pidx = flex_timetable.location_group_id_to_place[&LocationGroupId::new("lg_1")];
     let area_708_pidx = flex_timetable.location_id_to_place[&LocationId::new("area_708")];
 

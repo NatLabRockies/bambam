@@ -1,11 +1,11 @@
-//! Validated, interpolated trip (`RoutableTrip`) in the [`crate::routing::RoutingTimetable`].
+//! Validated, interpolated trip (`RoutableTrip`) in the [`crate::routing::RaptorTimetable`].
 
 use crate::ids::*;
 use crate::model::FrequencyWindow;
 use std::ops::Range;
 
-/// A validated, interpolated trip in the [`crate::routing::RoutingTimetable`] referencing a contiguous slice
-/// of [`crate::routing::CompactStopTime`]s in `RoutingTimetable::stop_times`.
+/// A validated, interpolated trip in the [`crate::routing::RaptorTimetable`] referencing a contiguous slice
+/// of [`crate::routing::CompactStopTime`]s in `RaptorTimetable::stop_times`.
 #[derive(
     Clone,
     Debug,
@@ -33,7 +33,7 @@ pub struct RoutableTrip {
     pub shape_idx: Option<ShapeIdx>,
     /// Optional trip headsign.
     pub headsign: Option<String>,
-    /// Start index into `RoutingTimetable::stop_times` where this trip's `stop_count` entries begin.
+    /// Start index into `RaptorTimetable::stop_times` where this trip's `stop_count` entries begin.
     pub stop_times_offset: u32,
     /// Number of stops on this trip (always equal to `pattern.stops.len()`).
     pub stop_count: u16,
@@ -42,7 +42,7 @@ pub struct RoutableTrip {
 }
 
 impl RoutableTrip {
-    /// Returns the index range into `RoutingTimetable::stop_times` for this trip.
+    /// Returns the index range into `RaptorTimetable::stop_times` for this trip.
     #[inline]
     pub const fn stop_times_range(&self) -> Range<usize> {
         let start = self.stop_times_offset as usize;
