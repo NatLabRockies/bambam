@@ -47,7 +47,10 @@ impl ActiveServiceWindow {
     /// or `None` if `feed_idx` was not evaluated or had no matching date under the policy.
     #[inline]
     pub fn picked_date_for_feed(&self, feed_idx: FeedIdx) -> Option<NaiveDate> {
-        self.feed_picked_dates.get(feed_idx.index()).copied().flatten()
+        self.feed_picked_dates
+            .get(feed_idx.index())
+            .copied()
+            .flatten()
     }
 
     /// Returns the previous calendar date (`picked_date - 1 day`) evaluated for overnight services
@@ -268,7 +271,7 @@ mod tests {
         let exact_all_win = timetable.active_services_at_time_with_policy(
             query_date,
             query_time,
-             crate::model::DateMappingPolicy::Exact,
+            crate::model::DateMappingPolicy::Exact,
         );
         assert_eq!(exact_all_win, window);
 
@@ -481,7 +484,10 @@ mod tests {
                         .unwrap();
 
                     assert_eq!(window.date, query_wed);
-                    assert_eq!(window.picked_date_for_feed(FeedIdx::new(0)), Some(in_range_wed));
+                    assert_eq!(
+                        window.picked_date_for_feed(FeedIdx::new(0)),
+                        Some(in_range_wed)
+                    );
 
                     // Count how many trips in the pattern are active on this Wednesday window:
                     // Must be exactly the 4 Wednesday trips (never the 2 Saturday or 1 Sunday trips!)
@@ -502,11 +508,9 @@ mod tests {
                     while cursor <= GtfsTime::from_hms(10, 0, 0) {
                         let mut step_win = window.clone();
                         step_win.time_of_day = cursor;
-                        if let Some(dep) = timetable.earliest_boardable_trip(
-                            PatternIdx::new(0),
-                            0,
-                            &step_win,
-                        ) {
+                        if let Some(dep) =
+                            timetable.earliest_boardable_trip(PatternIdx::new(0), 0, &step_win)
+                        {
                             if dep.departure_time <= GtfsTime::from_hms(10, 0, 0) {
                                 let dt = dep.departure_datetime(&timetable, step_win.date).unwrap();
                                 assert_eq!(dt.date_naive(), query_wed);

@@ -905,9 +905,15 @@ mod tests {
         assert_eq!(timetable.trips.len(), 3);
         assert_eq!(timetable.patterns.len(), 2);
         let feed_id = FeedId::new("test_feed");
-        let t1 = timetable.lookup_trip(&feed_id, &TripId::new("trip1")).unwrap();
-        let t2 = timetable.lookup_trip(&feed_id, &TripId::new("trip2")).unwrap();
-        let t3 = timetable.lookup_trip(&feed_id, &TripId::new("trip3")).unwrap();
+        let t1 = timetable
+            .lookup_trip(&feed_id, &TripId::new("trip1"))
+            .unwrap();
+        let t2 = timetable
+            .lookup_trip(&feed_id, &TripId::new("trip2"))
+            .unwrap();
+        let t3 = timetable
+            .lookup_trip(&feed_id, &TripId::new("trip3"))
+            .unwrap();
         assert_eq!(
             timetable.trips[t1.index()].pattern_idx,
             timetable.trips[t2.index()].pattern_idx
