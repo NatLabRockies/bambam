@@ -118,26 +118,80 @@ fn any_service_active_on(services: &[&ServiceCalendar], date: NaiveDate) -> bool
     services.iter().any(|s| s.is_active_on(date))
 }
 
+/// Returns the inclusive `(min_date, max_date)` bounds of all potentially active dates across `services`,
+/// or `None` if no service can be active on any date.
+fn service_date_bounds(services: &[&ServiceCalendar]) -> Option<(NaiveDate, NaiveDate)> {
+    let mut bounds: Option<(NaiveDate, NaiveDate)> = None;
+    let mut include_range = |start: NaiveDate, end: NaiveDate| {
+        bounds = Some(match bounds {
+            Some((min_d, max_d)) => (min_d.min(start), max_d.max(end)),
+            None => (start, end),
+        });
+    };
+
+    for service in services {
+        if let Some(weekly) = &service.weekly {
+            if weekly.weekday_mask != 0 && weekly.start_date <= weekly.end_date {
+                include_range(weekly.start_date, weekly.end_date);
+            }
+        }
+        for &date in &service.added_dates {
+            if !service.removed_dates.contains(&date) {
+                include_range(date, date);
+            }
+        }
+    }
+
+    bounds
+}
+
 fn find_nearest_active_date(
     target_date: NaiveDate,
     services: &[&ServiceCalendar],
     tolerance_days: u64,
     match_weekday: bool,
 ) -> Option<NaiveDate> {
-    if any_service_active_on(services, target_date) {
+    let (min_date, max_date) = service_date_bounds(services)?;
+
+    if target_date >= min_date
+        && target_date <= max_date
+        && any_service_active_on(services, target_date)
+    {
         return Some(target_date);
     }
 
-    let step = if match_weekday { 7 } else { 1 };
-    let mut offset = step;
+    let step: u64 = if match_weekday { 7 } else { 1 };
+    let initial_gap = if target_date > max_date {
+        target_date.signed_duration_since(max_date).num_days() as u64
+    } else if target_date < min_date {
+        min_date.signed_duration_since(target_date).num_days() as u64
+    } else {
+        step
+    };
+    let Some(mut offset) = initial_gap.div_ceil(step).checked_mul(step) else {
+        return None;
+    };
+    offset = offset.max(step);
+
     while offset <= tolerance_days {
-        if let Some(earlier) = target_date.checked_sub_days(Days::new(offset)) {
-            if any_service_active_on(services, earlier) {
+        let earlier = target_date
+            .checked_sub_days(Days::new(offset))
+            .filter(|&d| d >= min_date);
+        let later = target_date
+            .checked_add_days(Days::new(offset))
+            .filter(|&d| d <= max_date);
+
+        if earlier.is_none() && later.is_none() {
+            break;
+        }
+
+        if let Some(earlier) = earlier {
+            if earlier <= max_date && any_service_active_on(services, earlier) {
                 return Some(earlier);
             }
         }
-        if let Some(later) = target_date.checked_add_days(Days::new(offset)) {
-            if any_service_active_on(services, later) {
+        if let Some(later) = later {
+            if later >= min_date && any_service_active_on(services, later) {
                 return Some(later);
             }
         }
@@ -250,6 +304,33 @@ mod tests {
                 DateMappingPolicy::BestCase { tolerance_days: 30 }
             ),
             Some(NaiveDate::from_ymd_opt(2026, 11, 7).unwrap())
+        );
+
+        // 4. Nonempty calendar with no active dates and tolerance_days = u64::MAX terminates immediately
+        let empty_cal = vec![ServiceCalendar::new(ServiceId::new("inactive"))];
+        assert_eq!(
+            ServiceCalendar::resolve_service_date(
+                &empty_cal,
+                wed,
+                DateMappingPolicy::Nearest {
+                    tolerance_days: u64::MAX,
+                    match_weekday: false,
+                }
+            ),
+            None
+        );
+
+        // 5. Calendar with bounded dates but no matching weekday terminates once bounds are exhausted
+        assert_eq!(
+            ServiceCalendar::resolve_service_date(
+                &services,
+                sun,
+                DateMappingPolicy::Nearest {
+                    tolerance_days: u64::MAX,
+                    match_weekday: true,
+                }
+            ),
+            None
         );
     }
 }
