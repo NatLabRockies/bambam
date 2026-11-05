@@ -93,7 +93,7 @@ type = "inject"
 format = "key_value"
 write_mode = "overwrite"
 key = "start_datetime"
-value = "2025-09-01 09:00:00"
+value = "2025-08-15 09:00:00"
 
 [[plugin.output_plugins]]
 type = "traversal"
