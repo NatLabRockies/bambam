@@ -12,12 +12,9 @@ pub enum TransitTraversalConfig {
     Rkyv {
         /// Path to the serialized EdgeTimetable (.rkyv) file
         timetable_input_file: String, // (or alias = "edges_schedules_input_file" for backwards compatibility)
-        /// Optional date-range policy to filter departures, or None/All
-        #[serde(default)]
-        schedule_loading_policy: ScheduleLoadingPolicy,
         /// Optional walking speed `(value, unit)` used to compute the vertex-to-stop boarding delay
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        walk_speed: Option<WalkSpeed>,
+        #[serde(default)]
+        walk_speed: WalkSpeed,
     },
     /// Raw CSV schedule + metadata workflow
     Csv {

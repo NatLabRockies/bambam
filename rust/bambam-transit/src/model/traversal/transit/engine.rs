@@ -59,9 +59,8 @@ impl TryFrom<&TransitTraversalConfig> for TransitTraversalEngine {
         match value {
             TransitTraversalConfig::Rkyv {
                 timetable_input_file,
-                schedule_loading_policy,
                 walk_speed,
-            } => todo!(),
+            } => load_from_rkyv_format(timetable_input_file, *walk_speed),
             TransitTraversalConfig::Csv {
                 edges_schedules_input_file,
                 gtfs_metadata_input_file,
@@ -79,6 +78,25 @@ impl TryFrom<&TransitTraversalConfig> for TransitTraversalEngine {
     }
 }
 
+fn load_from_rkyv_format(
+    timetable_input_file: &str,
+    walk_speed: WalkSpeed,
+) -> Result<TransitTraversalEngine, TraversalModelError> {
+    log::debug!(
+        "loading transit traversal model from rkyv binary at {}",
+        timetable_input_file
+    );
+
+    let walk_speed = walk_speed.to_uom();
+
+    let timetable = EdgeTimetable::load_rkyv(timetable_input_file).map_err(|e| {
+        let msg = format!("failure reading edge timetable file {timetable_input_file}: {e}");
+        TraversalModelError::BuildError(msg)
+    })?;
+
+    Ok(TransitTraversalEngine::new(timetable, walk_speed))
+}
+
 fn load_from_csv_format(
     edges_schedules_input_file: &str,
     gtfs_metadata_input_file: &str,
@@ -87,24 +105,11 @@ fn load_from_csv_format(
     walk_speed: WalkSpeed,
 ) -> Result<TransitTraversalEngine, TraversalModelError> {
     log::debug!(
-        "loading transit traversal model from {}",
+        "loading transit traversal model from CSV source. metadata file: {}",
         gtfs_metadata_input_file
     );
 
     let walk_speed = walk_speed.to_uom();
-
-    if edges_schedules_input_file.ends_with(".rkyv") {
-        let timetable = EdgeTimetable::load_rkyv(&edges_schedules_input_file).map_err(|e| {
-            TraversalModelError::BuildError(format!(
-                "Failed to load rkyv edge timetable from {}: {e}",
-                edges_schedules_input_file
-            ))
-        })?;
-        return Ok(TransitTraversalEngine {
-            timetable,
-            walk_speed,
-        });
-    }
 
     // Deserialize metadata file
     let file = File::open(&gtfs_metadata_input_file).map_err(|e| {
