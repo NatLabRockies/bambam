@@ -53,23 +53,6 @@ constraint.models = [
     { type = "multimodal", this_mode = "walk", available_modes = ["walk", "transit"] }
 ]
 
-###
-### TRANSIT TOPOLOGY
-###
-[[search]] 
-traversal.type = "combined"
-traversal.models = [
-    { type = "distance", distance_unit = "miles" }, 
-    { type = "transit", schedule_format = "csv", edges_schedules_input_file = "boulder_co/transit/edges-schedules.csv.gz", gtfs_metadata_input_file = "boulder_co/transit/edges-gtfs-metadata.json", schedule_loading_policy = "All", walk_speed = { value = 5, unit = "kph" }},
-    { type = "multimodal", this_mode = "transit", available_modes = ["walk", "transit"] }
-]
-
-constraint.type = "combined"
-constraint.models = [
-    { type = "time_limit", time_limit = { time = 40.0, time_unit = "minutes" }},
-    { type = "multimodal", this_mode = "transit", available_modes = ["walk", "transit"] }
-]
-
 [[plugin.input_plugins]]
 type = "grid"
 extent_format = "wkt"
