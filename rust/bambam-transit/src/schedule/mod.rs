@@ -4,6 +4,7 @@ mod malformed_trip_policy;
 mod missing_stop_matching_policy;
 mod provider;
 mod schedule_error;
+mod schedule_output_format;
 mod schedule_row;
 mod summary;
 
@@ -24,5 +25,6 @@ pub use malformed_trip_policy::MalformedTripPolicy;
 pub use missing_stop_matching_policy::MissingStopLocationPolicy;
 pub use provider::GtfsProvider;
 pub use schedule_error::batch_processing_error;
+pub use schedule_output_format::ScheduleOutputFormat;
 pub use schedule_row::ScheduleRow;
 pub use summary::GtfsSummary;

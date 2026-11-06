@@ -1,6 +1,7 @@
+use bambam_core::model::state::CategoricalStateMapping;
 use bambam_gtfs::{
     model::{Stop, StopTime, Trip},
-    TemporalStopTime, ValidatedFeed as Gtfs,
+    EdgeDeparture, EdgeTimetable, TemporalStopTime, ValidatedFeed as Gtfs,
 };
 use chrono::{Duration, NaiveDate, NaiveDateTime};
 use csv::QuoteStyle;
@@ -24,16 +25,20 @@ use std::{
 use uom::{si::f64::Length, ConstZero};
 
 use super::{GtfsBundle, GtfsEdge};
-use crate::schedule::{
-    batch_processing_error,
-    date::DateMapping,
-    distance_calculation_policy::{
-        compute_haversine, compute_linestring_length, DistanceCalculationPolicy,
+use crate::{
+    model::traversal::transit::ScheduleLoadingPolicy,
+    schedule::{
+        batch_processing_error,
+        date::DateMapping,
+        distance_calculation_policy::{
+            compute_haversine, compute_linestring_length, DistanceCalculationPolicy,
+        },
+        fq_ops,
+        fq_schedule_row::FullyQualifiedScheduleRow,
+        schedule_error::ScheduleError,
+        DateMappingPolicy, MalformedTripPolicy, MissingStopLocationPolicy, ScheduleOutputFormat,
+        ScheduleRow,
     },
-    fq_ops,
-    fq_schedule_row::FullyQualifiedScheduleRow,
-    schedule_error::ScheduleError,
-    DateMappingPolicy, MalformedTripPolicy, MissingStopLocationPolicy, ScheduleRow,
 };
 
 /// API for running batch or single bundle processing. configures the run of the GTFS import.
@@ -62,6 +67,8 @@ pub struct ProcessBundlesConfig {
     pub output_directory: String,
     /// if true, allow overwriting files in output directory
     pub overwrite: bool,
+    /// format to write edge schedules (`csv` or `rkyv`)
+    pub schedule_output_format: ScheduleOutputFormat,
 }
 
 /// multithreaded GTFS processing.
@@ -385,18 +392,10 @@ pub fn write_bundle(
     std::fs::write(output_directory.join(metadata_filename), &metadata_str)
         .map_err(|e| ScheduleError::GtfsApp(format!("failed writing GTFS Agency metadata: {e}")))?;
     let edges_filename = "edges-compass.csv.gz";
-    let schedules_filename = "edges-schedules.csv.gz";
     let geometries_filename = "edges-geometries-enumerated.txt.gz";
     let mut edges_writer = create_writer(
         output_directory,
         edges_filename,
-        true,
-        QuoteStyle::Necessary,
-        c.overwrite,
-    );
-    let mut schedules_writer = create_writer(
-        output_directory,
-        schedules_filename,
         true,
         QuoteStyle::Necessary,
         c.overwrite,
@@ -409,29 +408,13 @@ pub fn write_bundle(
         c.overwrite,
     );
 
-    for GtfsEdge {
-        edge,
-        geometry,
-        schedules,
-    } in bundle.edges.iter()
-    {
+    for GtfsEdge { edge, geometry, .. } in bundle.edges.iter() {
         if let Some(ref mut writer) = edges_writer {
             writer.serialize(edge).map_err(|e| {
                 ScheduleError::GtfsApp(format!(
                     "Failed to write to edges file {edges_filename}: {e}"
                 ))
             })?;
-        }
-
-        if let Some(ref mut writer) = schedules_writer {
-            for schedule in schedules.iter() {
-                let fq_schedule = FullyQualifiedScheduleRow::new(schedule);
-                writer.serialize(fq_schedule).map_err(|e| {
-                    ScheduleError::GtfsApp(format!(
-                        "Failed to write to schedules file {schedules_filename}: {e}"
-                    ))
-                })?;
-            }
         }
 
         if let Some(ref mut writer) = geometries_writer {
@@ -448,7 +431,86 @@ pub fn write_bundle(
                 })?;
         }
     }
+
+    match c.schedule_output_format {
+        ScheduleOutputFormat::Csv => {
+            let schedules_filename = "edges-schedules.csv.gz";
+            let mut schedules_writer = create_writer(
+                output_directory,
+                schedules_filename,
+                true,
+                QuoteStyle::Necessary,
+                c.overwrite,
+            );
+            if let Some(ref mut writer) = schedules_writer {
+                for GtfsEdge { schedules, .. } in bundle.edges.iter() {
+                    for schedule in schedules.iter() {
+                        let fq_schedule = FullyQualifiedScheduleRow::new(schedule);
+                        writer.serialize(fq_schedule).map_err(|e| {
+                            ScheduleError::GtfsApp(format!(
+                                "Failed to write to schedules file {schedules_filename}: {e}"
+                            ))
+                        })?;
+                    }
+                }
+            }
+        }
+        ScheduleOutputFormat::Rkyv => {
+            let schedules_filename = "edges-schedules.rkyv";
+            let schedules_filepath = output_directory.join(schedules_filename);
+            if !schedules_filepath.exists() || c.overwrite {
+                let timetable = build_edge_timetable(bundle, &fq_route_ids)?;
+                timetable.save_rkyv(&schedules_filepath).map_err(|e| {
+                    ScheduleError::GtfsApp(format!(
+                        "Failed to write to schedules file {schedules_filename}: {e}"
+                    ))
+                })?;
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// Compiles a [`GtfsBundle`] and its sorted `fq_route_ids` into a CSR [`EdgeTimetable`].
+pub fn build_edge_timetable(
+    bundle: &GtfsBundle,
+    fq_route_ids: &[String],
+) -> Result<EdgeTimetable, ScheduleError> {
+    let route_mapping = CategoricalStateMapping::new(fq_route_ids)
+        .map_err(|e| ScheduleError::Internal(format!("failed building route id mapping: {e}")))?;
+    let policy = ScheduleLoadingPolicy::All;
+    let mut builder = EdgeTimetable::builder().with_fq_route_ids(fq_route_ids);
+
+    for GtfsEdge {
+        edge, schedules, ..
+    } in bundle.edges.iter()
+    {
+        let edge_id = edge.edge_id.0;
+        builder.ensure_edge(edge_id);
+        for schedule in schedules.iter() {
+            let fq_id = fq_ops::get_fully_qualified_route_id(
+                schedule.feed_id.as_deref(),
+                schedule.agency_id.as_deref(),
+                &schedule.route_id,
+                &schedule.service_id,
+            );
+            let route_label = route_mapping.get_label(&fq_id).ok_or_else(|| {
+                ScheduleError::Internal(format!("missing route id mapping for '{fq_id}'"))
+            })?;
+            let departure = EdgeDeparture::new(
+                schedule.src_departure_time,
+                schedule.dst_arrival_time,
+                schedule.src_walk_distance,
+                schedule.dst_walk_distance,
+            );
+            policy.insert_into_edge_timetable(&mut builder, edge_id, *route_label, departure);
+        }
+    }
+
+    builder
+        .build()
+        .map_err(|e| ScheduleError::InvalidData(format!("failed building EdgeTimetable: {e}")))
 }
 
 fn is_not_zip(entry: &DirEntry) -> bool {
@@ -918,6 +980,7 @@ mod tests {
             extent: None,
             output_directory: temp_dir.to_string_lossy().to_string(),
             overwrite: true,
+            schedule_output_format: ScheduleOutputFormat::Csv,
         });
 
         // Bundle 1 (Feed A) with 2 edges
@@ -1041,6 +1104,34 @@ mod tests {
             dep.1.src_departure_time,
             NaiveDateTime::parse_from_str("2025-01-01 08:00:00", "%Y-%m-%d %H:%M:%S").unwrap()
         );
+
+        // Also test writing and loading in Rkyv format
+        let rkyv_conf = Arc::new(ProcessBundlesConfig {
+            schedule_output_format: ScheduleOutputFormat::Rkyv,
+            ..(*conf).clone()
+        });
+        write_bundle(&merged, rkyv_conf).expect("write_bundle (rkyv) failed");
+
+        let rkyv_schedules_path = temp_dir.join("edges-schedules.rkyv");
+        assert!(rkyv_schedules_path.exists());
+
+        let rkyv_transit_config = TransitTraversalConfig::Rkyv {
+            timetable_input_file: rkyv_schedules_path.to_string_lossy().to_string(),
+            walk_speed: Default::default(),
+        };
+        let rkyv_engine = TransitTraversalEngine::try_from(&rkyv_transit_config)
+            .expect("TransitTraversalEngine failed to build from rkyv output");
+        assert_eq!(rkyv_engine.num_edges(), 3);
+        let rkyv_dep = rkyv_engine
+            .get_next_departure(
+                0,
+                &NaiveDateTime::parse_from_str("2025-01-01 07:55:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+                None,
+                None,
+            )
+            .unwrap()
+            .expect("expected departure at 08:00 from rkyv engine");
+        assert_eq!(rkyv_dep, dep);
 
         // Clean up temp dir
         let _ = std::fs::remove_dir_all(&temp_dir);
