@@ -1,7 +1,8 @@
 use std::{fs::File, io::BufReader, path::Path, sync::Arc};
 
 use crate::model::traversal::transit::{
-    config::TransitTraversalConfig, metadata::GtfsArchiveMetadata,
+    config::{TransitTraversalConfig, WalkSpeed},
+    metadata::GtfsArchiveMetadata,
     schedule_loading_policy::ScheduleLoadingPolicy,
 };
 use bambam_core::model::state::CategoricalStateMapping;
@@ -12,11 +13,11 @@ use uom::si::f64::{Time, Velocity};
 
 pub struct TransitTraversalEngine {
     pub timetable: EdgeTimetable,
-    pub walk_speed: Option<Velocity>,
+    pub walk_speed: Velocity,
 }
 
 impl TransitTraversalEngine {
-    pub fn new(timetable: EdgeTimetable, walk_speed: Option<Velocity>) -> Self {
+    pub fn new(timetable: EdgeTimetable, walk_speed: Velocity) -> Self {
         Self {
             timetable,
             walk_speed,
@@ -39,7 +40,7 @@ impl TransitTraversalEngine {
         current_route_id: Option<i64>,
         walk_speed: Option<Velocity>,
     ) -> Result<Option<(i64, EdgeDeparture, Time)>, TraversalModelError> {
-        let effective_speed = walk_speed.or(self.walk_speed);
+        let effective_speed = walk_speed.unwrap_or(self.walk_speed);
         self.timetable
             .get_next_departure(edge_id, current_datetime, current_route_id, effective_speed)
             .map_err(|e| match e {
@@ -51,72 +52,105 @@ impl TransitTraversalEngine {
     }
 }
 
-impl TryFrom<TransitTraversalConfig> for TransitTraversalEngine {
+impl TryFrom<&TransitTraversalConfig> for TransitTraversalEngine {
     type Error = TraversalModelError;
 
-    fn try_from(value: TransitTraversalConfig) -> Result<Self, Self::Error> {
-        log::debug!(
-            "loading transit traversal model from {}",
-            value.gtfs_metadata_input_file
-        );
-
-        let walk_speed = value.walk_speed.map(|ws| ws.to_uom());
-
-        if value.edges_schedules_input_file.ends_with(".rkyv") {
-            let timetable =
-                EdgeTimetable::load_rkyv(&value.edges_schedules_input_file).map_err(|e| {
-                    TraversalModelError::BuildError(format!(
-                        "Failed to load rkyv edge timetable from {}: {e}",
-                        value.edges_schedules_input_file
-                    ))
-                })?;
-            return Ok(Self {
-                timetable,
+    fn try_from(value: &TransitTraversalConfig) -> Result<Self, Self::Error> {
+        match value {
+            TransitTraversalConfig::Rkyv {
+                timetable_input_file,
                 walk_speed,
-            });
+            } => load_from_rkyv_format(timetable_input_file, *walk_speed),
+            TransitTraversalConfig::Csv {
+                edges_schedules_input_file,
+                gtfs_metadata_input_file,
+                schedule_loading_policy,
+                route_ids_input_file,
+                walk_speed,
+            } => load_from_csv_format(
+                edges_schedules_input_file,
+                gtfs_metadata_input_file,
+                *schedule_loading_policy,
+                route_ids_input_file.as_deref(),
+                *walk_speed,
+            ),
         }
+    }
+}
 
-        // Deserialize metadata file
-        let file = File::open(&value.gtfs_metadata_input_file).map_err(|e| {
+fn load_from_rkyv_format(
+    timetable_input_file: &str,
+    walk_speed: WalkSpeed,
+) -> Result<TransitTraversalEngine, TraversalModelError> {
+    log::debug!(
+        "loading transit traversal model from rkyv binary at {}",
+        timetable_input_file
+    );
+
+    let walk_speed = walk_speed.to_uom();
+
+    let timetable = EdgeTimetable::load_rkyv(timetable_input_file).map_err(|e| {
+        let msg = format!("failure reading edge timetable file {timetable_input_file}: {e}");
+        TraversalModelError::BuildError(msg)
+    })?;
+
+    Ok(TransitTraversalEngine::new(timetable, walk_speed))
+}
+
+fn load_from_csv_format(
+    edges_schedules_input_file: &str,
+    gtfs_metadata_input_file: &str,
+    schedule_loading_policy: ScheduleLoadingPolicy,
+    route_ids_input_file: Option<&str>,
+    walk_speed: WalkSpeed,
+) -> Result<TransitTraversalEngine, TraversalModelError> {
+    log::debug!(
+        "loading transit traversal model from CSV source. metadata file: {}",
+        gtfs_metadata_input_file
+    );
+
+    let walk_speed = walk_speed.to_uom();
+
+    // Deserialize metadata file
+    let file = File::open(gtfs_metadata_input_file).map_err(|e| {
+        TraversalModelError::BuildError(format!("Failed to read metadata file: {e}"))
+    })?;
+    let metadata: GtfsArchiveMetadata =
+        serde_json::from_reader(BufReader::new(file)).map_err(|e| {
             TraversalModelError::BuildError(format!("Failed to read metadata file: {e}"))
         })?;
-        let metadata: GtfsArchiveMetadata =
-            serde_json::from_reader(BufReader::new(file)).map_err(|e| {
-                TraversalModelError::BuildError(format!("Failed to read metadata file: {e}"))
-            })?;
 
-        let route_id_to_state = match &value.route_ids_input_file {
-            Some(route_ids_input_file) => CategoricalStateMapping::from_enumerated_category_file(
-                Path::new(&route_ids_input_file),
-            )?,
-            None => CategoricalStateMapping::new(&metadata.fq_route_ids)?,
-        };
+    let route_id_to_state = match &route_ids_input_file {
+        Some(route_ids_input_file) => CategoricalStateMapping::from_enumerated_category_file(
+            Path::new(&route_ids_input_file),
+        )?,
+        None => CategoricalStateMapping::new(&metadata.fq_route_ids)?,
+    };
 
-        log::debug!(
-            "loaded {} fq route ids into mapping",
-            route_id_to_state.n_categories()
-        );
+    log::debug!(
+        "loaded {} fq route ids into mapping",
+        route_id_to_state.n_categories()
+    );
 
-        let timetable = read_schedules_from_file(
-            value.edges_schedules_input_file,
-            Arc::new(route_id_to_state),
-            value.schedule_loading_policy,
-            metadata.fq_route_ids,
-        )?;
+    let timetable = read_schedules_from_file(
+        edges_schedules_input_file,
+        Arc::new(route_id_to_state),
+        schedule_loading_policy,
+        metadata.fq_route_ids.as_slice(),
+    )?;
 
-        Ok(Self {
-            timetable,
-            walk_speed,
-        })
-    }
+    Ok(TransitTraversalEngine {
+        timetable,
+        walk_speed,
+    })
 }
 
 /// Reads schedule rows from a CSV file and compiles them into a dense 3-array CSR [`EdgeTimetable`].
 fn read_schedules_from_file(
-    filename: String,
+    filename: &str,
     route_mapping: Arc<CategoricalStateMapping>,
     schedule_loading_policy: ScheduleLoadingPolicy,
-    fq_route_ids: Vec<String>,
+    fq_route_ids: &[String],
 ) -> Result<EdgeTimetable, TraversalModelError> {
     let rows: Box<[super::RawScheduleRow]> =
         read_utils::from_csv(&Path::new(&filename), true, None, None).map_err(|e| {
@@ -162,7 +196,7 @@ fn read_schedules_from_file(
 
 #[cfg(test)]
 mod test {
-    use crate::model::traversal::transit::engine::TransitTraversalEngine;
+    use crate::model::traversal::transit::{config::WalkSpeed, engine::TransitTraversalEngine};
     use bambam_gtfs::{EdgeDeparture, EdgeTimetable};
     use chrono::NaiveDateTime;
 
@@ -209,7 +243,7 @@ mod test {
             ),
         );
 
-        TransitTraversalEngine::new(builder.build().unwrap(), None)
+        TransitTraversalEngine::new(builder.build().unwrap(), WalkSpeed::default().to_uom())
     }
 
     #[test]
@@ -284,7 +318,8 @@ mod test {
                 EdgeDeparture::without_walk_distance(internal_date(src), internal_date(dst)),
             );
         }
-        let engine = TransitTraversalEngine::new(builder.build().unwrap(), None);
+        let engine =
+            TransitTraversalEngine::new(builder.build().unwrap(), WalkSpeed::default().to_uom());
 
         let test_cases = vec![
             ("05:30:00", Some("06:00:00")), // Before service starts

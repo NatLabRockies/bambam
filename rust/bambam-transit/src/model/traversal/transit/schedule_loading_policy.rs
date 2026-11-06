@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 /// guarantees we only log a dst < src data error ONCE
 static SRC_DST_ORDERING_ERROR_LOCK: OnceLock<()> = OnceLock::new();
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub enum ScheduleLoadingPolicy {
     #[default]
     All,

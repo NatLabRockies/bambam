@@ -22,7 +22,7 @@ impl TraversalModelBuilder for TransitTraversalBuilder {
                 ))
             })?;
 
-        let engine = TransitTraversalEngine::try_from(config)?;
+        let engine = TransitTraversalEngine::try_from(&config)?;
         let service = TransitTraversalService::new(Arc::new(engine));
 
         Ok(Arc::new(service))

@@ -4,7 +4,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use bambam_transit::model::traversal::transit::{ScheduleLoadingPolicy, TransitTraversalConfig};
+use bambam_transit::{
+    model::traversal::transit::{ScheduleLoadingPolicy, TransitTraversalConfig},
+    schedule::ScheduleOutputFormat,
+};
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use itertools::Itertools;
@@ -45,10 +48,27 @@ pub fn edges_filename(edge_list_id: Option<EdgeListId>) -> String {
     }
 }
 
-pub fn schedules_filename(edge_list_id: Option<EdgeListId>) -> String {
+pub fn schedules_csv_filename(edge_list_id: Option<EdgeListId>) -> String {
     match edge_list_id {
         Some(id) => format!("edges-schedules-{id}.csv.gz"),
         None => "edges-schedules.csv.gz".to_string(),
+    }
+}
+
+pub fn schedules_rkyv_filename(edge_list_id: Option<EdgeListId>) -> String {
+    match edge_list_id {
+        Some(id) => format!("edges-schedules-{id}.rkyv"),
+        None => "edges-schedules.rkyv".to_string(),
+    }
+}
+
+pub fn schedules_filename(
+    edge_list_id: Option<EdgeListId>,
+    format: ScheduleOutputFormat,
+) -> String {
+    match format {
+        ScheduleOutputFormat::Csv => schedules_csv_filename(edge_list_id),
+        ScheduleOutputFormat::Rkyv => schedules_rkyv_filename(edge_list_id),
     }
 }
 
@@ -182,6 +202,7 @@ pub fn run(
         let tm_conf = gtfs_traversal_model_config(
             &edges_schedules_path,
             &edges_metadata_path,
+            entry.schedule_format,
             &available_modes,
             &fq_route_ids_filepath,
         )?;
@@ -393,20 +414,29 @@ pub fn get_metadata_vec(
 pub fn gtfs_traversal_model_config(
     edges_schedules: &str,
     edges_metadata: &str,
+    schedule_format: ScheduleOutputFormat,
     available_modes: &[String],
     fq_route_ids_filepath: &Path,
 ) -> Result<serde_json::Value, GtfsConfigError> {
-    let route_ids_input_file = Some(fq_route_ids_filepath.to_string_lossy().to_string());
     let dtc_conf = DistanceTraversalConfig {
         distance_unit: Some(DistanceUnit::Miles),
         include_trip_distance: Some(true),
     };
-    let ttc_conf = TransitTraversalConfig {
-        edges_schedules_input_file: edges_schedules.to_string(),
-        gtfs_metadata_input_file: edges_metadata.to_string(),
-        schedule_loading_policy: ScheduleLoadingPolicy::All,
-        route_ids_input_file,
-        walk_speed: None,
+    let ttc_conf = match schedule_format {
+        ScheduleOutputFormat::Rkyv => TransitTraversalConfig::Rkyv {
+            timetable_input_file: edges_schedules.to_string(),
+            walk_speed: Default::default(),
+        },
+        ScheduleOutputFormat::Csv => {
+            let route_ids_input_file = Some(fq_route_ids_filepath.to_string_lossy().to_string());
+            TransitTraversalConfig::Csv {
+                edges_schedules_input_file: edges_schedules.to_string(),
+                gtfs_metadata_input_file: edges_metadata.to_string(),
+                schedule_loading_policy: ScheduleLoadingPolicy::All,
+                route_ids_input_file,
+                walk_speed: Default::default(),
+            }
+        }
     };
     let mtc_conf = MultimodalTraversalConfig {
         this_mode: "transit".to_string(),
@@ -444,6 +474,7 @@ pub struct GtfsEdgeListEntry {
     pub edge_list_id: EdgeListId,
     pub edges_input_file: PathBuf,
     pub schedules_input_file: PathBuf,
+    pub schedule_format: ScheduleOutputFormat,
     pub geometries_input_file: PathBuf,
     pub metadata_input_file: PathBuf,
     pub metadata: serde_json::Value,
@@ -459,8 +490,13 @@ impl GtfsEdgeListEntry {
             Path::new(relative_path_to_gtfs_edge_list_directory).join(gtfs_edge_list_directory);
         let edges_filename = edges_filename(edge_list_id);
         let edges_filepath = path.join(edges_filename);
-        let schedules_filename = schedules_filename(edge_list_id);
-        let schedules_filepath = path.join(schedules_filename);
+        let rkyv_schedules_filepath = path.join(schedules_rkyv_filename(edge_list_id));
+        let csv_schedules_filepath = path.join(schedules_csv_filename(edge_list_id));
+        let (schedules_filepath, schedule_format) = if rkyv_schedules_filepath.is_file() {
+            (rkyv_schedules_filepath, ScheduleOutputFormat::Rkyv)
+        } else {
+            (csv_schedules_filepath, ScheduleOutputFormat::Csv)
+        };
         let geometries_filename = geometries_filename(edge_list_id);
         let geometries_filepath = path.join(geometries_filename);
         let metadata_filename = metadata_filename(edge_list_id);
@@ -504,6 +540,7 @@ impl GtfsEdgeListEntry {
                 edge_list_id: resolved_edge_list_id,
                 edges_input_file: edges_filepath,
                 schedules_input_file: schedules_filepath,
+                schedule_format,
                 geometries_input_file: geometries_filepath,
                 metadata_input_file: metadata_filepath,
                 metadata,

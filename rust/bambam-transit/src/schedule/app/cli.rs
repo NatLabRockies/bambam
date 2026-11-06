@@ -7,6 +7,7 @@ use crate::schedule::schedule_error::ScheduleError;
 use crate::schedule::{
     bundle_ops, DateMappingPolicy, DateMappingPolicyConfig, DateMappingPolicyType, GtfsBundle,
     GtfsProvider, GtfsSummary, MalformedTripPolicy, MissingStopLocationPolicy,
+    ScheduleOutputFormat,
 };
 use bambam_gtfs::ValidatedFeed as Gtfs;
 use clap::Subcommand;
@@ -129,6 +130,9 @@ pub enum GtfsOperation {
 
         #[arg(long, default_value_t = true)]
         ignore_bad_gtfs: bool,
+
+        #[arg(long, value_enum, default_value_t = ScheduleOutputFormat::Rkyv)]
+        schedule_output_format: ScheduleOutputFormat,
     },
 }
 
@@ -190,6 +194,7 @@ impl GtfsOperation {
                 date_mapping_policy,
                 date_mapping_date_tolerance,
                 date_mapping_match_weekday,
+                schedule_output_format,
             } => {
                 let (vertices, spatial_index) = load_vertices_and_create_spatial_index(
                     vertices_compass_filename,
@@ -233,6 +238,7 @@ impl GtfsOperation {
                     extent,
                     output_directory: output_directory.clone(),
                     overwrite: *overwrite,
+                    schedule_output_format: *schedule_output_format,
                 });
 
                 let input_path = Path::new(input);
