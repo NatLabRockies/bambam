@@ -1,6 +1,5 @@
 use std::{
     fs::{DirEntry, File},
-    num::NonZeroU64,
     path::{Path, PathBuf},
 };
 
@@ -11,7 +10,6 @@ use bambam_transit::{
 use csv::QuoteStyle;
 use flate2::{write::GzEncoder, Compression};
 use itertools::Itertools;
-use jsonpath_rust::query::queryable::Queryable;
 use kdam::tqdm;
 use regex::Regex;
 use routee_compass::app::compass::{CompassAppConfig, SearchConfig};
@@ -24,15 +22,14 @@ use routee_compass_core::{
         unit::DistanceUnit,
     },
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::json;
 
 use crate::{
     app::gtfs_config::gtfs_config_error::GtfsConfigError,
     model::{
         constraint::{
-            multimodal::{ConstraintConfig, MultimodalConstraintConfig},
-            time_limit::{TimeLimit, TimeLimitConstraintConfig},
+            multimodal::MultimodalConstraintConfig, time_limit::TimeLimitConstraintConfig,
         },
         traversal::multimodal::MultimodalTraversalConfig,
     },
@@ -40,6 +37,7 @@ use crate::{
 
 pub const METADATA_FILENAME_REGEX: &str = r#"^edges-gtfs-metadata(?:-(\d+))?\.json$"#;
 pub const FQ_ROUTE_IDS_FILENAME: &str = "fq-route-ids-enumerated.txt.gz";
+pub const TRANSIT_MODE: &str = "transit";
 
 pub fn edges_filename(edge_list_id: Option<EdgeListId>) -> String {
     match edge_list_id {
@@ -115,21 +113,20 @@ pub fn run(
         compass_conf.graph.edge_list.iter().cloned().collect_vec();
     let mut conf_geometries: Vec<MapModelGeometryConfig> =
         compass_conf.mapping.geometry.iter().cloned().collect_vec();
-    let mut conf_search: Vec<SearchConfig> = compass_conf.search.iter().cloned().collect_vec();
-
-    // used to deal with any offset value between base edge list ids and GTFS edge list ids
-    let start_edge_list_id = conf_graph_edge_lists.len();
 
     // finds the travel modes that are already present in the config's edge lists.
-    // ensure "transit" is one of the options.
+    // ensure "transit" is one of the options and update [label].modes and existing [[search]] entries.
     let mut available_modes = get_available_modes(&compass_conf)?;
-    let transit_mode = "transit".to_string();
+    let transit_mode = TRANSIT_MODE.to_string();
     if !available_modes.contains(&transit_mode) {
         available_modes.push(transit_mode);
     }
+    update_label_modes(&mut compass_conf, &available_modes)?;
+    let mut conf_search: Vec<SearchConfig> =
+        update_existing_search_modes(&compass_conf, &available_modes)?;
 
-    // grab configuration arguments to copy into each GTFS frontier model configuration
-    let mmfc = get_constraint_model_arguments(&compass_conf)?;
+    // grab optional time_limit constraint configuration to copy into each GTFS constraint model
+    let time_limit_conf = get_time_limit_constraint_config(&compass_conf)?;
 
     log::info!("finding metadata files in {directory}");
     let read_dir = std::fs::read_dir(directory).map_err(|e| GtfsConfigError::ReadFailure {
@@ -161,13 +158,20 @@ pub fn run(
         .try_collect()?;
     entries.sort_by_cached_key(|e| e.edge_list_id);
 
-    let Some(first_gtfs_edge_list_id) = entries.first().map(|e| e.edge_list_id) else {
+    if entries.is_empty() {
         return Err(GtfsConfigError::RunFailure(format!(
             "no metadata files found in directory {directory}"
         )));
+    }
+
+    let fq_route_ids_filepath = if entries
+        .iter()
+        .any(|e| e.schedule_format == ScheduleOutputFormat::Csv)
+    {
+        Some(write_fq_route_id_file(directory, &entries)?)
+    } else {
+        None
     };
-    let edge_list_id_offset = EdgeListId(start_edge_list_id - first_gtfs_edge_list_id.0);
-    let fq_route_ids_filepath = write_fq_route_id_file(directory, &entries)?;
 
     let n_entries = entries.len();
     let entries_iter = tqdm!(
@@ -178,12 +182,6 @@ pub fn run(
     log::info!("found {n_entries} metadata files.");
 
     for entry in entries_iter {
-        //   0. fix the edge list id, if needed.
-        // this allows the source config + the GTFS import to have different ideas of what
-        // index the GTFS edge lists should begin at
-        let edge_list_id_fix = EdgeListId(entry.edge_list_id.0 + edge_list_id_offset.0);
-        let index = edge_list_id_fix.0;
-
         // update [[graph.edge_list]]
         let edge_list_config = EdgeListConfig {
             input_file: entry.edges_input_file.to_string_lossy().to_string(),
@@ -195,18 +193,17 @@ pub fn run(
             geometry_input_file: entry.geometries_input_file.to_string_lossy().to_string(),
         });
 
-        //   2. step into [search] to append traversal + frontier model configurations
+        // step into [search] to append traversal + constraint model configurations
         let edges_schedules_path = entry.schedules_input_file.to_string_lossy().to_string();
         let edges_metadata_path = entry.metadata_input_file.to_string_lossy().to_string();
-        let available_route_ids = get_metadata_vec(&entry.metadata, "fq_route_ids")?;
         let tm_conf = gtfs_traversal_model_config(
             &edges_schedules_path,
             &edges_metadata_path,
             entry.schedule_format,
             &available_modes,
-            &fq_route_ids_filepath,
+            fq_route_ids_filepath.as_deref(),
         )?;
-        let cm_conf = gtfs_constraint_model_config(&available_modes)?;
+        let cm_conf = gtfs_constraint_model_config(&available_modes, time_limit_conf.as_ref())?;
         conf_search.push(SearchConfig {
             traversal: tm_conf,
             constraint: cm_conf,
@@ -288,33 +285,90 @@ fn write_fq_route_id_file(
     }
 }
 
-/// grabs relevant configuration to copy to GTFS edge lists. assumes that, if there exist
-/// one copy of MultimodalConstraintConfig and TimeLimitConstraintConfig, they are the same
-/// across all edge lists.
-pub fn get_constraint_model_arguments(
+/// updates `[label].modes` in `compass_conf` with the complete list of `available_modes`.
+pub fn update_label_modes(
+    compass_conf: &mut CompassAppConfig,
+    available_modes: &[String],
+) -> Result<(), GtfsConfigError> {
+    let label_obj = compass_conf.label.as_object_mut().ok_or_else(|| {
+        GtfsConfigError::RunFailure("label model configuration is not a JSON object".to_string())
+    })?;
+    label_obj.insert("modes".to_string(), json!(available_modes));
+    Ok(())
+}
+
+/// updates all existing `[[search]]` entries so their `multimodal` traversal and constraint models
+/// reflect `available_modes` (including `"transit"`).
+pub fn update_existing_search_modes(
     base_conf: &CompassAppConfig,
-) -> Result<MultimodalConstraintConfig, GtfsConfigError> {
+    available_modes: &[String],
+) -> Result<Vec<SearchConfig>, GtfsConfigError> {
+    let mut updated_searches = Vec::with_capacity(base_conf.search.len());
+    for (edge_list_id, search) in base_conf.search.iter().enumerate() {
+        let mut traversal = search.traversal.clone();
+        if let Some(models) = traversal.get_mut("models").and_then(|m| m.as_array_mut()) {
+            for model in models.iter_mut() {
+                if model.get("type").and_then(|t| t.as_str()) == Some("multimodal") {
+                    if let Some(obj) = model.as_object_mut() {
+                        obj.insert("available_modes".to_string(), json!(available_modes));
+                    }
+                }
+            }
+        } else {
+            return Err(GtfsConfigError::RunFailure(format!(
+                "key 'models' missing or not an array in traversal configuration for edge list {edge_list_id}"
+            )));
+        }
+
+        let mut constraint = search.constraint.clone();
+        if let Some(models) = constraint.get_mut("models").and_then(|m| m.as_array_mut()) {
+            for model in models.iter_mut() {
+                if model.get("type").and_then(|t| t.as_str()) == Some("multimodal") {
+                    if let Some(obj) = model.as_object_mut() {
+                        obj.insert("available_modes".to_string(), json!(available_modes));
+                    }
+                }
+            }
+        } else {
+            return Err(GtfsConfigError::RunFailure(format!(
+                "key 'models' missing or not an array in constraint configuration for edge list {edge_list_id}"
+            )));
+        }
+
+        updated_searches.push(SearchConfig {
+            traversal,
+            constraint,
+        });
+    }
+    Ok(updated_searches)
+}
+
+/// extracts the `time_limit` constraint configuration from the first edge list if present,
+/// so it can be copied onto the transit constraint model.
+pub fn get_time_limit_constraint_config(
+    base_conf: &CompassAppConfig,
+) -> Result<Option<TimeLimitConstraintConfig>, GtfsConfigError> {
     if let Some((edge_list_id, search)) = base_conf.search.iter().enumerate().next() {
-        let models = search.constraint.get("models").ok_or_else(|| GtfsConfigError::RunFailure(format!("key 'models' missing from traversal model configuration in edge list {edge_list_id}")))?;
-        let models_vec = models.as_array().ok_or_else(|| {
+        let models = search.constraint.get("models").ok_or_else(|| {
             GtfsConfigError::RunFailure(format!(
-                "traversal model key 'models' in edge list {edge_list_id} is not an array"
+                "key 'models' missing from constraint model configuration in edge list {edge_list_id}"
             ))
         })?;
-        let mmfc: MultimodalConstraintConfig = find_expected_config(
-            models_vec,
-            EdgeListId(edge_list_id),
-            "multimodal",
-        )
-        .map_err(|e| {
-            GtfsConfigError::RunFailure(format!("while getting constraint model arguments, {e}"))
+        let models_vec = models.as_array().ok_or_else(|| {
+            GtfsConfigError::RunFailure(format!(
+                "constraint model key 'models' in edge list {edge_list_id} is not an array"
+            ))
         })?;
-
-        return Ok(mmfc);
+        if models_vec
+            .iter()
+            .any(|c| c.get("type").and_then(|t| t.as_str()) == Some("time_limit"))
+        {
+            let tlc: TimeLimitConstraintConfig =
+                find_expected_config(models_vec, EdgeListId(edge_list_id), "time_limit")?;
+            return Ok(Some(tlc));
+        }
     }
-    Err(GtfsConfigError::RunFailure(String::from(
-        "no constraint model found in configuration with multimodal arguments",
-    )))
+    Ok(None)
 }
 
 /// helper function for finding a deserializable configuration within a list of JSON values.
@@ -416,7 +470,7 @@ pub fn gtfs_traversal_model_config(
     edges_metadata: &str,
     schedule_format: ScheduleOutputFormat,
     available_modes: &[String],
-    fq_route_ids_filepath: &Path,
+    fq_route_ids_filepath: Option<&Path>,
 ) -> Result<serde_json::Value, GtfsConfigError> {
     let dtc_conf = DistanceTraversalConfig {
         distance_unit: Some(DistanceUnit::Miles),
@@ -428,7 +482,8 @@ pub fn gtfs_traversal_model_config(
             walk_speed: Default::default(),
         },
         ScheduleOutputFormat::Csv => {
-            let route_ids_input_file = Some(fq_route_ids_filepath.to_string_lossy().to_string());
+            let route_ids_input_file =
+                fq_route_ids_filepath.map(|p| p.to_string_lossy().to_string());
             TransitTraversalConfig::Csv {
                 edges_schedules_input_file: edges_schedules.to_string(),
                 gtfs_metadata_input_file: edges_metadata.to_string(),
@@ -439,7 +494,7 @@ pub fn gtfs_traversal_model_config(
         }
     };
     let mtc_conf = MultimodalTraversalConfig {
-        this_mode: "transit".to_string(),
+        this_mode: TRANSIT_MODE.to_string(),
         available_modes: available_modes.to_vec(),
     };
     let dtc = as_json_with_type_tag(&dtc_conf, "distance")?;
@@ -453,19 +508,26 @@ pub fn gtfs_traversal_model_config(
     Ok(result)
 }
 
-/// generates the JSON fields expected for a transit frontier model
+/// generates the JSON fields expected for a transit constraint model
 pub fn gtfs_constraint_model_config(
     available_modes: &[String],
+    time_limit_conf: Option<&TimeLimitConstraintConfig>,
 ) -> Result<serde_json::Value, GtfsConfigError> {
+    let mut models = Vec::new();
+    if let Some(tlc_conf) = time_limit_conf {
+        let tlc = as_json_with_type_tag(tlc_conf, "time_limit")?;
+        models.push(tlc);
+    }
     let mmc_conf = MultimodalConstraintConfig {
-        this_mode: "transit".to_string(),
+        this_mode: TRANSIT_MODE.to_string(),
         available_modes: available_modes.to_vec(),
     };
     let mmc = as_json_with_type_tag(&mmc_conf, "multimodal")?;
+    models.push(mmc);
 
     let result = json![{
         "type": "combined",
-        "models": [mmc]
+        "models": models
     }];
     Ok(result)
 }
