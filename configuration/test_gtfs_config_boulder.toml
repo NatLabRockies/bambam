@@ -60,7 +60,7 @@ constraint.models = [
 traversal.type = "combined"
 traversal.models = [
     { type = "distance", distance_unit = "miles" }, 
-    { type = "transit", edges_schedules_input_file = "boulder_co/transit/edges-schedules.csv.gz", gtfs_metadata_input_file = "boulder_co/transit/edges-gtfs-metadata.json", schedule_loading_policy = "All", walk_speed = { value = 5, unit = "kph" }},
+    { type = "transit", schedule_format = "csv", edges_schedules_input_file = "boulder_co/transit/edges-schedules.csv.gz", gtfs_metadata_input_file = "boulder_co/transit/edges-gtfs-metadata.json", schedule_loading_policy = "All", walk_speed = { value = 5, unit = "kph" }},
     { type = "multimodal", this_mode = "transit", available_modes = ["walk", "transit"] }
 ]
 

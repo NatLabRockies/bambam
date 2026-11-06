@@ -401,12 +401,12 @@ pub fn gtfs_traversal_model_config(
         distance_unit: Some(DistanceUnit::Miles),
         include_trip_distance: Some(true),
     };
-    let ttc_conf = TransitTraversalConfig {
+    let ttc_conf = TransitTraversalConfig::Csv {
         edges_schedules_input_file: edges_schedules.to_string(),
         gtfs_metadata_input_file: edges_metadata.to_string(),
         schedule_loading_policy: ScheduleLoadingPolicy::All,
         route_ids_input_file,
-        walk_speed: None,
+        walk_speed: Default::default(),
     };
     let mtc_conf = MultimodalTraversalConfig {
         this_mode: "transit".to_string(),

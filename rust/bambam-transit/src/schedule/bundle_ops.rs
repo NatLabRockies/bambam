@@ -1013,15 +1013,15 @@ mod tests {
         assert!(geometries_path.exists());
 
         // Now load into TransitTraversalEngine and verify dense schedules
-        let transit_config = TransitTraversalConfig {
+        let transit_config = TransitTraversalConfig::Csv {
             edges_schedules_input_file: schedules_path.to_string_lossy().to_string(),
             gtfs_metadata_input_file: metadata_path.to_string_lossy().to_string(),
             schedule_loading_policy: ScheduleLoadingPolicy::All,
             route_ids_input_file: None,
-            walk_speed: None,
+            walk_speed: Default::default(),
         };
 
-        let engine = TransitTraversalEngine::try_from(transit_config)
+        let engine = TransitTraversalEngine::try_from(&transit_config)
             .expect("TransitTraversalEngine failed to build from merged output");
 
         // There were 3 unique edges: (1->2), (2->3), (3->4)

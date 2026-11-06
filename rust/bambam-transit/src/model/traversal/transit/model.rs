@@ -262,6 +262,8 @@ fn compute_travel_time(
 
 #[cfg(test)]
 mod tests {
+    use crate::model::traversal::transit::config::WalkSpeed;
+
     use super::*;
     use chrono::NaiveDateTime;
     use routee_compass_core::algorithm::search::{Direction, SearchTree};
@@ -434,7 +436,10 @@ mod tests {
             ),
         );
 
-        let engine = Arc::new(TransitTraversalEngine::new(builder.build().unwrap(), None));
+        let engine = Arc::new(TransitTraversalEngine::new(
+            builder.build().unwrap(),
+            WalkSpeed::default().to_uom(),
+        ));
 
         let traversal_model = TransitTraversalModel::new(engine, start_datetime, true);
         let mut state = state_model
@@ -517,7 +522,10 @@ mod tests {
         // Edge 0 exists but has no departures for any route.
         let mut builder = EdgeTimetable::builder();
         builder.ensure_edge(0);
-        let engine = Arc::new(TransitTraversalEngine::new(builder.build().unwrap(), None));
+        let engine = Arc::new(TransitTraversalEngine::new(
+            builder.build().unwrap(),
+            WalkSpeed::default().to_uom(),
+        ));
 
         let traversal_model = TransitTraversalModel::new(engine, start_datetime, false);
         let mut state = state_model
@@ -567,7 +575,10 @@ mod tests {
         // Edge 0 exists but has no departures for any route.
         let mut builder = EdgeTimetable::builder();
         builder.ensure_edge(0);
-        let engine = Arc::new(TransitTraversalEngine::new(builder.build().unwrap(), None));
+        let engine = Arc::new(TransitTraversalEngine::new(
+            builder.build().unwrap(),
+            WalkSpeed::default().to_uom(),
+        ));
 
         let traversal_model = TransitTraversalModel::new(engine, start_datetime, false);
         let mut state = state_model
@@ -645,7 +656,7 @@ mod tests {
 
         let engine = Arc::new(TransitTraversalEngine::new(
             builder.build().unwrap(),
-            Some(walk_speed),
+            walk_speed,
         ));
         let traversal_model = TransitTraversalModel::new(engine, start_datetime, true);
 

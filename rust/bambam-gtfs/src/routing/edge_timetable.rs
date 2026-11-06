@@ -252,7 +252,7 @@ impl EdgeTimetable {
         edge_id: usize,
         current_datetime: &NaiveDateTime,
         current_route_id: Option<i64>,
-        walk_speed: Option<Velocity>,
+        walk_speed: Velocity,
     ) -> Result<Option<(i64, EdgeDeparture, Time)>, RoutingError> {
         let schedules = self
             .edge_route_schedules(edge_id)
@@ -269,10 +269,10 @@ impl EdgeTimetable {
                 continue;
             }
             let is_same_route = current_route_id == Some(schedule.route_label);
-            let effective_walk_speed = if is_same_route { None } else { walk_speed };
+            // let effective_walk_speed = if is_same_route { None } else { walk_speed };
 
             if let Some((dep, boarding_delay)) =
-                find_best_route_departure(*current_datetime, deps, effective_walk_speed)?
+                find_best_route_departure(*current_datetime, deps, is_same_route, walk_speed)?
             {
                 match &best {
                     None => {
@@ -296,7 +296,8 @@ impl_rkyv_snapshot!(EdgeTimetable, ArchivedEdgeTimetable);
 fn find_best_route_departure(
     current_datetime: NaiveDateTime,
     deps: &[EdgeDeparture],
-    walk_speed: Option<Velocity>,
+    is_same_route: bool,
+    walk_speed: Velocity,
 ) -> Result<Option<(EdgeDeparture, Time)>, RoutingError> {
     // Binary search for the first departure with src_departure_time >= current_datetime
     // (since boarding_delay >= 0, no departure prior to current_datetime can ever be boarded).
@@ -323,9 +324,11 @@ fn find_best_route_departure(
             }
         }
 
-        let boarding_delay = match walk_speed {
-            Some(speed) => dep.boarding_walk_delay(speed),
-            None => Time::new::<second>(0.0),
+        // apply a boarding delay if the route has changed.
+        let boarding_delay = if is_same_route {
+            Time::new::<second>(0.0)
+        } else {
+            dep.boarding_walk_delay(walk_speed)
         };
 
         let delay_ms = (boarding_delay.get::<second>() * 1000.0).round() as i64;
@@ -367,8 +370,8 @@ impl EdgeTimetableBuilder {
     }
 
     /// Sets the catalog of unique fully-qualified route IDs (`fq_route_ids`).
-    pub fn with_fq_route_ids(mut self, fq_route_ids: Vec<String>) -> Self {
-        self.fq_route_ids = fq_route_ids;
+    pub fn with_fq_route_ids(mut self, fq_route_ids: &[String]) -> Self {
+        self.fq_route_ids = fq_route_ids.to_vec();
         self
     }
 
@@ -453,7 +456,7 @@ mod tests {
     #[test]
     fn test_edge_timetable_csr_lookup_walk_delay_and_overtaking() {
         let mut builder =
-            EdgeTimetable::builder().with_fq_route_ids(vec!["route_a".into(), "route_b".into()]);
+            EdgeTimetable::builder().with_fq_route_ids(&["route_a".into(), "route_b".into()]);
 
         // Edge 0, Route 0: boarding walk distance = 120m.
         // At walk_speed = 1.0 m/s, boarding_delay = 120s (2 minutes).
@@ -505,7 +508,7 @@ mod tests {
         //    - Needs 120s to walk 120m -> reaches stop at 08:02:00 (misses 08:01:00 departure).
         //    - Between 08:03:00 (arr 08:15) and 08:04:00 (arr 08:12), picks 08:04:00 express!
         let (r_label, dep, delay) = timetable
-            .get_next_departure(0, &query_time, None, Some(walk_speed))
+            .get_next_departure(0, &query_time, None, walk_speed)
             .unwrap()
             .unwrap();
         assert_eq!(r_label, 0);
@@ -517,7 +520,7 @@ mod tests {
         // 2. Rider IS already on Route 0 (`current_route_id = Some(0)`):
         //    - Boarding walk delay is 0s -> catches the 08:01:00 departure (arrives 08:10:00)!
         let (r_label_cont, dep_cont, delay_cont) = timetable
-            .get_next_departure(0, &query_time, Some(0), Some(walk_speed))
+            .get_next_departure(0, &query_time, Some(0), walk_speed)
             .unwrap()
             .unwrap();
         assert_eq!(r_label_cont, 0);
@@ -528,7 +531,7 @@ mod tests {
 
     #[test]
     fn test_edge_timetable_rkyv_roundtrip_and_dense_validation() {
-        let mut builder = EdgeTimetable::builder().with_fq_route_ids(vec!["r0".into()]);
+        let mut builder = EdgeTimetable::builder().with_fq_route_ids(&["r0".into()]);
         builder.add_departure(
             0,
             0,
