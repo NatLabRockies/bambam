@@ -112,7 +112,7 @@ fn load_from_csv_format(
     let walk_speed = walk_speed.to_uom();
 
     // Deserialize metadata file
-    let file = File::open(&gtfs_metadata_input_file).map_err(|e| {
+    let file = File::open(gtfs_metadata_input_file).map_err(|e| {
         TraversalModelError::BuildError(format!("Failed to read metadata file: {e}"))
     })?;
     let metadata: GtfsArchiveMetadata =
