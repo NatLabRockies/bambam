@@ -1,4 +1,4 @@
-//! Multi-feed [`RoutingTimetableBuilder`] for compiling [`ValidatedFeed`]s into a contiguous [`RoutingTimetable`].
+//! Multi-feed [`RaptorTimetableBuilder`] for compiling [`ValidatedFeed`]s into a contiguous [`RaptorTimetable`].
 
 use crate::enums::TransferType;
 use crate::ids::*;
@@ -11,7 +11,7 @@ use crate::routing::compact_stop_time::NO_FLEX_DURATION_IDX;
 use crate::routing::spatial_index::build_place_spatial_index;
 use crate::routing::{
     CompactStopTime, FeedMetadata, IndexedTransfer, PatternStopProfile, PlacePatternOccurrence,
-    RoutableTrip, RoutePattern, RoutingError, RoutingTimetable,
+    RaptorTimetable, RoutableTrip, RoutePattern, RoutingError,
 };
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -40,14 +40,14 @@ fn pickup_code(p: &BoardingPolicy) -> i16 {
 }
 
 /// Multi-feed builder that incrementally compiles and merges one or more [`ValidatedFeed`]s
-/// into a single contiguous [`RoutingTimetable`].
+/// into a single contiguous [`RaptorTimetable`].
 ///
 /// Designed for HPC workflows where each GTFS archive is parsed and validated into a
-/// [`ValidatedFeed`], appended via [`RoutingTimetableBuilder::add_feed`], and immediately dropped
+/// [`ValidatedFeed`], appended via [`RaptorTimetableBuilder::add_feed`], and immediately dropped
 /// so peak memory never exceeds the compact CSR arena.
 #[derive(Default)]
-pub struct RoutingTimetableBuilder {
-    timetable: RoutingTimetable,
+pub struct RaptorTimetableBuilder {
+    timetable: RaptorTimetable,
     pattern_lookup: HashMap<PatternKey, PatternIdx>,
     validation_policy: ValidationPolicy,
     materialize_frequency_trips: bool,
@@ -55,8 +55,8 @@ pub struct RoutingTimetableBuilder {
     flex_duration_lookup: HashMap<[u64; 4], u16>,
 }
 
-impl RoutingTimetableBuilder {
-    /// Creates an empty [`RoutingTimetableBuilder`].
+impl RaptorTimetableBuilder {
+    /// Creates an empty [`RaptorTimetableBuilder`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -76,14 +76,14 @@ impl RoutingTimetableBuilder {
     /// [`RoutableTrip`] instances (with `CompactStopTime` entries shifted for each headway departure
     /// and `frequencies` cleared on the expanded trips).
     ///
-    /// Note that [`RoutingTimetable::earliest_boardable_trip`] supports both materialized and
+    /// Note that [`RaptorTimetable::earliest_boardable_trip`] supports both materialized and
     /// unexpanded frequency trips automatically.
     pub fn with_materialize_frequencies(mut self, materialize: bool) -> Self {
         self.materialize_frequency_trips = materialize;
         self
     }
 
-    /// Appends a [`ValidatedFeed`] under `feed_id` into the contiguous [`RoutingTimetable`] arena,
+    /// Appends a [`ValidatedFeed`] under `feed_id` into the contiguous [`RaptorTimetable`] arena,
     /// returning its assigned [`FeedIdx`].
     pub fn add_feed(
         &mut self,
@@ -121,7 +121,6 @@ impl RoutingTimetableBuilder {
             self.timetable
                 .scoped_stop_to_place
                 .insert((feed_idx, stop.id.clone()), idx);
-            self.timetable.stop_id_to_place.insert(stop.id.clone(), idx);
             self.timetable.places.push(StopPlace::Stop(stop));
             self.timetable.place_feed.push(feed_idx);
             self.timetable.place_to_patterns.push(Vec::new());
@@ -139,9 +138,6 @@ impl RoutingTimetableBuilder {
                 self.timetable
                     .scoped_location_to_place
                     .insert((feed_idx, loc.id.clone()), idx);
-                self.timetable
-                    .location_id_to_place
-                    .insert(loc.id.clone(), idx);
                 self.timetable.places.push(StopPlace::FlexZone(loc));
                 self.timetable.place_feed.push(feed_idx);
                 self.timetable.place_to_patterns.push(Vec::new());
@@ -157,9 +153,6 @@ impl RoutingTimetableBuilder {
                 self.timetable
                     .scoped_location_group_to_place
                     .insert((feed_idx, grp.id.clone()), idx);
-                self.timetable
-                    .location_group_id_to_place
-                    .insert(grp.id.clone(), idx);
 
                 let mut member_indices = Vec::with_capacity(grp.members.len());
                 for m in &grp.members {
@@ -230,9 +223,6 @@ impl RoutingTimetableBuilder {
             self.timetable
                 .scoped_route_to_idx
                 .insert((feed_idx, route.id.clone()), ridx);
-            self.timetable
-                .route_id_to_idx
-                .insert(route.id.clone(), ridx);
             self.timetable.routes.push(route);
             self.timetable.route_feed.push(feed_idx);
             self.timetable.route_to_patterns.push(Vec::new());
@@ -250,9 +240,6 @@ impl RoutingTimetableBuilder {
             self.timetable
                 .scoped_service_to_idx
                 .insert((feed_idx, svc.id.clone()), sidx);
-            self.timetable
-                .service_id_to_idx
-                .insert(svc.id.clone(), sidx);
             self.timetable.services.push(svc);
             self.timetable.service_feed.push(feed_idx);
         }
@@ -268,7 +255,6 @@ impl RoutingTimetableBuilder {
             self.timetable
                 .scoped_shape_to_idx
                 .insert((feed_idx, shp.id.clone()), shidx);
-            self.timetable.shape_id_to_idx.insert(shp.id.clone(), shidx);
             self.timetable.shapes.push(shp);
             self.timetable.shape_feed.push(feed_idx);
         }
@@ -306,9 +292,6 @@ impl RoutingTimetableBuilder {
                     self.timetable
                         .scoped_service_to_idx
                         .insert((feed_idx, trip.service_id.clone()), sidx);
-                    self.timetable
-                        .service_id_to_idx
-                        .insert(trip.service_id.clone(), sidx);
                     self.timetable
                         .services
                         .push(ServiceCalendar::new(trip.service_id.clone()));
@@ -445,9 +428,6 @@ impl RoutingTimetableBuilder {
                         self.timetable
                             .scoped_trip_to_idx
                             .insert((feed_idx, expanded_id.clone()), trip_idx);
-                        self.timetable
-                            .trip_id_to_idx
-                            .insert(expanded_id.clone(), trip_idx);
                         self.timetable.patterns[pattern_idx.index()]
                             .trips
                             .push(trip_idx);
@@ -479,9 +459,6 @@ impl RoutingTimetableBuilder {
                 self.timetable
                     .scoped_trip_to_idx
                     .insert((feed_idx, trip.id.clone()), trip_idx);
-                self.timetable
-                    .trip_id_to_idx
-                    .insert(trip.id.clone(), trip_idx);
                 self.timetable.patterns[pattern_idx.index()]
                     .trips
                     .push(trip_idx);
@@ -542,8 +519,8 @@ impl RoutingTimetableBuilder {
     }
 
     /// Consumes the builder, bulk-loads the [`rstar::RTree`] spatial index over all places,
-    /// and returns the completed [`RoutingTimetable`].
-    pub fn build(mut self) -> RoutingTimetable {
+    /// and returns the completed [`RaptorTimetable`].
+    pub fn build(mut self) -> RaptorTimetable {
         self.timetable.stop_times.shrink_to_fit();
         self.timetable.places.shrink_to_fit();
         self.timetable.trips.shrink_to_fit();
@@ -747,11 +724,11 @@ impl RoutingTimetableBuilder {
     }
 }
 
-impl TryFrom<ValidatedFeed> for RoutingTimetable {
+impl TryFrom<ValidatedFeed> for RaptorTimetable {
     type Error = RoutingError;
 
     fn try_from(feed: ValidatedFeed) -> Result<Self, Self::Error> {
-        let mut builder = RoutingTimetableBuilder::new();
+        let mut builder = RaptorTimetableBuilder::new();
         builder.add_feed(FeedId::new("default"), feed)?;
         Ok(builder.build())
     }
@@ -800,7 +777,7 @@ mod tests {
 
         // Phase 3 interpolates the missing intermediate stop time between 14:00:00 and 15:00:00
         let timetable =
-            RoutingTimetable::try_from(validated).expect("Phase 3 should interpolate stop times");
+            RaptorTimetable::try_from(validated).expect("Phase 3 should interpolate stop times");
         let st_slice = timetable.trip_stop_times(TripIdx::new(0));
         assert_eq!(st_slice.len(), 3);
 
@@ -824,7 +801,7 @@ mod tests {
         raw.stop_times[2].shape_dist_traveled = Some(20.0);
 
         let validated = ValidatedFeed::try_from(raw).unwrap();
-        let timetable = RoutingTimetable::try_from(validated).unwrap();
+        let timetable = RaptorTimetable::try_from(validated).unwrap();
         let st1 = timetable.trip_stop_times(TripIdx::new(0))[1];
         // Since shape_ref is populated asymmetrically near the start, interpolated time is closer to 14:00 than 14:30
         assert!(st1.arrival_time().unwrap() < GtfsTime::from_hms(14, 30, 0));
@@ -836,7 +813,7 @@ mod tests {
         bad_boundary_raw.stop_times[0].departure_time = None;
         let bad_boundary_val = ValidatedFeed::try_from(bad_boundary_raw).unwrap();
         assert!(matches!(
-            RoutingTimetable::try_from(bad_boundary_val),
+            RaptorTimetable::try_from(bad_boundary_val),
             Err(RoutingError::UninterpolatableTripBoundary { .. })
         ));
 
@@ -846,7 +823,7 @@ mod tests {
         dec_raw.stop_times[1].departure_time = Some(GtfsTime::from_hms(13, 0, 0));
         let dec_val = ValidatedFeed::try_from(dec_raw).unwrap();
         assert!(matches!(
-            RoutingTimetable::try_from(dec_val),
+            RaptorTimetable::try_from(dec_val),
             Err(RoutingError::DecreasingStopTimes { .. })
         ));
     }
@@ -920,16 +897,23 @@ mod tests {
         let validated =
             ValidatedFeed::from_raw_with_policy(raw, ValidationPolicy::DropInvalidTripsWithWarning)
                 .unwrap();
-        let mut builder = RoutingTimetable::builder()
+        let mut builder = RaptorTimetable::builder()
             .with_validation_policy(ValidationPolicy::DropInvalidTripsWithWarning);
         builder.add_feed("test_feed", validated).unwrap();
         let timetable = builder.build();
 
         assert_eq!(timetable.trips.len(), 3);
         assert_eq!(timetable.patterns.len(), 2);
-        let t1 = timetable.trip_id_to_idx[&TripId::new("trip1")];
-        let t2 = timetable.trip_id_to_idx[&TripId::new("trip2")];
-        let t3 = timetable.trip_id_to_idx[&TripId::new("trip3")];
+        let feed_id = FeedId::new("test_feed");
+        let t1 = timetable
+            .lookup_trip(&feed_id, &TripId::new("trip1"))
+            .unwrap();
+        let t2 = timetable
+            .lookup_trip(&feed_id, &TripId::new("trip2"))
+            .unwrap();
+        let t3 = timetable
+            .lookup_trip(&feed_id, &TripId::new("trip3"))
+            .unwrap();
         assert_eq!(
             timetable.trips[t1.index()].pattern_idx,
             timetable.trips[t2.index()].pattern_idx

@@ -1,8 +1,8 @@
-//! Phase 3 RAPTOR-style contiguous CSR timetable (`RoutingTimetable`), spatial/departure query methods,
+//! Phase 3 RAPTOR-style contiguous CSR timetable (`RaptorTimetable`), spatial/departure query methods,
 //! and `rkyv` binary snapshot serialization.
 
 use crate::ids::*;
-use crate::model::{Route, ServiceCalendar, ShapePolyline, StopPlace};
+use crate::model::{DateMappingPolicy, Route, ServiceCalendar, ShapePolyline, StopPlace};
 use crate::primitives::{BoundingBox, Coord, GtfsTime};
 #[cfg(feature = "gtfs-flex")]
 use crate::routing::compact_stop_time::NO_FLEX_DURATION_IDX;
@@ -13,17 +13,14 @@ use crate::routing::spatial_index::{
 use crate::routing::{
     ActiveServiceWindow, BoardableDeparture, CompactStopTime, FeedMetadata, FullyQualifiedPlaceId,
     FullyQualifiedRouteId, FullyQualifiedTripId, IndexedTransfer, PlaceIdKind,
-    PlacePatternOccurrence, PlaceSpatialEntry, RoutableTrip, RoutePattern, RoutingError,
-    RoutingTimetableBuilder,
+    PlacePatternOccurrence, PlaceSpatialEntry, RaptorTimetableBuilder, RoutableTrip, RoutePattern,
+    RoutingError,
 };
 use crate::traits::Spatial;
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime};
 use chrono_tz::Tz;
 use rstar::{RTree, AABB};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufReader, BufWriter, Read, Write};
-use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(feature = "gtfs-flex")]
@@ -32,11 +29,11 @@ use crate::model::FlexDurationParams;
 use crate::routing::spatial_index::flex_zone_within_radius;
 
 /// Phase 3: RAPTOR-style contiguous CSR timetable, multi-feed archive registry, and spatial/shape
-/// index ready for continental-scale vectorized multimodal A* graph search.
+/// index ready for continental-scale vectorized multimodal graph search.
 #[derive(
     Clone, Debug, Default, Serialize, Deserialize, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
-pub struct RoutingTimetable {
+pub struct RaptorTimetable {
     /// Metadata and index ranges for every merged GTFS archive, indexed by [`FeedIdx`].
     pub feeds: Vec<FeedMetadata>,
 
@@ -66,7 +63,7 @@ pub struct RoutingTimetable {
 
     /// Flat CSR arena of all `16-byte` [`CompactStopTime`] events across all trips.
     ///
-    /// Use [`RoutingTimetable::trip_stop_times`] or `timetable.stop_times[trip.stop_times_range()]`
+    /// Use [`RaptorTimetable::trip_stop_times`] or `timetable.stop_times[trip.stop_times_range()]`
     /// for $O(1)$ slice access without pointer chasing.
     pub stop_times: Vec<CompactStopTime>,
 
@@ -113,31 +110,13 @@ pub struct RoutingTimetable {
     pub scoped_service_to_idx: HashMap<(FeedIdx, ServiceId), ServiceIdx>,
     /// Scoped lookup from `(FeedIdx, ShapeId)` to [`ShapeIdx`].
     pub scoped_shape_to_idx: HashMap<(FeedIdx, ShapeId), ShapeIdx>,
-
-    // --- Convenience Single-Feed / Last-Write Lookup Maps ---
-    /// Convenience lookup from `StopId` to [`PlaceIdx`].
-    pub stop_id_to_place: HashMap<StopId, PlaceIdx>,
-    /// Convenience lookup from `LocationId` to [`PlaceIdx`] (GTFS-Flex).
-    #[cfg(feature = "gtfs-flex")]
-    pub location_id_to_place: HashMap<LocationId, PlaceIdx>,
-    /// Convenience lookup from `LocationGroupId` to [`PlaceIdx`] (GTFS-Flex).
-    #[cfg(feature = "gtfs-flex")]
-    pub location_group_id_to_place: HashMap<LocationGroupId, PlaceIdx>,
-    /// Convenience lookup from `RouteId` to [`RouteIdx`].
-    pub route_id_to_idx: HashMap<RouteId, RouteIdx>,
-    /// Convenience lookup from `TripId` to [`TripIdx`].
-    pub trip_id_to_idx: HashMap<TripId, TripIdx>,
-    /// Convenience lookup from `ServiceId` to [`ServiceIdx`].
-    pub service_id_to_idx: HashMap<ServiceId, ServiceIdx>,
-    /// Convenience lookup from `ShapeId` to [`ShapeIdx`].
-    pub shape_id_to_idx: HashMap<ShapeId, ShapeIdx>,
 }
 
-impl RoutingTimetable {
-    /// Creates a new [`RoutingTimetableBuilder`] for merging one or more [`crate::model::ValidatedFeed`]s
-    /// into a single contiguous national/regional [`RoutingTimetable`].
-    pub fn builder() -> RoutingTimetableBuilder {
-        RoutingTimetableBuilder::new()
+impl RaptorTimetable {
+    /// Creates a new [`RaptorTimetableBuilder`] for merging one or more [`crate::model::ValidatedFeed`]s
+    /// into a single contiguous national/regional [`RaptorTimetable`].
+    pub fn builder() -> RaptorTimetableBuilder {
+        RaptorTimetableBuilder::new()
     }
 
     /// Returns the contiguous slice of [`CompactStopTime`]s for `trip_idx` in $O(1)$ time.
@@ -332,48 +311,197 @@ impl RoutingTimetable {
             .copied()
     }
 
-    /// Returns a boolean mask indexed by [`ServiceIdx`] indicating which services are active on `date`.
-    pub fn active_services_mask(&self, date: NaiveDate) -> Vec<bool> {
-        self.services.iter().map(|s| s.is_active_on(date)).collect()
+    /// Looks up a [`ServiceIdx`] by `(FeedId, ServiceId)` in $O(1)$ time.
+    pub fn lookup_service(&self, feed_id: &FeedId, service_id: &ServiceId) -> Option<ServiceIdx> {
+        let &feed_idx = self.feed_id_to_idx.get(feed_id)?;
+        self.scoped_service_to_idx
+            .get(&(feed_idx, service_id.clone()))
+            .copied()
     }
 
-    /// Evaluates active services for a local `(date, time_of_day)` query, including previous-day
-    /// (`date - 1`) services that may still be running overnight with GTFS timestamps `>= 24:00:00`
-    /// (`time_of_day + 86_400` seconds).
+    /// Looks up a [`ShapeIdx`] by `(FeedId, ShapeId)` in $O(1)$ time.
+    pub fn lookup_shape(&self, feed_id: &FeedId, shape_id: &ShapeId) -> Option<ShapeIdx> {
+        let &feed_idx = self.feed_id_to_idx.get(feed_id)?;
+        self.scoped_shape_to_idx
+            .get(&(feed_idx, shape_id.clone()))
+            .copied()
+    }
+
+    /// Resolves `target_date` to a representative active service date (`picked_date`) for `feed_idx`
+    /// by applying `policy` across that feed's [`ServiceCalendar`] slice (`feed.services_span`).
+    pub fn resolve_service_date_for_feed(
+        &self,
+        feed_idx: FeedIdx,
+        target_date: NaiveDate,
+        policy: DateMappingPolicy,
+    ) -> Option<NaiveDate> {
+        let feed = self.feeds.get(feed_idx.index())?;
+        let start = feed.services_span.start as usize;
+        let end = feed.services_span.end as usize;
+        let feed_services = self.services.get(start..end)?;
+        policy.resolve_date(target_date, feed_services)
+    }
+
+    fn populate_feed_active_services(
+        &self,
+        feed_idx: FeedIdx,
+        query_date: NaiveDate,
+        policy: DateMappingPolicy,
+        today_active: &mut [bool],
+        yesterday_active: &mut [bool],
+        feed_picked_dates: &mut [Option<NaiveDate>],
+    ) -> Option<()> {
+        let feed = self.feeds.get(feed_idx.index())?;
+        let start = feed.services_span.start as usize;
+        let end = feed.services_span.end as usize;
+        let feed_services = self.services.get(start..end)?;
+
+        let picked = match policy {
+            DateMappingPolicy::Exact => Some(query_date),
+            _ => policy.resolve_date(query_date, feed_services),
+        };
+
+        if let Some(picked_date) = picked {
+            feed_picked_dates[feed_idx.index()] = Some(picked_date);
+            let yesterday_date = picked_date
+                .checked_sub_days(Days::new(1))
+                .unwrap_or(picked_date);
+            for (offset, service) in feed_services.iter().enumerate() {
+                let sidx = start + offset;
+                today_active[sidx] = service.is_active_on(picked_date);
+                yesterday_active[sidx] = service.is_active_on(yesterday_date);
+            }
+        }
+        Some(())
+    }
+
+    /// Evaluates active services across all feeds for a local `(date, time_of_day)` query using
+    /// [`DateMappingPolicy::Exact`], including previous-day (`date - 1`) services that may still
+    /// be running overnight with GTFS timestamps `>= 24:00:00` (`time_of_day + 86_400` seconds).
     pub fn active_services_at_time(
         &self,
         date: NaiveDate,
         time_of_day: GtfsTime,
     ) -> ActiveServiceWindow {
-        let today_active = self.active_services_mask(date);
-        let yesterday_date = date.checked_sub_days(Days::new(1)).unwrap_or(date);
-        let yesterday_active = self.active_services_mask(yesterday_date);
-        let yesterday_overnight_time = time_of_day.add_seconds(86_400);
-        ActiveServiceWindow {
-            date,
+        self.active_services_at_time_with_policy(date, time_of_day, DateMappingPolicy::Exact)
+    }
+
+    /// Evaluates active services for `feed_idx` at a local `(query_date, time_of_day)` using `policy`
+    /// to map `query_date` to a representative `picked_date` for that feed.
+    ///
+    /// Only services belonging to `feed_idx` (`feed.services_span`) are enabled in the returned
+    /// [`ActiveServiceWindow`], and `window.date` preserves the rider's `query_date` so boarding
+    /// and arrival [`DateTime`]s are resolved on the rider's actual query date.
+    ///
+    /// Under [`DateMappingPolicy::Exact`], `feed_picked_dates[feed_idx]` is `Some(query_date)` and
+    /// both `query_date` (`today_active`) and `query_date - 1` (`yesterday_active`) are evaluated
+    /// directly even when no service starts on `query_date`, preserving overnight (`>= 24:00:00`)
+    /// departures from the previous calendar day. For non-exact policies, if no date satisfies
+    /// `policy` for `feed_idx`, `feed_picked_dates[feed_idx]` is `None` and `today_active` and
+    /// `yesterday_active` will be all `false`.
+    pub fn active_services_for_feed_with_policy(
+        &self,
+        feed_idx: FeedIdx,
+        query_date: NaiveDate,
+        time_of_day: GtfsTime,
+        policy: DateMappingPolicy,
+    ) -> Option<ActiveServiceWindow> {
+        let n_services = self.services.len();
+        let mut today_active = vec![false; n_services];
+        let mut yesterday_active = vec![false; n_services];
+        let mut feed_picked_dates = vec![None; self.feeds.len()];
+
+        self.populate_feed_active_services(
+            feed_idx,
+            query_date,
+            policy,
+            &mut today_active,
+            &mut yesterday_active,
+            &mut feed_picked_dates,
+        )?;
+
+        Some(ActiveServiceWindow {
+            date: query_date,
+            feed_picked_dates,
             time_of_day,
             today_active,
-            yesterday_date,
-            yesterday_overnight_time,
+            yesterday_overnight_time: time_of_day.add_seconds(86_400),
+            yesterday_active,
+        })
+    }
+
+    /// Evaluates active services across **all** feeds in this [`RaptorTimetable`] for a local
+    /// `(query_date, time_of_day)` by resolving each feed's representative date independently
+    /// using `policy` and recording it in [`ActiveServiceWindow::feed_picked_dates`].
+    ///
+    /// Under [`DateMappingPolicy::Exact`], both `query_date` and `query_date - 1` are evaluated
+    /// directly for every feed even when no service starts on `query_date`. For non-exact policies,
+    /// feeds with no matching active date within tolerance have `feed_picked_dates[feed_idx] == None`
+    /// and both masks left `false`.
+    pub fn active_services_at_time_with_policy(
+        &self,
+        query_date: NaiveDate,
+        time_of_day: GtfsTime,
+        policy: DateMappingPolicy,
+    ) -> ActiveServiceWindow {
+        let n_services = self.services.len();
+        let mut today_active = vec![false; n_services];
+        let mut yesterday_active = vec![false; n_services];
+        let mut feed_picked_dates = vec![None; self.feeds.len()];
+
+        for i in 0..self.feeds.len() {
+            let _ = self.populate_feed_active_services(
+                FeedIdx::from_usize(i),
+                query_date,
+                policy,
+                &mut today_active,
+                &mut yesterday_active,
+                &mut feed_picked_dates,
+            );
+        }
+
+        ActiveServiceWindow {
+            date: query_date,
+            feed_picked_dates,
+            time_of_day,
+            today_active,
+            yesterday_overnight_time: time_of_day.add_seconds(86_400),
             yesterday_active,
         }
     }
 
     /// Evaluates active services for `feed_idx` at a timezone-aware [`DateTime`] by converting
-    /// the instant into the feed's primary IANA [`chrono_tz::Tz`] timezone (from `agency.txt`).
+    /// the instant into the feed's primary IANA [`chrono_tz::Tz`] timezone (from `agency.txt`)
+    /// using [`DateMappingPolicy::Exact`].
     pub fn active_services_for_feed_at_datetime<T: chrono::TimeZone>(
         &self,
         feed_idx: FeedIdx,
         dt: &DateTime<T>,
     ) -> Option<ActiveServiceWindow> {
+        self.active_services_for_feed_at_datetime_with_policy(
+            feed_idx,
+            dt,
+            DateMappingPolicy::Exact,
+        )
+    }
+
+    /// Evaluates active services for `feed_idx` at a timezone-aware [`DateTime`] by converting
+    /// the instant into the feed's primary IANA [`chrono_tz::Tz`] timezone and resolving the feed's
+    /// active service date via `policy`.
+    pub fn active_services_for_feed_at_datetime_with_policy<T: chrono::TimeZone>(
+        &self,
+        feed_idx: FeedIdx,
+        dt: &DateTime<T>,
+        policy: DateMappingPolicy,
+    ) -> Option<ActiveServiceWindow> {
         let tz = self.feed_timezone(feed_idx)?;
         let local_dt = dt.with_timezone(&tz);
         let (date, time_of_day) = GtfsTime::from_datetime(&local_dt);
-        Some(self.active_services_at_time(date, time_of_day))
+        self.active_services_for_feed_with_policy(feed_idx, date, time_of_day, policy)
     }
 
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` at or after a timezone-aware
-    /// [`DateTime`] across a merged multi-timezone [`RoutingTimetable`].
+    /// [`DateTime`] across a merged multi-timezone [`RaptorTimetable`] using [`DateMappingPolicy::Exact`].
     ///
     /// Automatically converts `dt` into the pattern's owning feed's local [`chrono_tz::Tz`] timezone,
     /// evaluates both current-day and previous-day overnight services in that feed's local service day,
@@ -384,9 +512,28 @@ impl RoutingTimetable {
         stop_offset: usize,
         dt: &DateTime<T>,
     ) -> Option<(BoardableDeparture, DateTime<Tz>)> {
+        self.earliest_boardable_trip_at_datetime_with_policy(
+            pattern_idx,
+            stop_offset,
+            dt,
+            DateMappingPolicy::Exact,
+        )
+    }
+
+    /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` at or after a timezone-aware
+    /// [`DateTime`] across a merged multi-timezone [`RaptorTimetable`], resolving the owning feed's
+    /// active service date using `policy`.
+    pub fn earliest_boardable_trip_at_datetime_with_policy<T: chrono::TimeZone>(
+        &self,
+        pattern_idx: PatternIdx,
+        stop_offset: usize,
+        dt: &DateTime<T>,
+        policy: DateMappingPolicy,
+    ) -> Option<(BoardableDeparture, DateTime<Tz>)> {
         let pattern = self.patterns.get(pattern_idx.index())?;
-        let window = self.active_services_for_feed_at_datetime(pattern.feed_idx, dt)?;
-        let dep = self.earliest_boardable_trip_with_overnight(pattern_idx, stop_offset, &window)?;
+        let window =
+            self.active_services_for_feed_at_datetime_with_policy(pattern.feed_idx, dt, policy)?;
+        let dep = self.earliest_boardable_trip(pattern_idx, stop_offset, &window)?;
         let dep_dt = dep.departure_datetime(self, window.date)?;
         Some((dep, dep_dt))
     }
@@ -433,7 +580,10 @@ impl RoutingTimetable {
     }
 
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` departing at or after `after_time`
-    /// among trips whose `service_idx` is enabled in `active_services`.
+    /// within a single service-day boolean mask `active_services` (indexed by [`ServiceIdx`]).
+    ///
+    /// For full service-window queries that also evaluate previous-day overnight trips (`>= 24:00:00`),
+    /// use [`RaptorTimetable::earliest_boardable_trip`].
     ///
     /// Seamlessly handles:
     /// 1. **Fixed-schedule trips** (and materialized frequency trips) via `partition_point` binary search
@@ -441,7 +591,7 @@ impl RoutingTimetable {
     /// 2. **Headway-based `frequencies.txt` trips** by computing the first headway departure `>= after_time`
     ///    within each `FrequencyWindow`, and
     /// 3. **GTFS-Flex `FlexWindow` trips** where `after_time <= window.end` (boarding at `max(after_time, window.start)`).
-    pub fn earliest_boardable_trip(
+    pub fn earliest_boardable_trip_in_mask(
         &self,
         pattern_idx: PatternIdx,
         stop_offset: usize,
@@ -588,20 +738,20 @@ impl RoutingTimetable {
     /// Finds the earliest boardable trip on `pattern_idx` at `stop_offset` using an [`ActiveServiceWindow`],
     /// checking both today's schedule (`after_time = window.time_of_day`) and yesterday's overnight
     /// trips (`after_time = window.time_of_day + 86_400`) and returning whichever boards earlier.
-    pub fn earliest_boardable_trip_with_overnight(
+    pub fn earliest_boardable_trip(
         &self,
         pattern_idx: PatternIdx,
         stop_offset: usize,
         window: &ActiveServiceWindow,
     ) -> Option<BoardableDeparture> {
-        let today_cand = self.earliest_boardable_trip(
+        let today_cand = self.earliest_boardable_trip_in_mask(
             pattern_idx,
             stop_offset,
             window.time_of_day,
             &window.today_active,
         );
         let overnight_cand = self
-            .earliest_boardable_trip(
+            .earliest_boardable_trip_in_mask(
                 pattern_idx,
                 stop_offset,
                 window.yesterday_overnight_time,
@@ -720,63 +870,6 @@ impl RoutingTimetable {
         matches
     }
 
-    // --- Binary Snapshot Serialization (`rkyv`) for Instant HPC Cold-Starts ---
-
-    /// Serializes this [`RoutingTimetable`] into a compact `rkyv` byte vector.
-    pub fn to_rkyv_bytes(&self) -> Result<Vec<u8>, RoutingError> {
-        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        Ok(aligned.into_vec())
-    }
-
-    /// Validates and returns a zero-copy [`ArchivedRoutingTimetable`] reference directly from a
-    /// 16-byte-aligned `rkyv` byte slice (such as an [`rkyv::util::AlignedVec`] or memory-mapped buffer)
-    /// without allocating or copying the timetable's vectors.
-    pub fn access_rkyv_bytes(bytes: &[u8]) -> Result<&ArchivedRoutingTimetable, RoutingError> {
-        rkyv::access::<ArchivedRoutingTimetable, rkyv::rancor::Error>(bytes)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Deserializes a [`RoutingTimetable`] from an `rkyv` byte slice (validating the archive via `bytecheck`).
-    pub fn from_rkyv_bytes(bytes: &[u8]) -> Result<Self, RoutingError> {
-        let mut aligned = rkyv::util::AlignedVec::<16>::with_capacity(bytes.len());
-        aligned.extend_from_slice(bytes);
-        rkyv::from_bytes::<Self, rkyv::rancor::Error>(&aligned)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Writes this [`RoutingTimetable`] as a binary `rkyv` snapshot to `writer`.
-    pub fn write_rkyv<W: Write>(&self, mut writer: W) -> Result<(), RoutingError> {
-        let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(self)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        writer
-            .write_all(&aligned)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))
-    }
-
-    /// Reads a [`RoutingTimetable`] from a binary `rkyv` snapshot `reader`.
-    pub fn read_rkyv<R: Read>(mut reader: R) -> Result<Self, RoutingError> {
-        let mut bytes = Vec::new();
-        reader
-            .read_to_end(&mut bytes)
-            .map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        Self::from_rkyv_bytes(&bytes)
-    }
-
-    /// Saves this [`RoutingTimetable`] to a file on disk in `rkyv` format.
-    pub fn save_rkyv(&self, path: impl AsRef<Path>) -> Result<(), RoutingError> {
-        let file = File::create(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        let writer = BufWriter::new(file);
-        self.write_rkyv(writer)
-    }
-
-    /// Loads a [`RoutingTimetable`] from an `rkyv` snapshot file on disk.
-    pub fn load_rkyv(path: impl AsRef<Path>) -> Result<Self, RoutingError> {
-        let file = File::open(path).map_err(|e| RoutingError::Snapshot(e.to_string()))?;
-        let reader = BufReader::new(file);
-        Self::read_rkyv(reader)
-    }
-
     /// Reconstructs the geographic linestring (`Vec<Coord>`) for a transit traversal along `trip_idx`
     /// from `from_stop_offset` to `to_stop_offset` (inclusive 0-based indices into the trip's stops).
     pub fn reconstruct_leg_linestring(
@@ -833,6 +926,8 @@ impl RoutingTimetable {
     }
 }
 
+impl_rkyv_snapshot!(RaptorTimetable, ArchivedRaptorTimetable);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -857,13 +952,13 @@ mod tests {
         }]);
         let validated = ValidatedFeed::try_from(raw).unwrap();
 
-        // 1. Non-materialized frequency query via earliest_boardable_trip
-        let timetable = RoutingTimetable::try_from(validated.clone()).unwrap();
+        // 1. Non-materialized frequency query via earliest_boardable_trip_in_mask
+        let timetable = RaptorTimetable::try_from(validated.clone()).unwrap();
         let active_mask = vec![true; timetable.services.len()];
         let pat_idx = PatternIdx::new(0);
 
         let dep0 = timetable
-            .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &active_mask)
+            .earliest_boardable_trip_in_mask(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &active_mask)
             .expect("should find frequency departure at stop 0");
         assert_eq!(dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
         assert_eq!(
@@ -872,7 +967,7 @@ mod tests {
         );
 
         let dep1 = timetable
-            .earliest_boardable_trip(pat_idx, 1, GtfsTime::from_hms(7, 12, 0), &active_mask)
+            .earliest_boardable_trip_in_mask(pat_idx, 1, GtfsTime::from_hms(7, 12, 0), &active_mask)
             .expect("should find frequency departure at stop 1");
         assert_eq!(dep1.departure_time, GtfsTime::from_hms(7, 20, 0));
         assert_eq!(
@@ -880,8 +975,8 @@ mod tests {
             Some(GtfsTime::from_hms(8, 20, 0))
         );
 
-        // 2. Materialized frequency trips in RoutingTimetableBuilder
-        let mut builder = RoutingTimetable::builder().with_materialize_frequencies(true);
+        // 2. Materialized frequency trips in RaptorTimetableBuilder
+        let mut builder = RaptorTimetable::builder().with_materialize_frequencies(true);
         builder.add_feed("basic_mat", validated).unwrap();
         let mat_timetable = builder.build();
 
@@ -890,7 +985,7 @@ mod tests {
 
         let mat_active = vec![true; mat_timetable.services.len()];
         let mat_dep0 = mat_timetable
-            .earliest_boardable_trip(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &mat_active)
+            .earliest_boardable_trip_in_mask(pat_idx, 0, GtfsTime::from_hms(6, 7, 0), &mat_active)
             .expect("should binary-search materialized frequency trips");
         assert_eq!(mat_dep0.departure_time, GtfsTime::from_hms(6, 10, 0));
         assert_eq!(mat_dep0.frequency_offset_secs, 0);
@@ -907,14 +1002,14 @@ mod tests {
         // Forbid pickup at stop_offset = 1
         raw.stop_times[1].pickup_type = PickupDropOffType::NotAvailable;
         let validated = ValidatedFeed::try_from(raw).unwrap();
-        let timetable = RoutingTimetable::try_from(validated).unwrap();
+        let timetable = RaptorTimetable::try_from(validated).unwrap();
 
         let active_all = vec![true; timetable.services.len()];
         let inactive_all = vec![false; timetable.services.len()];
 
         // Pickup forbidden at stop_offset = 1 -> None
         assert!(timetable
-            .earliest_boardable_trip(
+            .earliest_boardable_trip_in_mask(
                 PatternIdx::new(0),
                 1,
                 GtfsTime::from_hms(0, 0, 0),
@@ -924,7 +1019,7 @@ mod tests {
 
         // Service inactive -> None
         assert!(timetable
-            .earliest_boardable_trip(
+            .earliest_boardable_trip_in_mask(
                 PatternIdx::new(0),
                 0,
                 GtfsTime::from_hms(0, 0, 0),
@@ -964,7 +1059,7 @@ mod tests {
         }
         let feed_denver = ValidatedFeed::try_from(raw_denver).unwrap();
 
-        let mut builder = RoutingTimetable::builder();
+        let mut builder = RaptorTimetable::builder();
         let paris_idx = builder.add_feed("paris", feed_paris).unwrap();
         let denver_idx = builder.add_feed("denver", feed_denver).unwrap();
         let timetable = builder.build();
@@ -1004,21 +1099,21 @@ mod tests {
     #[test]
     fn test_rkyv_snapshot_roundtrip() {
         let feed = ValidatedFeed::from_path(fixture_path("fixtures/basic")).unwrap();
-        let original = RoutingTimetable::try_from(feed).unwrap();
+        let original = RaptorTimetable::try_from(feed).unwrap();
 
         let aligned = rkyv::to_bytes::<rkyv::rancor::Error>(&original)
-            .expect("should serialize RoutingTimetable to aligned rkyv buffer");
-        let archived = RoutingTimetable::access_rkyv_bytes(&aligned)
-            .expect("should zero-copy access ArchivedRoutingTimetable");
+            .expect("should serialize RaptorTimetable to aligned rkyv buffer");
+        let archived = RaptorTimetable::access_rkyv_bytes(&aligned)
+            .expect("should zero-copy access ArchivedRaptorTimetable");
         assert_eq!(archived.places.len(), original.places.len());
 
         let bytes = original
             .to_rkyv_bytes()
-            .expect("should serialize RoutingTimetable to rkyv");
+            .expect("should serialize RaptorTimetable to rkyv");
         assert!(!bytes.is_empty());
 
-        let restored = RoutingTimetable::from_rkyv_bytes(&bytes)
-            .expect("should deserialize RoutingTimetable from rkyv");
+        let restored = RaptorTimetable::from_rkyv_bytes(&bytes)
+            .expect("should deserialize RaptorTimetable from rkyv");
 
         assert_eq!(restored.feeds, original.feeds);
         assert_eq!(restored.places, original.places);
@@ -1028,7 +1123,10 @@ mod tests {
         assert_eq!(restored.trips, original.trips);
         assert_eq!(restored.stop_times, original.stop_times);
 
-        let stop1_coord = restored.places[restored.stop_id_to_place[&StopId::new("stop1")].index()]
+        let stop1_pidx = restored
+            .lookup_stop(&FeedId::new("default"), &StopId::new("stop1"))
+            .unwrap();
+        let stop1_coord = restored.places[stop1_pidx.index()]
             .representative_coord()
             .unwrap();
         let nearby = restored.places_near(stop1_coord, 50.0);

@@ -56,19 +56,19 @@ constraint.models = [
 ###
 ### TRANSIT TOPOLOGY
 ###
-# [[search]] 
-# traversal.type = "combined"
-# traversal.models = [
-#     { type = "distance", distance_unit = "miles" }, 
-#     { type = "transit", edges_schedules_input_file = "boulder_co/transit/edges-schedules-1.csv.gz", gtfs_metadata_input_file = "boulder_co/transit/edges-gtfs-metadata-1.json", schedule_loading_policy = "All" },
-#     { type = "multimodal", this_mode = "transit", available_modes = ["walk", "transit"], available_route_ids = ["14129", "15151", "76654"], use_route_ids = true, max_trip_legs = 5 }
-# ]
+[[search]] 
+traversal.type = "combined"
+traversal.models = [
+    { type = "distance", distance_unit = "miles" }, 
+    { type = "transit", edges_schedules_input_file = "boulder_co/transit/edges-schedules.csv.gz", gtfs_metadata_input_file = "boulder_co/transit/edges-gtfs-metadata.json", schedule_loading_policy = "All", walk_speed = { value = 5, unit = "kph" }},
+    { type = "multimodal", this_mode = "transit", available_modes = ["walk", "transit"] }
+]
 
-# frontier.type = "combined"
-# frontier.models = [
-#     { type = "time_limit", time_limit = { time = 40.0, time_unit = "minutes" }},
-#     { type = "multimodal", mode = "transit", available_modes = ["walk", "transit"], available_route_ids = ["14129", "15151", "76654"], use_route_ids = true, max_trip_legs = 5 }
-# ]
+constraint.type = "combined"
+constraint.models = [
+    { type = "time_limit", time_limit = { time = 40.0, time_unit = "minutes" }},
+    { type = "multimodal", this_mode = "transit", available_modes = ["walk", "transit"] }
+]
 
 [[plugin.input_plugins]]
 type = "grid"
@@ -85,15 +85,32 @@ grid = { type = "h3", resolution = 8 }
 type = "inject"
 format = "key_value"
 write_mode = "overwrite"
-key = "mode"
-value = "walk"
+key = "trip_mode"
+value = "transit"
+
+[[plugin.input_plugins]]
+type = "inject"
+format = "key_value"
+write_mode = "overwrite"
+key = "max_trip_legs"
+value = 5
 
 [[plugin.input_plugins]]
 type = "inject"
 format = "key_value"
 write_mode = "overwrite"
 key = "start_datetime"
-value = "2025-09-01 09:00:00"
+value = "2025-08-15 09:00:00"
+
+[[plugin.input_plugins]]
+type = "inject"
+format = "key_value"
+write_mode = "overwrite"
+key = "constraints"
+value = [
+    { type = "time_limit", limit = 40, unit = "minutes" },
+    { type = "mode_time_limit", values.walk = { limit = 5, unit = "minutes"}},
+]
 
 [[plugin.output_plugins]]
 type = "traversal"
@@ -196,60 +213,60 @@ type = "combined"
 
 [[system.response_output_policy.policies]]
 type = "file"
-path = "result.json"
+filename = "result.json"
 [system.response_output_policy.policies.format]
 type = "json"
 newline_delimited = false
 
-[[system.response_output_policy.policies]]
-type = "file"
-path = "result.csv"
-[system.response_output_policy.policies.format]
-type = "csv"
-sorted = true
-[system.response_output_policy.policies.format.mapping]
-grid_id = "request.grid_id"
-lon = "request.origin_x"
-lat = "request.origin_y"
-mode = "request.mode"
-runtime = "search_runtime"
-ram_mb = "search_result_size_mib"
-error = "error"
+# [[system.response_output_policy.policies]]
+# type = "file"
+# filename = "result.csv"
+# [system.response_output_policy.policies.format]
+# type = "csv"
+# sorted = true
+# [system.response_output_policy.policies.format.mapping]
+# grid_id = "request.grid_id"
+# lon = "request.origin_x"
+# lat = "request.origin_y"
+# mode = "request.trip_mode"
+# runtime = "search_runtime"
+# ram_mb = "search_result_size_mib"
+# error = "error"
 
-opps_entertainment_total = "opportunity_totals.entertainment"
-opps_retail_total = "opportunity_totals.retail"
-opps_healthcare_total = "opportunity_totals.healthcare"
-opps_services_total = "opportunity_totals.services"
-opps_food_total = "opportunity_totals.food"
-opps_jobs_total = "opportunity_totals.jobs"
+# opps_entertainment_total = "opportunity_totals.entertainment"
+# opps_retail_total = "opportunity_totals.retail"
+# opps_healthcare_total = "opportunity_totals.healthcare"
+# opps_services_total = "opportunity_totals.services"
+# opps_food_total = "opportunity_totals.food"
+# opps_jobs_total = "opportunity_totals.jobs"
 
-opps_entertainment_10 = "bin.10.opportunities.entertainment"
-opps_retail_10 = "bin.10.opportunities.retail"
-opps_healthcare_10 = "bin.10.opportunities.healthcare"
-opps_services_10 = "bin.10.opportunities.services"
-opps_food_10 = "bin.10.opportunities.food"
-opps_jobs_10 = "bin.10.opportunities.jobs"
-opps_entertainment_20 = "bin.20.opportunities.entertainment"
-opps_retail_20 = "bin.20.opportunities.retail"
-opps_healthcare_20 = "bin.20.opportunities.healthcare"
-opps_services_20 = "bin.20.opportunities.services"
-opps_food_20 = "bin.20.opportunities.food"
-opps_jobs_20 = "bin.20.opportunities.jobs"
-opps_entertainment_30 = "bin.30.opportunities.entertainment"
-opps_retail_30 = "bin.30.opportunities.retail"
-opps_healthcare_30 = "bin.30.opportunities.healthcare"
-opps_services_30 = "bin.30.opportunities.services"
-opps_food_30 = "bin.30.opportunities.food"
-opps_jobs_30 = "bin.30.opportunities.jobs"
-opps_entertainment_40 = "bin.40.opportunities.entertainment"
-opps_retail_40 = "bin.40.opportunities.retail"
-opps_healthcare_40 = "bin.40.opportunities.healthcare"
-opps_services_40 = "bin.40.opportunities.services"
-opps_food_40 = "bin.40.opportunities.food"
-opps_jobs_40 = "bin.40.opportunities.jobs"
+# opps_entertainment_10 = "bin.10.opportunities.entertainment"
+# opps_retail_10 = "bin.10.opportunities.retail"
+# opps_healthcare_10 = "bin.10.opportunities.healthcare"
+# opps_services_10 = "bin.10.opportunities.services"
+# opps_food_10 = "bin.10.opportunities.food"
+# opps_jobs_10 = "bin.10.opportunities.jobs"
+# opps_entertainment_20 = "bin.20.opportunities.entertainment"
+# opps_retail_20 = "bin.20.opportunities.retail"
+# opps_healthcare_20 = "bin.20.opportunities.healthcare"
+# opps_services_20 = "bin.20.opportunities.services"
+# opps_food_20 = "bin.20.opportunities.food"
+# opps_jobs_20 = "bin.20.opportunities.jobs"
+# opps_entertainment_30 = "bin.30.opportunities.entertainment"
+# opps_retail_30 = "bin.30.opportunities.retail"
+# opps_healthcare_30 = "bin.30.opportunities.healthcare"
+# opps_services_30 = "bin.30.opportunities.services"
+# opps_food_30 = "bin.30.opportunities.food"
+# opps_jobs_30 = "bin.30.opportunities.jobs"
+# opps_entertainment_40 = "bin.40.opportunities.entertainment"
+# opps_retail_40 = "bin.40.opportunities.retail"
+# opps_healthcare_40 = "bin.40.opportunities.healthcare"
+# opps_services_40 = "bin.40.opportunities.services"
+# opps_food_40 = "bin.40.opportunities.food"
+# opps_jobs_40 = "bin.40.opportunities.jobs"
 
-isochrone_10 = "bin.10.isochrone"
-isochrone_20 = "bin.20.isochrone"
-isochrone_30 = "bin.30.isochrone"
-isochrone_40 = "bin.40.isochrone"
+# isochrone_10 = "bin.10.isochrone"
+# isochrone_20 = "bin.20.isochrone"
+# isochrone_30 = "bin.30.isochrone"
+# isochrone_40 = "bin.40.isochrone"
 

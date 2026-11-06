@@ -55,28 +55,125 @@ fn test_phased_pipeline_basic_fixture() {
     assert!(trip1.stop_times[0].place.as_stop().is_some());
     assert!(trip1.stop_times[0].shape_ref.is_some());
 
-    // Phase 3: RoutingTimetable
+    // Phase 3: RaptorTimetable
     let timetable =
-        RoutingTimetable::try_from(validated).expect("Phase 3 RoutingTimetable should succeed");
+        RaptorTimetable::try_from(validated).expect("Phase 3 RaptorTimetable should succeed");
     assert_eq!(timetable.places.len(), 6);
     assert_eq!(timetable.routes.len(), 4);
     assert_eq!(timetable.patterns.len(), 1);
     assert_eq!(timetable.trips.len(), 1);
 
     // Verify reverse lookup from PlaceIdx -> PatternIdx (stop2 is the first stop on trip1)
-    let stop2_pidx = timetable.stop_id_to_place[&StopId::new("stop2")];
+    let default_feed = FeedId::new("default");
+    let stop2_pidx = timetable
+        .lookup_stop(&default_feed, &StopId::new("stop2"))
+        .unwrap();
     let occurrences = timetable.patterns_serving_place(stop2_pidx);
     assert_eq!(occurrences.len(), 1);
     assert_eq!(occurrences[0].stop_offset_in_pattern, 0);
 
     // Verify transfers and pathways were indexed on PlaceIdx (stop1 has transfers & pathways)
-    let stop1_pidx = timetable.stop_id_to_place[&StopId::new("stop1")];
+    let stop1_pidx = timetable
+        .lookup_stop(&default_feed, &StopId::new("stop1"))
+        .unwrap();
     assert!(!timetable.place_to_transfers[stop1_pidx.index()].is_empty());
+
+    // Verify DateMappingPolicy directly against the unaltered fixtures/basic archive:
+    // - service1 in calendar.txt runs ONLY on Saturday & Sunday from 2017-01-01 to 2017-01-15,
+    //   with 2017-01-01 (Sunday) and 2017-01-02 (Monday) deleted in calendar_dates.txt.
+    // - service2 is Added on 2017-01-01 (Sunday) in calendar_dates.txt.
+    let wed_in_range = NaiveDate::from_ymd_opt(2017, 1, 4).unwrap(); // Wednesday inside [2017-01-01, 2017-01-15]
+    let sat_in_range = NaiveDate::from_ymd_opt(2017, 1, 7).unwrap(); // Saturday inside [2017-01-01, 2017-01-15]
+    let sat_out_of_range = NaiveDate::from_ymd_opt(2017, 1, 21).unwrap(); // Saturday outside range (+7 days from 2017-01-14)
+    let sat_2017_01_14 = NaiveDate::from_ymd_opt(2017, 1, 14).unwrap();
+
+    // 1. Wednesday 2017-01-04 is inside [start_date, end_date], but basic has NO Wednesday service:
+    //    - Exact and Nearest(match_weekday: true) must both return None (and 0 active services)
+    assert_eq!(
+        timetable.resolve_service_date_for_feed(
+            FeedIdx::new(0),
+            wed_in_range,
+            DateMappingPolicy::Exact
+        ),
+        None
+    );
+    assert_eq!(
+        timetable.resolve_service_date_for_feed(
+            FeedIdx::new(0),
+            wed_in_range,
+            DateMappingPolicy::Nearest {
+                tolerance_days: 365,
+                match_weekday: true,
+            }
+        ),
+        None
+    );
+    let wed_exact_win = timetable
+        .active_services_for_feed_with_policy(
+            FeedIdx::new(0),
+            wed_in_range,
+            bambam_gtfs::GtfsTime::from_hms(13, 0, 0),
+            DateMappingPolicy::Nearest {
+                tolerance_days: 365,
+                match_weekday: true,
+            },
+        )
+        .unwrap();
+    assert!(timetable
+        .earliest_boardable_trip(PatternIdx::new(0), 0, &wed_exact_win)
+        .is_none());
+
+    // 2. BestCase on Wednesday 2017-01-04 falls back to match_weekday: false and picks Sunday 2017-01-01 (3 days earlier, tie-breaker over Saturday 2017-01-07 which is 3 days later)
+    assert_eq!(
+        timetable.resolve_service_date_for_feed(
+            FeedIdx::new(0),
+            wed_in_range,
+            DateMappingPolicy::BestCase {
+                tolerance_days: 365
+            }
+        ),
+        Some(NaiveDate::from_ymd_opt(2017, 1, 1).unwrap())
+    );
+
+    // 3. Saturday 2017-01-07 is an exact match; out-of-range Saturday 2017-01-21 maps to Saturday 2017-01-14
+    assert_eq!(
+        timetable.resolve_service_date_for_feed(
+            FeedIdx::new(0),
+            sat_in_range,
+            DateMappingPolicy::Exact
+        ),
+        Some(sat_in_range)
+    );
+    let mapped_sat_win = timetable
+        .active_services_for_feed_with_policy(
+            FeedIdx::new(0),
+            sat_out_of_range,
+            bambam_gtfs::GtfsTime::from_hms(5, 30, 0),
+            DateMappingPolicy::Nearest {
+                tolerance_days: 30,
+                match_weekday: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(mapped_sat_win.date, sat_out_of_range);
+    assert_eq!(
+        mapped_sat_win.picked_date_for_feed(FeedIdx::new(0)),
+        Some(sat_2017_01_14)
+    );
+    let dep = timetable
+        .earliest_boardable_trip(PatternIdx::new(0), 0, &mapped_sat_win)
+        .expect("trip1 should be boardable on mapped Saturday 2017-01-14");
+    assert_eq!(
+        dep.departure_datetime(&timetable, mapped_sat_win.date)
+            .unwrap()
+            .date_naive(),
+        sat_out_of_range
+    );
 }
 
 #[test]
 fn test_zip_archive_reading() {
-    let timetable = RoutingTimetable::from_path(fixture_path("fixtures/zips/gtfs.zip"))
+    let timetable = RaptorTimetable::from_path(fixture_path("fixtures/zips/gtfs.zip"))
         .expect("should read zip archive");
     assert_eq!(timetable.places.len(), 5);
     assert!(!timetable.routes.is_empty());
@@ -107,7 +204,7 @@ fn test_compact_memory_layout_and_multi_feed_merger() {
     let feed_b = ValidatedFeed::from_path(fixture_path("fixtures/interpolated_stop_times"))
         .expect("load feed B");
 
-    let mut builder = RoutingTimetable::builder();
+    let mut builder = RaptorTimetable::builder();
     let fidx_a = builder
         .add_feed("agency_alpha", feed_a)
         .expect("add feed A");
@@ -177,10 +274,56 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     assert_eq!(flex_only.booking_rules.as_ref().map(Vec::len), Some(1));
 
     // 1. Read the existing fixtures/flex feed through all 3 phases
-    let timetable = RoutingTimetable::from_path(fixture_path("fixtures/flex"))
+    let timetable = RaptorTimetable::from_path(fixture_path("fixtures/flex"))
         .expect("fixtures/flex should pass Phases 1, 2, and 3");
-    assert_eq!(timetable.location_id_to_place.len(), 2);
+    assert_eq!(timetable.scoped_location_to_place.len(), 2);
     assert!(!timetable.trips.is_empty());
+
+    // Verify holiday exception + date mapping on unaltered fixtures/flex:
+    // - c_67295_b_77497_d_31 (Weekday) has 2024-07-04 (Thursday, Independence Day) deleted in calendar_dates.txt.
+    // - Querying on Thursday 2024-07-04 under Nearest(match_weekday: true) skips the holiday and maps to Thursday 2024-06-27!
+    let july_4_2024 = NaiveDate::from_ymd_opt(2024, 7, 4).unwrap();
+    let june_27_2024 = NaiveDate::from_ymd_opt(2024, 6, 27).unwrap();
+    assert_eq!(
+        timetable.resolve_service_date_for_feed(
+            FeedIdx::new(0),
+            july_4_2024,
+            DateMappingPolicy::Exact
+        ),
+        None
+    );
+    assert_eq!(
+        timetable.resolve_service_date_for_feed(
+            FeedIdx::new(0),
+            july_4_2024,
+            DateMappingPolicy::Nearest {
+                tolerance_days: 30,
+                match_weekday: true,
+            }
+        ),
+        Some(june_27_2024)
+    );
+    // And on Wednesday 2024-07-03 (in range, non-holiday), only the Weekday service is active (Sunday service is false)
+    let wed_july_3 = NaiveDate::from_ymd_opt(2024, 7, 3).unwrap();
+    let flex_wed_win = timetable
+        .active_services_for_feed_with_policy(
+            FeedIdx::new(0),
+            wed_july_3,
+            GtfsTime::from_hms(7, 0, 0),
+            DateMappingPolicy::BestCase {
+                tolerance_days: 730,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        flex_wed_win.picked_date_for_feed(FeedIdx::new(0)),
+        Some(wed_july_3)
+    );
+    assert_eq!(
+        flex_wed_win.today_active.iter().filter(|&&b| b).count(),
+        1,
+        "only Weekday service should be active on Wednesday, not Sunday service"
+    );
 
     let first_st = timetable.trip_stop_times(TripIdx::new(0))[0];
     assert!(first_st.flex_window().is_some());
@@ -220,9 +363,14 @@ fn test_gtfs_flex_phased_pipeline_and_location_groups() {
     assert!(lg.representative_coord().is_some());
 
     let flex_timetable =
-        RoutingTimetable::try_from(validated).expect("Phase 3 with location group should succeed");
-    let lg_pidx = flex_timetable.location_group_id_to_place[&LocationGroupId::new("lg_1")];
-    let area_708_pidx = flex_timetable.location_id_to_place[&LocationId::new("area_708")];
+        RaptorTimetable::try_from(validated).expect("Phase 3 with location group should succeed");
+    let default_feed = FeedId::new("default");
+    let lg_pidx = flex_timetable
+        .lookup_location_group(&default_feed, &LocationGroupId::new("lg_1"))
+        .unwrap();
+    let area_708_pidx = flex_timetable
+        .lookup_flex_location(&default_feed, &LocationId::new("area_708"))
+        .unwrap();
 
     // Both the group's PlaceIdx AND its member area_708's PlaceIdx should index the pattern!
     assert!(!flex_timetable.patterns_serving_place(lg_pidx).is_empty());

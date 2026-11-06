@@ -5,7 +5,6 @@ mod missing_stop_matching_policy;
 mod provider;
 mod schedule_error;
 mod schedule_row;
-mod sorted_trip;
 mod summary;
 
 pub mod app;
@@ -17,7 +16,6 @@ mod fq_schedule_row;
 mod gtfs_bundle;
 mod gtfs_edge;
 
-// pub mod date_ops;
 pub use date_mapping_policy::DateMappingPolicy;
 pub use date_mapping_policy_config::{DateMappingPolicyConfig, DateMappingPolicyType};
 pub use gtfs_bundle::GtfsBundle;
@@ -27,5 +25,4 @@ pub use missing_stop_matching_policy::MissingStopLocationPolicy;
 pub use provider::GtfsProvider;
 pub use schedule_error::batch_processing_error;
 pub use schedule_row::ScheduleRow;
-pub use sorted_trip::SortedTrip;
 pub use summary::GtfsSummary;

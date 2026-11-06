@@ -6,7 +6,7 @@ It is designed to scale from inspecting a single transit agency archive up to me
 
 ## Alternatives
 
-`bambam-gtfs` owes its beginnings to [`gtfs-structures`](https://crates.io/crates/gtfs-structures), from which this crate borrows several of the core GTFS enum and data structure implementations. `gtfs-structures` is a community-driven project with two active maintainers and clear focus. Consider using that crate if your use case is GTFS analysis and editing. Use `bambam-gtfs` if you need more fine grained control or want to leverage the `RoutingTimetable` data model for [RAPTOR](https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)-style transit route planning. This project may move slower to update than `gtfs-structures`.
+`bambam-gtfs` owes its beginnings to [`gtfs-structures`](https://crates.io/crates/gtfs-structures), from which this crate borrows several of the core GTFS enum and data structure implementations. `gtfs-structures` is a community-driven project with two active maintainers and clear focus. Consider using that crate if your use case is GTFS analysis and editing. Use `bambam-gtfs` if you need more fine grained control or want to leverage the `RaptorTimetable` or `EdgeTimetable` data models for transit route planning. This project may move slower to update than `gtfs-structures`.
 
 ## Features
 
@@ -17,17 +17,18 @@ It is designed to scale from inspecting a single transit agency archive up to me
   - GTFS-Flex compiler feature, data model changes modeled via feature-flagged enum variants
   - ability to construct geometries along shapes between stops (for map plotting a trip/trip segment)
   - phased initialization approach to reading a GTFS collection:
-    - a collection of Vectors of data rows in [bambam-gtfs::raw::RawFeed]
-    - a validated collection of hash maps in [bambam-gtfs::model::ValidatedFeed]
-    - a vectorized representation suitable for [RAPTOR](https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf) route planning in [bambam-gtfs::routing::RoutingTimetable]
-  - for `RoutingTimetable`, a binary load/save to disk backed by [rkyv](https://crates.io/crates/rkyv)
+    - a collection of Vectors of data rows in [`bambam_gtfs::raw::RawFeed`]
+    - a validated collection of hash maps in [`bambam_gtfs::model::ValidatedFeed`]
+    - a vectorized pattern representation suitable for [RAPTOR](https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf) route planning in [`bambam_gtfs::routing::RaptorTimetable`]
+    - a flat 3-array CSR edge schedule representation suitable for time-dependent graph search (`routee-compass`) in [`bambam_gtfs::routing::EdgeTimetable`]
+  - for `RaptorTimetable` and `EdgeTimetable`, binary load/save to disk backed by [rkyv](https://crates.io/crates/rkyv)
 
 ## High-Level Example
 
 ```rust
 use bambam_gtfs::{
-     raw::{RawRoute, RawStopTime},
-    Coord, GtfsArchive, GtfsTime, PatternIdx, RoutingTimetable, ValidatedFeed, ValidationPolicy,
+    raw::{RawRoute, RawStopTime},
+    Coord, GtfsArchive, GtfsTime, PatternIdx, RaptorTimetable, ValidatedFeed, ValidationPolicy,
 };
 use chrono::NaiveDate;
 
@@ -44,8 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ValidationPolicy::DropInvalidTripsWithWarning,
     )?;
 
-    // 3. Build a multi-feed RAPTOR-style RoutingTimetable
-    let mut builder = RoutingTimetable::builder()
+    // 3. Build a multi-feed RAPTOR-style RaptorTimetable
+    let mut builder = RaptorTimetable::builder()
         .with_validation_policy(ValidationPolicy::DropInvalidTripsWithWarning);
     builder.add_feed("agency-a", feed)?;
     let timetable = builder.build();
@@ -56,9 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 5. Departure query: find the earliest boardable trip on pattern 0 at stop offset 0
     let date = NaiveDate::from_ymd_opt(2017, 1, 7).unwrap();
     let window = timetable.active_services_at_time(date, GtfsTime::from_hms(8, 30, 0));
-    if let Some(dep) =
-        timetable.earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &window)
-    {
+    if let Some(dep) = timetable.earliest_boardable_trip(PatternIdx::new(0), 0, &window) {
         // Reconstruct the exact geographic linestring between stop 0 and stop 1
         let leg_geometry = timetable.reconstruct_leg_linestring(dep.trip_idx, 0, 1)?;
         println!(
@@ -71,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 6. Serialize and reload a binary snapshot via rkyv
     let bytes = timetable.to_rkyv_bytes()?;
-    let restored = RoutingTimetable::from_rkyv_bytes(&bytes)?;
+    let restored = RaptorTimetable::from_rkyv_bytes(&bytes)?;
     assert_eq!(restored.trips.len(), timetable.trips.len());
 
     Ok(())

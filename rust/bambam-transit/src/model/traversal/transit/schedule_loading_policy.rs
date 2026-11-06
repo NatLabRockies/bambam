@@ -1,8 +1,7 @@
+use bambam_gtfs::{EdgeDeparture, EdgeTimetableBuilder};
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
-
-use crate::model::traversal::transit::schedule::{Departure, Schedule};
 
 /// guarantees we only log a dst < src data error ONCE
 static SRC_DST_ORDERING_ERROR_LOCK: OnceLock<()> = OnceLock::new();
@@ -18,30 +17,42 @@ pub enum ScheduleLoadingPolicy {
 }
 
 impl ScheduleLoadingPolicy {
-    pub fn insert_if_valid(&self, schedule_skiplist: &mut Schedule, element: Departure) {
-        if element.src_departure_time > element.dst_arrival_time {
+    /// Returns `true` if a departure with `(src_departure_time, dst_arrival_time)` is valid
+    /// and within this policy's date range.
+    pub fn accepts(
+        &self,
+        src_departure_time: NaiveDateTime,
+        dst_arrival_time: NaiveDateTime,
+    ) -> bool {
+        if src_departure_time > dst_arrival_time {
             SRC_DST_ORDERING_ERROR_LOCK.get_or_init(|| {
-                let src_time = element.src_departure_time.format("%Y-%m-%d %H:%M:%S");
-                let dst_time = element.dst_arrival_time.format("%Y-%m-%d %H:%M:%S");
+                let src_time = src_departure_time.format("%Y-%m-%d %H:%M:%S");
+                let dst_time = dst_arrival_time.format("%Y-%m-%d %H:%M:%S");
                 let msg = format!("encountered at least one schedule row where src time {src_time} is not earlier than {dst_time}. the schedule may be corrupted.");
                 log::warn!("{msg}");
             });
-            return;
+            return false;
         }
 
-        let should_insert = match self {
+        match self {
             ScheduleLoadingPolicy::All => true,
             ScheduleLoadingPolicy::InDateRange {
                 start_date,
                 end_date,
-            } => {
-                (element.src_departure_time <= *end_date)
-                    && (*start_date <= element.src_departure_time)
-            }
-        };
+            } => (src_departure_time <= *end_date) && (*start_date <= src_departure_time),
+        }
+    }
 
-        if should_insert {
-            schedule_skiplist.insert(element);
+    pub fn insert_into_edge_timetable(
+        &self,
+        builder: &mut EdgeTimetableBuilder,
+        edge_id: usize,
+        route_label: i64,
+        departure: EdgeDeparture,
+    ) {
+        builder.ensure_edge(edge_id);
+        if self.accepts(departure.src_departure_time, departure.dst_arrival_time) {
+            builder.add_departure(edge_id, route_label, departure);
         }
     }
 }
@@ -49,31 +60,31 @@ impl ScheduleLoadingPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bambam_gtfs::EdgeTimetable;
     use chrono::NaiveDate;
 
     #[test]
     fn test_invalid_midnight_wraparound_rejection() {
         let policy = ScheduleLoadingPolicy::All;
-        let mut schedule = Schedule::new();
+        let mut builder = EdgeTimetable::builder();
 
         // GTFS departure at 23:55, arriving incorrectly at unpadded 00:05 the same day
-        let invalid_departure = Departure {
-            src_departure_time: NaiveDate::from_ymd_opt(2025, 1, 1)
+        let invalid_departure = EdgeDeparture::without_walk_distance(
+            NaiveDate::from_ymd_opt(2025, 1, 1)
                 .unwrap()
                 .and_hms_opt(23, 55, 0)
                 .unwrap(),
-            dst_arrival_time: NaiveDate::from_ymd_opt(2025, 1, 1)
+            NaiveDate::from_ymd_opt(2025, 1, 1)
                 .unwrap()
                 .and_hms_opt(0, 5, 0)
                 .unwrap(),
-        };
+        );
 
-        policy.insert_if_valid(&mut schedule, invalid_departure);
+        policy.insert_into_edge_timetable(&mut builder, 0, 1, invalid_departure);
+        let timetable = builder.build().unwrap();
 
-        // Without the bug fix restricting src <= dst, this will fail if we assert it should be empty
-        // The expected behavior once fixed is for the schedule to remain length 0
         assert_eq!(
-            schedule.len(),
+            timetable.departures.len(),
             0,
             "Schedule should reject departures where arrival happens before departure"
         );

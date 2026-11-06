@@ -576,6 +576,84 @@ mod test {
         assert_eq!(mode_walk_time, time);
     }
 
+    #[test]
+    fn test_route_id_resets_when_switching_from_transit_to_walk() {
+        use bambam_core::model::{bambam_state, state::variable};
+
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
+        let mtm_transit =
+            MultimodalTraversalModel::new_local("transit", max_trip_legs, &["walk", "transit"])
+                .unwrap();
+        let mtm_walk =
+            MultimodalTraversalModel::new_local("walk", max_trip_legs, &["walk", "transit"])
+                .unwrap();
+
+        let mut features = mtm_transit.output_features();
+        features.push((
+            fieldname::EDGE_DISTANCE.to_string(),
+            variable::multimodal_distance_variable_config(None),
+        ));
+        features.push((
+            fieldname::EDGE_TIME.to_string(),
+            variable::multimodal_time_variable_config(None),
+        ));
+        features.push((
+            bambam_state::ROUTE_ID.to_string(),
+            variable::route_id_variable_config(),
+        ));
+        let state_model = StateModel::new(features);
+        let mut state = state_model.initial_state(None).unwrap();
+
+        let l0 = Label::Vertex(VertexId(0));
+        let (src, edge, dst) = mock_trajectory(0, 0, 0);
+        let tree = SearchTree::default();
+        let ctx = EdgeFrontierContext::new(&l0, &src, &edge, &dst, &tree);
+
+        // Leg 0: Transit on route_id = 0
+        state_model
+            .set_custom_i64(&mut state, bambam_state::ROUTE_ID, &0)
+            .unwrap();
+        mtm_transit
+            .traverse_edge(&ctx, &mut state, &state_model)
+            .unwrap();
+        assert_eq!(
+            state_model
+                .get_custom_i64(&state, bambam_state::ROUTE_ID)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            state_model
+                .get_custom_i64(&state, "leg_0_route_id")
+                .unwrap(),
+            0
+        );
+
+        // Leg 1: Switch to walk -> route_id and leg_1_route_id must both reset to -1!
+        mtm_walk
+            .traverse_edge(&ctx, &mut state, &state_model)
+            .unwrap();
+        assert_eq!(
+            state_model
+                .get_custom_i64(&state, bambam_state::ROUTE_ID)
+                .unwrap(),
+            variable::EMPTY_CATEGORICAL_VALUE
+        );
+        assert_eq!(
+            state_model
+                .get_custom_i64(&state, "leg_1_route_id")
+                .unwrap(),
+            variable::EMPTY_CATEGORICAL_VALUE
+        );
+        // And leg_0_route_id remains 0
+        assert_eq!(
+            state_model
+                .get_custom_i64(&state, "leg_0_route_id")
+                .unwrap(),
+            0
+        );
+    }
+
     /// creates all of the required test assets, where
     ///   - tm is the MultimodalTraversalModel value
     ///   - test_tm is the model concatenated with the TestTraversalModel to enable

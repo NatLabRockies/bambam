@@ -1,9 +1,13 @@
-//! `rkyv::with` adapters for external primitive types (`chrono::NaiveDate`, `chrono_tz::Tz`, and `rgb::RGB8`).
+//! `rkyv::with` adapters for external primitive types (`chrono::NaiveDate`, `chrono::NaiveDateTime`,
+//! `chrono_tz::Tz`, `rgb::RGB8`, and `uom::si::f64::{Length, Time}`).
 
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
 use chrono_tz::Tz;
 use rgb::RGB8;
 use std::collections::HashSet;
+use uom::si::f64::{Length, Time};
+use uom::si::length::meter;
+use uom::si::time::second;
 
 /// `rkyv::with` wrapper that serializes `chrono::NaiveDate` as a compact `i32` (`num_days_from_ce`).
 pub struct RkyvNaiveDate;
@@ -79,6 +83,60 @@ impl<D: rkyv::rancor::Fallible + ?Sized>
             .as_slice()
             .iter()
             .filter_map(|d| NaiveDate::from_num_days_from_ce_opt(d.to_native()))
+            .collect())
+    }
+}
+
+/// `rkyv::with` wrapper that serializes `Vec<Option<NaiveDate>>` as `Vec<i32>` (`num_days_from_ce`, or `i32::MIN` for `None`).
+pub struct RkyvOptionNaiveDateVec;
+
+impl rkyv::with::ArchiveWith<Vec<Option<NaiveDate>>> for RkyvOptionNaiveDateVec {
+    type Archived = rkyv::vec::ArchivedVec<rkyv::rend::i32_le>;
+    type Resolver = rkyv::vec::VecResolver;
+
+    fn resolve_with(
+        field: &Vec<Option<NaiveDate>>,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let days: Vec<i32> = field
+            .iter()
+            .map(|opt| opt.map_or(i32::MIN, |d| d.num_days_from_ce()))
+            .collect();
+        rkyv::vec::ArchivedVec::resolve_from_slice(&days, resolver, out);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + rkyv::ser::Allocator + rkyv::ser::Writer + ?Sized>
+    rkyv::with::SerializeWith<Vec<Option<NaiveDate>>, S> for RkyvOptionNaiveDateVec
+{
+    fn serialize_with(
+        field: &Vec<Option<NaiveDate>>,
+        serializer: &mut S,
+    ) -> Result<Self::Resolver, S::Error> {
+        let days: Vec<i32> = field
+            .iter()
+            .map(|opt| opt.map_or(i32::MIN, |d| d.num_days_from_ce()))
+            .collect();
+        rkyv::vec::ArchivedVec::serialize_from_slice(&days, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::with::DeserializeWith<
+        rkyv::vec::ArchivedVec<rkyv::rend::i32_le>,
+        Vec<Option<NaiveDate>>,
+        D,
+    > for RkyvOptionNaiveDateVec
+{
+    fn deserialize_with(
+        field: &rkyv::vec::ArchivedVec<rkyv::rend::i32_le>,
+        _deserializer: &mut D,
+    ) -> Result<Vec<Option<NaiveDate>>, D::Error> {
+        Ok(field
+            .as_slice()
+            .iter()
+            .map(|d| NaiveDate::from_num_days_from_ce_opt(d.to_native()))
             .collect())
     }
 }
@@ -189,6 +247,123 @@ impl<D: rkyv::rancor::Fallible + ?Sized>
     }
 }
 
+/// `rkyv::with` wrapper that serializes `chrono::NaiveDateTime` as `[i32_le; 3]`
+/// (`[num_days_from_ce, num_seconds_from_midnight, nanosecond]`).
+pub struct RkyvNaiveDateTime;
+
+impl rkyv::with::ArchiveWith<NaiveDateTime> for RkyvNaiveDateTime {
+    type Archived = [rkyv::rend::i32_le; 3];
+    type Resolver = [(); 3];
+
+    fn resolve_with(
+        field: &NaiveDateTime,
+        resolver: Self::Resolver,
+        out: rkyv::Place<Self::Archived>,
+    ) {
+        let arr = [
+            field.date().num_days_from_ce(),
+            field.time().num_seconds_from_midnight() as i32,
+            field.time().nanosecond() as i32,
+        ];
+        rkyv::Archive::resolve(&arr, resolver, out);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<NaiveDateTime, S>
+    for RkyvNaiveDateTime
+{
+    fn serialize_with(
+        field: &NaiveDateTime,
+        serializer: &mut S,
+    ) -> Result<Self::Resolver, S::Error> {
+        let arr = [
+            field.date().num_days_from_ce(),
+            field.time().num_seconds_from_midnight() as i32,
+            field.time().nanosecond() as i32,
+        ];
+        rkyv::Serialize::serialize(&arr, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized>
+    rkyv::with::DeserializeWith<[rkyv::rend::i32_le; 3], NaiveDateTime, D> for RkyvNaiveDateTime
+{
+    fn deserialize_with(
+        field: &[rkyv::rend::i32_le; 3],
+        _deserializer: &mut D,
+    ) -> Result<NaiveDateTime, D::Error> {
+        let date = NaiveDate::from_num_days_from_ce_opt(field[0].to_native()).unwrap_or_default();
+        let time = NaiveTime::from_num_seconds_from_midnight_opt(
+            field[1].to_native() as u32,
+            field[2].to_native() as u32,
+        )
+        .unwrap_or_default();
+        Ok(NaiveDateTime::new(date, time))
+    }
+}
+
+/// `rkyv::with` wrapper that serializes `uom::si::f64::Length` as `f64_le` in meters.
+pub struct RkyvLengthMeters;
+
+impl rkyv::with::ArchiveWith<Length> for RkyvLengthMeters {
+    type Archived = rkyv::rend::f64_le;
+    type Resolver = ();
+
+    fn resolve_with(field: &Length, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        let meters = field.get::<meter>();
+        rkyv::Archive::resolve(&meters, resolver, out);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<Length, S> for RkyvLengthMeters {
+    fn serialize_with(field: &Length, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        let meters = field.get::<meter>();
+        rkyv::Serialize::serialize(&meters, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::with::DeserializeWith<rkyv::rend::f64_le, Length, D>
+    for RkyvLengthMeters
+{
+    fn deserialize_with(
+        field: &rkyv::rend::f64_le,
+        _deserializer: &mut D,
+    ) -> Result<Length, D::Error> {
+        Ok(Length::new::<meter>(field.to_native()))
+    }
+}
+
+/// `rkyv::with` wrapper that serializes `uom::si::f64::Time` as `f64_le` in seconds.
+pub struct RkyvTimeSeconds;
+
+impl rkyv::with::ArchiveWith<Time> for RkyvTimeSeconds {
+    type Archived = rkyv::rend::f64_le;
+    type Resolver = ();
+
+    fn resolve_with(field: &Time, resolver: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        let secs = field.get::<second>();
+        rkyv::Archive::resolve(&secs, resolver, out);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::with::SerializeWith<Time, S> for RkyvTimeSeconds {
+    fn serialize_with(field: &Time, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        let secs = field.get::<second>();
+        rkyv::Serialize::serialize(&secs, serializer)
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::with::DeserializeWith<rkyv::rend::f64_le, Time, D>
+    for RkyvTimeSeconds
+{
+    fn deserialize_with(
+        field: &rkyv::rend::f64_le,
+        _deserializer: &mut D,
+    ) -> Result<Time, D::Error> {
+        Ok(Time::new::<second>(field.to_native()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +372,8 @@ mod tests {
     struct RkyvPrimitiveSample {
         #[rkyv(with = RkyvNaiveDate)]
         date: NaiveDate,
+        #[rkyv(with = RkyvNaiveDateTime)]
+        datetime: NaiveDateTime,
         #[rkyv(with = RkyvNaiveDateSet)]
         date_set: HashSet<NaiveDate>,
         #[rkyv(with = RkyvRgb8)]
@@ -207,6 +384,10 @@ mod tests {
         opt_tz_some: Option<Tz>,
         #[rkyv(with = RkyvOptionTz)]
         opt_tz_none: Option<Tz>,
+        #[rkyv(with = RkyvLengthMeters)]
+        distance: Length,
+        #[rkyv(with = RkyvTimeSeconds)]
+        duration: Time,
     }
 
     #[test]
@@ -215,13 +396,17 @@ mod tests {
         date_set.insert(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
         date_set.insert(NaiveDate::from_ymd_opt(2026, 12, 31).unwrap());
 
+        let date = NaiveDate::from_ymd_opt(2026, 11, 4).unwrap();
         let sample = RkyvPrimitiveSample {
-            date: NaiveDate::from_ymd_opt(2026, 11, 4).unwrap(),
+            date,
+            datetime: date.and_hms_nano_opt(14, 30, 45, 123_456_789).unwrap(),
             date_set,
             color: RGB8::new(18, 52, 86),
             tz: Tz::America__Denver,
             opt_tz_some: Some(Tz::Europe__Paris),
             opt_tz_none: None,
+            distance: Length::new::<meter>(245.75),
+            duration: Time::new::<second>(92.5),
         };
 
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&sample).unwrap();

@@ -35,23 +35,35 @@ use crate::{
     },
 };
 
-pub const METADATA_FILENAME_REGEX: &str = r#"edges-gtfs-metadata-(\d+).json"#;
+pub const METADATA_FILENAME_REGEX: &str = r#"^edges-gtfs-metadata(?:-(\d+))?\.json$"#;
 pub const FQ_ROUTE_IDS_FILENAME: &str = "fq-route-ids-enumerated.txt.gz";
 
-pub fn edges_filename(edge_list_id: EdgeListId) -> String {
-    format!("edges-compass-{edge_list_id}.csv.gz")
+pub fn edges_filename(edge_list_id: Option<EdgeListId>) -> String {
+    match edge_list_id {
+        Some(id) => format!("edges-compass-{id}.csv.gz"),
+        None => "edges-compass.csv.gz".to_string(),
+    }
 }
 
-pub fn schedules_filename(edge_list_id: EdgeListId) -> String {
-    format!("edges-schedules-{edge_list_id}.csv.gz")
+pub fn schedules_filename(edge_list_id: Option<EdgeListId>) -> String {
+    match edge_list_id {
+        Some(id) => format!("edges-schedules-{id}.csv.gz"),
+        None => "edges-schedules.csv.gz".to_string(),
+    }
 }
 
-pub fn geometries_filename(edge_list_id: EdgeListId) -> String {
-    format!("edges-geometries-enumerated-{edge_list_id}.txt.gz")
+pub fn geometries_filename(edge_list_id: Option<EdgeListId>) -> String {
+    match edge_list_id {
+        Some(id) => format!("edges-geometries-enumerated-{id}.txt.gz"),
+        None => "edges-geometries-enumerated.txt.gz".to_string(),
+    }
 }
 
-pub fn metadata_filename(edge_list_id: EdgeListId) -> String {
-    format!("edges-gtfs-metadata-{edge_list_id}.json")
+pub fn metadata_filename(edge_list_id: Option<EdgeListId>) -> String {
+    match edge_list_id {
+        Some(id) => format!("edges-gtfs-metadata-{id}.json"),
+        None => "edges-gtfs-metadata.json".to_string(),
+    }
 }
 
 /// executes a run of the GTFS configuration application.
@@ -394,6 +406,7 @@ pub fn gtfs_traversal_model_config(
         gtfs_metadata_input_file: edges_metadata.to_string(),
         schedule_loading_policy: ScheduleLoadingPolicy::All,
         route_ids_input_file,
+        walk_speed: None,
     };
     let mtc_conf = MultimodalTraversalConfig {
         this_mode: "transit".to_string(),
@@ -438,7 +451,7 @@ pub struct GtfsEdgeListEntry {
 
 impl GtfsEdgeListEntry {
     pub fn new(
-        edge_list_id: EdgeListId,
+        edge_list_id: Option<EdgeListId>,
         gtfs_edge_list_directory: &str,
         relative_path_to_gtfs_edge_list_directory: &str,
     ) -> Result<GtfsEdgeListEntry, GtfsConfigError> {
@@ -452,6 +465,7 @@ impl GtfsEdgeListEntry {
         let geometries_filepath = path.join(geometries_filename);
         let metadata_filename = metadata_filename(edge_list_id);
         let metadata_filepath = path.join(metadata_filename);
+        let resolved_edge_list_id = edge_list_id.unwrap_or(EdgeListId(0));
         if !&edges_filepath.is_file() {
             Err(GtfsConfigError::ReadFailure {
                 filepath: edges_filepath.to_string_lossy().to_string(),
@@ -487,7 +501,7 @@ impl GtfsEdgeListEntry {
                     }
                 })?;
             let entry = GtfsEdgeListEntry {
-                edge_list_id,
+                edge_list_id: resolved_edge_list_id,
                 edges_input_file: edges_filepath,
                 schedules_input_file: schedules_filepath,
                 geometries_input_file: geometries_filepath,
@@ -513,26 +527,28 @@ fn entry_matches_pattern(entry: &Result<DirEntry, std::io::Error>, pat: &Regex) 
         .unwrap_or(true)
 }
 
-/// helper function to extract the EdgeListId enumerated in a metadata filename
-fn get_edge_list_id(entry: &DirEntry, pat: &Regex) -> Result<EdgeListId, GtfsConfigError> {
+/// helper function to extract the optional EdgeListId enumerated in a metadata filename
+fn get_edge_list_id(entry: &DirEntry, pat: &Regex) -> Result<Option<EdgeListId>, GtfsConfigError> {
     let filename_os = entry.file_name();
     let filename = filename_os.to_string_lossy();
-    let pat_match = pat
-        .captures(&filename)
-        .and_then(|g| g.get(1))
-        .ok_or_else(|| {
-            GtfsConfigError::InternalError(format!(
-                "while extracting EdgeListId, file {filename} does not match pattern"
-            ))
-        })?;
-    let edge_list_id = pat_match.as_str().parse::<usize>().map_err(|e| {
+    let caps = pat.captures(&filename).ok_or_else(|| {
         GtfsConfigError::InternalError(format!(
-            "while extracting EdgeListId, value {} was not a valid usize: {}",
-            pat_match.as_str(),
-            e
+            "while extracting EdgeListId, file {filename} does not match pattern"
         ))
     })?;
-    Ok(EdgeListId(edge_list_id))
+    match caps.get(1) {
+        Some(pat_match) => {
+            let edge_list_id = pat_match.as_str().parse::<usize>().map_err(|e| {
+                GtfsConfigError::InternalError(format!(
+                    "while extracting EdgeListId, value {} was not a valid usize: {}",
+                    pat_match.as_str(),
+                    e
+                ))
+            })?;
+            Ok(Some(EdgeListId(edge_list_id)))
+        }
+        None => Ok(None),
+    }
 }
 
 /// helper function to build a filewriter for writing either .csv.gz or

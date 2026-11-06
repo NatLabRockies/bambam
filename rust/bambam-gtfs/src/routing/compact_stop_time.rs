@@ -3,7 +3,7 @@
 use crate::primitives::{GtfsTime, TimeWindow};
 use crate::traits::TemporalStopTime;
 
-/// Interpolated or flexible timing at a single stop event in the Phase 3 [`crate::routing::RoutingTimetable`].
+/// Interpolated or flexible timing at a single stop event in the Phase 3 [`crate::routing::RaptorTimetable`].
 #[derive(
     Clone,
     Copy,
@@ -33,7 +33,7 @@ pub enum RoutableStopTiming {
 pub(crate) const FLAG_IS_FLEX_WINDOW: u16 = 1 << 0;
 pub(crate) const NO_FLEX_DURATION_IDX: u16 = u16::MAX;
 
-/// Ultra-compact `16-byte` stop-time entry stored in the flat CSR [`crate::routing::RoutingTimetable::stop_times`] arena.
+/// Ultra-compact `16-byte` stop-time entry stored in the flat CSR [`crate::routing::RaptorTimetable::stop_times`] arena.
 ///
 /// Why 16 bytes?
 /// - Across 1,000 US GTFS feeds (~200 million stop_times), a 16-byte record consumes only **3.2 GB**
@@ -52,7 +52,7 @@ pub struct CompactStopTime {
     pub departure_or_end_secs: u32,
     /// Cumulative Haversine arc-length offset in meters along the trip's [`crate::model::ShapePolyline`], or `f32::NAN` if unavailable.
     pub shape_arc_meters: f32,
-    /// Index into `RoutingTimetable::flex_duration_table`, or `u16::MAX` if no GTFS-Flex duration parameters apply.
+    /// Index into `RaptorTimetable::flex_duration_table`, or `u16::MAX` if no GTFS-Flex duration parameters apply.
     pub flex_duration_idx: u16,
     /// Bitflags (`bit 0` = `FLAG_IS_FLEX_WINDOW`).
     pub flags: u16,

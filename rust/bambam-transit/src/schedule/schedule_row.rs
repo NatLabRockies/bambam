@@ -1,5 +1,6 @@
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
+use uom::{si::f64::Length, ConstZero};
 
 /// a row in the schedules CSV file representing, for a given route,
 /// the time of departure from some source stop location and arrival at some destination
@@ -22,6 +23,12 @@ pub struct ScheduleRow {
     pub src_departure_time: NaiveDateTime,
     /// arrival time at end of this edge.
     pub dst_arrival_time: NaiveDateTime,
+    /// walking distance from the source road vertex to the boarding GTFS stop.
+    #[serde(default)]
+    pub src_walk_distance: Length,
+    /// walking distance from the alighting GTFS stop to the destination road vertex.
+    #[serde(default)]
+    pub dst_walk_distance: Length,
 }
 
 impl ScheduleRow {
@@ -34,6 +41,31 @@ impl ScheduleRow {
         src_departure_time: NaiveDateTime,
         dst_arrival_time: NaiveDateTime,
     ) -> ScheduleRow {
+        Self::new_with_walk_distance(
+            edge_id,
+            feed_id,
+            route_id,
+            service_id,
+            agency_id,
+            src_departure_time,
+            dst_arrival_time,
+            Length::ZERO,
+            Length::ZERO,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_walk_distance(
+        edge_id: usize,
+        feed_id: Option<String>,
+        route_id: String,
+        service_id: String,
+        agency_id: Option<String>,
+        src_departure_time: NaiveDateTime,
+        dst_arrival_time: NaiveDateTime,
+        src_walk_distance: Length,
+        dst_walk_distance: Length,
+    ) -> ScheduleRow {
         ScheduleRow {
             edge_id,
             feed_id,
@@ -42,6 +74,8 @@ impl ScheduleRow {
             agency_id,
             src_departure_time,
             dst_arrival_time,
+            src_walk_distance,
+            dst_walk_distance,
         }
     }
 }

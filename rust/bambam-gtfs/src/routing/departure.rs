@@ -1,14 +1,14 @@
 //! Active service window (`ActiveServiceWindow`) and earliest boardable departure (`BoardableDeparture`).
 
-use crate::ids::TripIdx;
+use crate::ids::{FeedIdx, TripIdx};
 use crate::primitives::GtfsTime;
-use crate::routing::RoutingTimetable;
+use crate::routing::RaptorTimetable;
 use crate::traits::TemporalStopTime;
 use chrono::{DateTime, Days, NaiveDate};
 use chrono_tz::Tz;
 
 /// Active service evaluation window for a local `(date, time_of_day)` query, supporting both
-/// current-day schedules and previous-day overnight trips (`>= 24:00:00` on `date - 1`).
+/// current-day schedules and previous-day overnight trips (`>= 24:00:00` on `picked_date - 1`).
 #[derive(
     Clone,
     Debug,
@@ -21,24 +21,49 @@ use chrono_tz::Tz;
     rkyv::Deserialize,
 )]
 pub struct ActiveServiceWindow {
-    /// Local calendar date of the query.
+    /// Local calendar date of the rider's query.
     #[rkyv(with = crate::primitives::RkyvNaiveDate)]
     pub date: NaiveDate,
+    /// Representative calendar date evaluated for each feed, indexed by [`FeedIdx`]
+    /// (`Some(date)` under [`crate::model::DateMappingPolicy::Exact`], `Some(picked_date)` when
+    /// resolved via a [`crate::model::DateMappingPolicy`], or `None` when a feed was not evaluated
+    /// or had no matching active date).
+    #[rkyv(with = crate::primitives::RkyvOptionNaiveDateVec)]
+    pub feed_picked_dates: Vec<Option<NaiveDate>>,
     /// Local time of day on `date` (`0..86_400` seconds).
     pub time_of_day: GtfsTime,
-    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on `date`.
+    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on their
+    /// owning feed's resolved representative date (`feed_picked_dates[feed_idx]`).
     pub today_active: Vec<bool>,
-    /// Previous calendar date (`date - 1 day`).
-    #[rkyv(with = crate::primitives::RkyvNaiveDate)]
-    pub yesterday_date: NaiveDate,
-    /// Query time expressed on `yesterday_date`'s service clock (`time_of_day + 86_400` seconds).
+    /// Query time expressed on the previous calendar day's service clock (`time_of_day + 86_400` seconds).
     pub yesterday_overnight_time: GtfsTime,
-    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on `yesterday_date`.
+    /// Boolean mask indexed by [`crate::ids::ServiceIdx`] indicating services active on the
+    /// calendar day preceding their owning feed's resolved representative date (`picked_date - 1 day`).
     pub yesterday_active: Vec<bool>,
 }
 
+impl ActiveServiceWindow {
+    /// Returns the representative active calendar date (`picked_date`) evaluated for `feed_idx`,
+    /// or `None` if `feed_idx` was not evaluated or had no matching date under the policy.
+    #[inline]
+    pub fn picked_date_for_feed(&self, feed_idx: FeedIdx) -> Option<NaiveDate> {
+        self.feed_picked_dates
+            .get(feed_idx.index())
+            .copied()
+            .flatten()
+    }
+
+    /// Returns the previous calendar date (`picked_date - 1 day`) evaluated for overnight services
+    /// on `feed_idx`, or `None` if `feed_idx` has no resolved `picked_date`.
+    #[inline]
+    pub fn yesterday_date_for_feed(&self, feed_idx: FeedIdx) -> Option<NaiveDate> {
+        let picked = self.picked_date_for_feed(feed_idx)?;
+        Some(picked.checked_sub_days(Days::new(1)).unwrap_or(picked))
+    }
+}
+
 /// Earliest boardable trip or frequency/flex departure returned by
-/// [`RoutingTimetable::earliest_boardable_trip`] or [`RoutingTimetable::earliest_boardable_trip_with_overnight`].
+/// [`RaptorTimetable::earliest_boardable_trip`] or [`RaptorTimetable::earliest_boardable_trip_in_mask`].
 #[derive(
     Clone,
     Copy,
@@ -70,7 +95,7 @@ impl BoardableDeparture {
     /// automatically applying `self.frequency_offset_secs`.
     pub fn arrival_time_at(
         &self,
-        timetable: &RoutingTimetable,
+        timetable: &RaptorTimetable,
         to_stop_offset: usize,
     ) -> Option<GtfsTime> {
         let st = timetable
@@ -96,7 +121,7 @@ impl BoardableDeparture {
     /// `self.is_overnight_from_yesterday`).
     pub fn departure_datetime(
         &self,
-        timetable: &RoutingTimetable,
+        timetable: &RaptorTimetable,
         query_date: NaiveDate,
     ) -> Option<DateTime<Tz>> {
         let tz = timetable.trip_timezone(self.trip_idx)?;
@@ -112,7 +137,7 @@ impl BoardableDeparture {
     /// in the trip's agency timezone, given the `query_date` of the [`ActiveServiceWindow`].
     pub fn arrival_datetime_at(
         &self,
-        timetable: &RoutingTimetable,
+        timetable: &RaptorTimetable,
         query_date: NaiveDate,
         to_stop_offset: usize,
     ) -> Option<DateTime<Tz>> {
@@ -197,7 +222,7 @@ mod tests {
             NaiveDate::from_ymd_opt(2017, 1, 9).unwrap()
         );
 
-        let timetable = RoutingTimetable::try_from(validated.clone()).unwrap();
+        let timetable = RaptorTimetable::try_from(validated.clone()).unwrap();
         assert_eq!(
             timetable.feeds[0].primary_timezone,
             Some(chrono_tz::Tz::Europe__Paris)
@@ -218,7 +243,7 @@ mod tests {
         );
 
         let board = timetable
-            .earliest_boardable_trip_with_overnight(PatternIdx::new(0), 0, &window)
+            .earliest_boardable_trip(PatternIdx::new(0), 0, &window)
             .expect("should board yesterday's overnight trip at 00:30 AM");
         assert!(board.is_overnight_from_yesterday);
         assert_eq!(board.departure_time, GtfsTime::from_hms(24, 30, 0));
@@ -238,6 +263,36 @@ mod tests {
                 GtfsTime::from_hms(24, 50, 0)
             )
         );
+
+        // Even though no service starts on Monday 2017-01-09 (`today_active` is all false),
+        // `DateMappingPolicy::Exact` evaluates both `query_date` and `query_date - 1` so Sunday's
+        // 24:30 overnight trip is still found via the policy and datetime APIs at Monday 00:15.
+        assert!(window.today_active.iter().all(|&b| !b));
+        let exact_all_win = timetable.active_services_at_time_with_policy(
+            query_date,
+            query_time,
+            crate::model::DateMappingPolicy::Exact,
+        );
+        assert_eq!(exact_all_win, window);
+
+        let exact_feed_win = timetable
+            .active_services_for_feed_with_policy(
+                FeedIdx::new(0),
+                query_date,
+                query_time,
+                crate::model::DateMappingPolicy::Exact,
+            )
+            .unwrap();
+        assert_eq!(exact_feed_win, window);
+
+        let query_dt = chrono_tz::Tz::Europe__Paris
+            .with_ymd_and_hms(2017, 1, 9, 0, 15, 0)
+            .unwrap();
+        let (dt_board, dt_dep) = timetable
+            .earliest_boardable_trip_at_datetime(PatternIdx::new(0), 0, &query_dt)
+            .expect("should find Sunday's 24:30 overnight trip at Monday 00:15 under Exact");
+        assert_eq!(dt_board, board);
+        assert_eq!(dt_dep, zoned_overnight);
     }
 
     #[test]
@@ -251,7 +306,7 @@ mod tests {
             ag.timezone = Tz::America__Los_Angeles;
         }
 
-        let mut builder = RoutingTimetable::builder();
+        let mut builder = RaptorTimetable::builder();
         let ny_idx = builder
             .add_feed("ny", ValidatedFeed::try_from(raw_ny).unwrap())
             .unwrap();
@@ -276,5 +331,266 @@ mod tests {
             .unwrap();
         assert_eq!(la_win.date, NaiveDate::from_ymd_opt(2017, 1, 7).unwrap());
         assert_eq!(la_win.time_of_day, GtfsTime::from_hms(22, 30, 0));
+    }
+
+    #[test]
+    fn test_colleague_wednesday_vs_weekend_and_date_mapping_regression() {
+        use crate::enums::Exception;
+        use crate::model::DateMappingPolicy;
+        use crate::raw::{RawCalendar, RawCalendarDate};
+
+        // Construct the exact scenario reported:
+        // One route with 4 Wednesday departures between 09:00 and 10:00 AM,
+        // plus 2 Saturday departures and 1 Sunday departure in the same 09:00-10:00 AM window.
+        let build_test_feed = |use_calendar_dates_only: bool| -> ValidatedFeed {
+            let mut raw = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+            raw.frequencies = None;
+            raw.trips.clear();
+            raw.stop_times.clear();
+
+            let start = NaiveDate::from_ymd_opt(2023, 8, 1).unwrap();
+            let end = NaiveDate::from_ymd_opt(2023, 8, 31).unwrap();
+            let wed_in_aug = NaiveDate::from_ymd_opt(2023, 8, 30).unwrap(); // Wednesday
+            let sat_in_aug = NaiveDate::from_ymd_opt(2023, 8, 26).unwrap(); // Saturday
+            let sun_in_aug = NaiveDate::from_ymd_opt(2023, 8, 27).unwrap(); // Sunday
+
+            if use_calendar_dates_only {
+                raw.calendar = None;
+                raw.calendar_dates = Some(vec![
+                    RawCalendarDate {
+                        service_id: ServiceId::new("wed_svc"),
+                        date: wed_in_aug,
+                        exception_type: Exception::Added,
+                    },
+                    RawCalendarDate {
+                        service_id: ServiceId::new("sat_svc"),
+                        date: sat_in_aug,
+                        exception_type: Exception::Added,
+                    },
+                    RawCalendarDate {
+                        service_id: ServiceId::new("sun_svc"),
+                        date: sun_in_aug,
+                        exception_type: Exception::Added,
+                    },
+                ]);
+            } else {
+                raw.calendar_dates = None;
+                raw.calendar = Some(vec![
+                    RawCalendar {
+                        id: ServiceId::new("wed_svc"),
+                        monday: true,
+                        tuesday: true,
+                        wednesday: true,
+                        thursday: true,
+                        friday: true,
+                        saturday: false,
+                        sunday: false,
+                        start_date: start,
+                        end_date: end,
+                    },
+                    RawCalendar {
+                        id: ServiceId::new("sat_svc"),
+                        monday: false,
+                        tuesday: false,
+                        wednesday: false,
+                        thursday: false,
+                        friday: false,
+                        saturday: true,
+                        sunday: false,
+                        start_date: start,
+                        end_date: end,
+                    },
+                    RawCalendar {
+                        id: ServiceId::new("sun_svc"),
+                        monday: false,
+                        tuesday: false,
+                        wednesday: false,
+                        thursday: false,
+                        friday: false,
+                        saturday: false,
+                        sunday: true,
+                        start_date: start,
+                        end_date: end,
+                    },
+                ]);
+            }
+
+            let add_trip = |raw: &mut RawFeed, trip_id: &str, service_id: &str, dep_mins: u32| {
+                raw.trips.push(RawTrip {
+                    id: TripId::new(trip_id),
+                    service_id: ServiceId::new(service_id),
+                    route_id: RouteId::new("route1"),
+                    ..Default::default()
+                });
+                raw.stop_times.push(RawStopTime {
+                    trip_id: TripId::new(trip_id),
+                    stop_id: Some(StopId::new("stop2")),
+                    stop_sequence: 1,
+                    arrival_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
+                    departure_time: Some(GtfsTime::from_hms(9, dep_mins, 0)),
+                    ..Default::default()
+                });
+                raw.stop_times.push(RawStopTime {
+                    trip_id: TripId::new(trip_id),
+                    stop_id: Some(StopId::new("stop3")),
+                    stop_sequence: 2,
+                    arrival_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
+                    departure_time: Some(GtfsTime::from_hms(9, dep_mins + 5, 0)),
+                    ..Default::default()
+                });
+            };
+
+            // 4 Wednesday trips (09:00, 09:15, 09:30, 09:45)
+            add_trip(&mut raw, "wed_1", "wed_svc", 0);
+            add_trip(&mut raw, "wed_2", "wed_svc", 15);
+            add_trip(&mut raw, "wed_3", "wed_svc", 30);
+            add_trip(&mut raw, "wed_4", "wed_svc", 45);
+            // 2 Saturday trips (09:05, 09:35)
+            add_trip(&mut raw, "sat_1", "sat_svc", 5);
+            add_trip(&mut raw, "sat_2", "sat_svc", 35);
+            // 1 Sunday trip (09:20)
+            add_trip(&mut raw, "sun_1", "sun_svc", 20);
+
+            ValidatedFeed::try_from(raw).unwrap()
+        };
+
+        for use_calendar_dates_only in [false, true] {
+            let feed = build_test_feed(use_calendar_dates_only);
+            let timetable = RaptorTimetable::try_from(feed).unwrap();
+            assert_eq!(timetable.trips.len(), 7);
+
+            // Query on a Wednesday (both in-range 2023-08-30 and out-of-range 2023-09-06)
+            // under BestCase and Nearest { tolerance_days: 730, match_weekday: true }
+            let in_range_wed = NaiveDate::from_ymd_opt(2023, 8, 30).unwrap();
+            let out_of_range_wed = NaiveDate::from_ymd_opt(2023, 9, 6).unwrap();
+
+            for query_wed in [in_range_wed, out_of_range_wed] {
+                for policy in [
+                    DateMappingPolicy::Nearest {
+                        tolerance_days: 730,
+                        match_weekday: true,
+                    },
+                    DateMappingPolicy::BestCase {
+                        tolerance_days: 730,
+                    },
+                ] {
+                    let window = timetable
+                        .active_services_for_feed_with_policy(
+                            FeedIdx::new(0),
+                            query_wed,
+                            GtfsTime::from_hms(9, 0, 0),
+                            policy,
+                        )
+                        .unwrap();
+
+                    assert_eq!(window.date, query_wed);
+                    assert_eq!(
+                        window.picked_date_for_feed(FeedIdx::new(0)),
+                        Some(in_range_wed)
+                    );
+
+                    // Count how many trips in the pattern are active on this Wednesday window:
+                    // Must be exactly the 4 Wednesday trips (never the 2 Saturday or 1 Sunday trips!)
+                    let active_trip_count = timetable
+                        .trips
+                        .iter()
+                        .filter(|t| window.today_active[t.service_idx.index()])
+                        .count();
+                    assert_eq!(
+                        active_trip_count, 4,
+                        "expected 4 active Wednesday trips (use_calendar_dates_only={use_calendar_dates_only}, query_wed={query_wed}, policy={policy:?})"
+                    );
+
+                    // Stepping through boardable departures from 09:00 to 10:00 yields 4 departures,
+                    // and their resolved DateTime<Tz> has the rider's query_wed date!
+                    let mut cursor = GtfsTime::from_hms(9, 0, 0);
+                    let mut boarded = Vec::new();
+                    while cursor <= GtfsTime::from_hms(10, 0, 0) {
+                        let mut step_win = window.clone();
+                        step_win.time_of_day = cursor;
+                        if let Some(dep) =
+                            timetable.earliest_boardable_trip(PatternIdx::new(0), 0, &step_win)
+                        {
+                            if dep.departure_time <= GtfsTime::from_hms(10, 0, 0) {
+                                let dt = dep.departure_datetime(&timetable, step_win.date).unwrap();
+                                assert_eq!(dt.date_naive(), query_wed);
+                                boarded.push(dep.departure_time);
+                                cursor = dep.departure_time.add_seconds(1);
+                                continue;
+                            }
+                        }
+                        break;
+                    }
+                    assert_eq!(
+                        boarded,
+                        vec![
+                            GtfsTime::from_hms(9, 0, 0),
+                            GtfsTime::from_hms(9, 15, 0),
+                            GtfsTime::from_hms(9, 30, 0),
+                            GtfsTime::from_hms(9, 45, 0),
+                        ]
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_multi_feed_independent_picked_dates_in_active_service_window() {
+        use crate::enums::Exception;
+        use crate::model::DateMappingPolicy;
+        use crate::raw::RawCalendarDate;
+
+        // Feed 0 only operates on Saturday 2017-01-07; Feed 1 only operates on Saturday 2017-01-14
+        let sat_jan_7 = NaiveDate::from_ymd_opt(2017, 1, 7).unwrap();
+        let sat_jan_14 = NaiveDate::from_ymd_opt(2017, 1, 14).unwrap();
+        let query_sat_jan_21 = NaiveDate::from_ymd_opt(2017, 1, 21).unwrap();
+
+        let mut raw0 = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        raw0.calendar = None;
+        raw0.calendar_dates = Some(vec![RawCalendarDate {
+            service_id: ServiceId::new("service1"),
+            date: sat_jan_7,
+            exception_type: Exception::Added,
+        }]);
+
+        let mut raw1 = RawFeed::from_path(fixture_path("fixtures/basic")).unwrap();
+        raw1.calendar = None;
+        raw1.calendar_dates = Some(vec![RawCalendarDate {
+            service_id: ServiceId::new("service1"),
+            date: sat_jan_14,
+            exception_type: Exception::Added,
+        }]);
+
+        let mut builder = RaptorTimetable::builder();
+        let f0 = builder
+            .add_feed("feed_jan7", ValidatedFeed::try_from(raw0).unwrap())
+            .unwrap();
+        let f1 = builder
+            .add_feed("feed_jan14", ValidatedFeed::try_from(raw1).unwrap())
+            .unwrap();
+        let timetable = builder.build();
+
+        let win = timetable.active_services_at_time_with_policy(
+            query_sat_jan_21,
+            GtfsTime::from_hms(8, 0, 0),
+            DateMappingPolicy::Nearest {
+                tolerance_days: 30,
+                match_weekday: true,
+            },
+        );
+
+        assert_eq!(win.date, query_sat_jan_21);
+        assert_eq!(win.picked_date_for_feed(f0), Some(sat_jan_7));
+        assert_eq!(win.picked_date_for_feed(f1), Some(sat_jan_14));
+        assert_eq!(
+            win.yesterday_date_for_feed(f0),
+            Some(NaiveDate::from_ymd_opt(2017, 1, 6).unwrap())
+        );
+        assert_eq!(
+            win.yesterday_date_for_feed(f1),
+            Some(NaiveDate::from_ymd_opt(2017, 1, 13).unwrap())
+        );
+        assert_eq!(win.today_active, vec![true, true]);
     }
 }

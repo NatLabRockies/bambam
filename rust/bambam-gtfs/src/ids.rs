@@ -234,17 +234,17 @@ define_gtfs_id! {
 // --- Contiguous indices for Phase 3 (RAPTOR / Multimodal Graph Search) ---
 
 define_gtfs_index! {
-    /// Contiguous index for a GTFS feed/archive (`0..num_feeds`) in a multi-feed `RoutingTimetable`.
+    /// Contiguous index for a GTFS feed/archive (`0..num_feeds`) in a multi-feed `RaptorTimetable`.
     pub struct FeedIdx;
 }
 
 define_gtfs_index! {
-    /// Contiguous index for a routable place (`Stop`, `FlexZone`, or `LocationGroup`) in a `RoutingTimetable`.
+    /// Contiguous index for a routable place (`Stop`, `FlexZone`, or `LocationGroup`) in a `RaptorTimetable`.
     pub struct PlaceIdx;
 }
 
 define_gtfs_index! {
-    /// Contiguous index for a `Route` in a `RoutingTimetable`.
+    /// Contiguous index for a `Route` in a `RaptorTimetable`.
     pub struct RouteIdx;
 }
 
@@ -254,22 +254,22 @@ define_gtfs_index! {
 }
 
 define_gtfs_index! {
-    /// Contiguous index for a `Trip` in a `RoutingTimetable`.
+    /// Contiguous index for a `Trip` in a `RaptorTimetable`.
     pub struct TripIdx;
 }
 
 define_gtfs_index! {
-    /// Contiguous index for a `ServiceCalendar` in a `RoutingTimetable`.
+    /// Contiguous index for a `ServiceCalendar` in a `RaptorTimetable`.
     pub struct ServiceIdx;
 }
 
 define_gtfs_index! {
-    /// Contiguous index for a `ShapePolyline` in a `RoutingTimetable`.
+    /// Contiguous index for a `ShapePolyline` in a `RaptorTimetable`.
     pub struct ShapeIdx;
 }
 
 /// A GTFS identifier scoped to a specific archive ([`FeedId`]), preventing cross-feed ID collisions
-/// when merging hundreds or thousands of GTFS archives into a single [`RoutingTimetable`](crate::routing::RoutingTimetable).
+/// when merging hundreds or thousands of GTFS archives into a single [`RaptorTimetable`](crate::routing::RaptorTimetable).
 #[derive(
     Clone,
     Debug,
