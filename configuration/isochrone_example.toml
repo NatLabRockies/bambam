@@ -1,0 +1,5 @@
+isochrone_point_model.type = "global"
+isochrone_point_model.value = { type = "linestring_stride", stride = 100.0, distance_unit = "meters" }
+
+isochrone_algorithm.type = "global"
+isochrone_algorithm.value = { type = "concave_hull", concavity = 1.2, length_threshold = 0.0025, simplify_epsilon_latlon = 0.0003 }

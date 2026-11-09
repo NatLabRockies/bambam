@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bambam_core::model::bambam_typed::BambamOutputRow;
 use bambam_core::model::destination::{self, BinInterval, DestinationFilter, DestinationPredicate};
 use bambam_core::model::output_plugin::isochrone::{
-    GeometryModel, IsochroneAlgorithm, IsochroneOutputFormat,
+    IsochroneAlgorithm, IsochroneOutputFormat, IsochronePointModel,
 };
 use bambam_core::model::output_plugin::opportunity::OpportunityFormat;
 use bambam_core::model::{bambam_field as field, bambam_ops, bambam_typed, TimeBin};
@@ -113,7 +113,7 @@ pub fn run_isochrone(
 
 struct GetIsochroneRequest {
     filter: Option<DestinationFilter>,
-    geometry_model: GeometryModel,
+    geometry_model: IsochronePointModel,
     isochrone_algorithm: IsochroneAlgorithm,
     isochrone_format: IsochroneOutputFormat,
 }
@@ -128,7 +128,7 @@ impl<'a> TryFrom<&'a BambamOutputRow<'a>> for GetIsochroneRequest {
         let geometry_model_config = info
             .get_geometry_model()?
             .ok_or_else(|| missing_expected("info.geometry_model"))?;
-        let geometry_model = GeometryModel::try_from(&geometry_model_config)?;
+        let geometry_model = IsochronePointModel::try_from(&geometry_model_config)?;
         let isochrone_algorithm = info
             .get_isochrone_algorithm()?
             .ok_or_else(|| missing_expected("info.isochrone_algorithm"))?;

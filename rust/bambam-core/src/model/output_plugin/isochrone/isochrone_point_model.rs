@@ -16,7 +16,7 @@ use crate::model::output_plugin::isochrone::GeometryModelConfig;
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
-pub enum GeometryModel {
+pub enum IsochronePointModel {
     DestinationPoint,
     LinestringCoordinates,
     LinestringStride {
@@ -32,7 +32,7 @@ pub enum GeometryModel {
     },
 }
 
-impl TryFrom<&GeometryModelConfig> for GeometryModel {
+impl TryFrom<&GeometryModelConfig> for IsochronePointModel {
     type Error = OutputPluginError;
 
     fn try_from(value: &GeometryModelConfig) -> Result<Self, Self::Error> {
@@ -92,7 +92,7 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
     }
 }
 
-impl GeometryModel {
+impl IsochronePointModel {
     pub fn generate_destination_points(
         &self,
         destinations: &[(Label, &SearchTreeNode)],
@@ -122,17 +122,17 @@ impl GeometryModel {
         linestring: &LineString<f32>,
     ) -> Result<Vec<Point<f32>>, OutputPluginError> {
         match self {
-            GeometryModel::DestinationPoint => {
+            IsochronePointModel::DestinationPoint => {
                 let last_point = dst_point(linestring)?;
                 Ok(vec![last_point])
             }
-            GeometryModel::LinestringCoordinates => Ok(linestring.points().collect()),
-            GeometryModel::LinestringStride { stride } => {
+            IsochronePointModel::LinestringCoordinates => Ok(linestring.points().collect()),
+            IsochronePointModel::LinestringStride { stride } => {
                 let meters = stride.get::<uom::si::length::meter>() as f32;
                 let dense_linestring = linestring.densify(&Haversine, meters);
                 Ok(dense_linestring.into_points())
             }
-            GeometryModel::BufferedLinestring {
+            IsochronePointModel::BufferedLinestring {
                 buffer_radius,
                 buffer_stride,
             } => {
@@ -146,7 +146,7 @@ impl GeometryModel {
                     .collect();
                 Ok(result)
             }
-            GeometryModel::BufferedDestinationPoint {
+            IsochronePointModel::BufferedDestinationPoint {
                 buffer_radius,
                 buffer_stride,
             } => {
