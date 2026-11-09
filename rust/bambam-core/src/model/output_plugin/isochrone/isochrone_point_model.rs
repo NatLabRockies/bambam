@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uom::si::f64::Length;
 
-use crate::model::output_plugin::isochrone::GeometryModelConfig;
+use crate::model::output_plugin::isochrone::IsochronePointModelConfig;
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -32,11 +32,11 @@ pub enum IsochronePointModel {
     },
 }
 
-impl TryFrom<&GeometryModelConfig> for IsochronePointModel {
+impl TryFrom<&IsochronePointModelConfig> for IsochronePointModel {
     type Error = OutputPluginError;
 
-    fn try_from(value: &GeometryModelConfig) -> Result<Self, Self::Error> {
-        use GeometryModelConfig as Conf;
+    fn try_from(value: &IsochronePointModelConfig) -> Result<Self, Self::Error> {
+        use IsochronePointModelConfig as Conf;
         match value {
             Conf::DestinationPoint => Ok(Self::DestinationPoint),
             Conf::LinestringCoordinates => Ok(Self::LinestringCoordinates),
@@ -60,7 +60,9 @@ impl TryFrom<&GeometryModelConfig> for IsochronePointModel {
                 if buffer_radius <= &0.0 {
                     Err(OutputPluginError::BuildFailed(format!("linestring buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride.iter().any(|v| v <= &0.0) {
-                    Err(OutputPluginError::BuildFailed("buffer stride must be strictly positive, found negative".to_string()))
+                    Err(OutputPluginError::BuildFailed(
+                        "buffer stride must be strictly positive, found negative".to_string(),
+                    ))
                 } else {
                     Ok(Self::BufferedLinestring {
                         buffer_radius: distance_unit.to_uom(*buffer_radius),
@@ -76,7 +78,9 @@ impl TryFrom<&GeometryModelConfig> for IsochronePointModel {
                 if buffer_radius <= &0.0 {
                     Err(OutputPluginError::BuildFailed(format!("destination point buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride.iter().any(|v| v <= &0.0) {
-                    Err(OutputPluginError::BuildFailed("buffer stride must be strictly positive, found negative".to_string()))
+                    Err(OutputPluginError::BuildFailed(
+                        "buffer stride must be strictly positive, found negative".to_string(),
+                    ))
                 } else {
                     Ok(Self::BufferedDestinationPoint {
                         buffer_radius: distance_unit.to_uom(*buffer_radius),
@@ -136,10 +140,7 @@ impl IsochronePointModel {
                 let radius_latlon = radius / 111132.0;
                 let buffered = linestring.buffer(radius_latlon);
                 let final_mp = stride(buffered, buffer_stride.as_ref());
-                let result = final_mp
-                    .coords_iter()
-                    .map(Point::from)
-                    .collect();
+                let result = final_mp.coords_iter().map(Point::from).collect();
                 Ok(result)
             }
             IsochronePointModel::BufferedDestinationPoint {
@@ -151,10 +152,7 @@ impl IsochronePointModel {
                 let dst = dst_point(linestring)?;
                 let buffered = dst.buffer(radius_latlon);
                 let final_mp = stride(buffered, buffer_stride.as_ref());
-                let result = final_mp
-                    .coords_iter()
-                    .map(Point::from)
-                    .collect();
+                let result = final_mp.coords_iter().map(Point::from).collect();
                 Ok(result)
             }
         }
@@ -173,7 +171,7 @@ fn dst_point(linestring: &LineString<f32>) -> Result<Point<f32>, OutputPluginErr
 fn stride(buffered: MultiPolygon<f32>, buffer_stride: Option<&Length>) -> MultiPolygon<f32> {
     if let Some(buffer_stride) = buffer_stride {
         let stride = buffer_stride.get::<uom::si::length::meter>() as f32;
-        
+
         buffered.densify(&Haversine, stride)
     } else {
         buffered
