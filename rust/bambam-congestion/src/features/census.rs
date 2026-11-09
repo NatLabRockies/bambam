@@ -1,0 +1,551 @@
+use std::{collections::HashMap, path::Path};
+
+use geo::{Area, BoundingRect, Contains, Coord, Geometry, MultiPolygon, Point, Polygon, Rect};
+use geozero::{wkt::Wkt as WktReader, ToGeo};
+use rstar::{RTree, RTreeObject, AABB};
+
+use crate::{
+    config::{CensusSourceConfig, ProjectionMode},
+    conflate::{expand_bbox_by_meters, LocalMeterProjector},
+    error::CongestionError,
+    features::poi_traffic::lonlat_to_epsg3857,
+    network::{open_buffered_reader, OpenNetworkEdge},
+};
+
+const METERS_PER_MILE: f64 = 1609.344;
+/// Conversion factor from `per km^2` to `1,000 per sq mile` (`* 2.59 / 1000.0`),
+/// matching `calibration_utils.py`.
+const KM2_TO_THOUSAND_PER_SQ_MI: f64 = 2.59 / 1000.0;
+
+/// A Census polygon (block group or tract) indexed in an `rstar::RTree`.
+#[derive(Debug, Clone)]
+pub struct CensusPolygonEntry {
+    pub geoid: String,
+    /// Population density in `1,000 persons / sq mi` (`pop_per_km2 * 2.59 / 1000.0`).
+    pub pop_density_1000_per_sq_mi: f32,
+    /// Employment density in `1,000 jobs / sq mi` (`emp_per_km2 * 2.59 / 1000.0`).
+    pub emp_density_1000_per_sq_mi: f32,
+    pub geometry: MultiPolygon<f64>,
+    pub bbox: AABB<[f64; 2]>,
+}
+
+impl RTreeObject for CensusPolygonEntry {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        self.bbox
+    }
+}
+
+/// Builds an `RTree<CensusPolygonEntry>` from `CensusSourceConfig`, filtered to `study_bbox`.
+pub fn build_census_rtree(
+    census_cfg: Option<&CensusSourceConfig>,
+    study_bbox: Rect<f64>,
+    density_radius_miles: f64,
+    projection_mode: ProjectionMode,
+) -> Result<RTree<CensusPolygonEntry>, CongestionError> {
+    let Some(cfg) = census_cfg else {
+        return Ok(RTree::new());
+    };
+
+    let radius_m = density_radius_miles * METERS_PER_MILE;
+    let search_bbox = expand_bbox_by_meters(study_bbox, radius_m * 2.0 + 1000.0);
+
+    let entries = match cfg {
+        CensusSourceConfig::Shapefile {
+            path,
+            pop_density_field,
+            emp_density_field,
+        } => load_census_shapefile(
+            Path::new(path),
+            pop_density_field,
+            emp_density_field,
+            search_bbox,
+        )?,
+        CensusSourceConfig::CsvPolygons {
+            polygons_csv_path,
+            geoid_column,
+            wkt_column,
+            population_column,
+            employment_column,
+            population_csv_path,
+            population_csv_geoid_column,
+            population_csv_value_column,
+            employment_csv_path,
+            employment_csv_geoid_column,
+            employment_csv_value_column,
+        } => load_census_csv_polygons(
+            Path::new(polygons_csv_path),
+            geoid_column,
+            wkt_column,
+            population_column.as_deref(),
+            employment_column.as_deref(),
+            population_csv_path.as_deref().map(Path::new),
+            population_csv_geoid_column.as_deref(),
+            population_csv_value_column.as_deref(),
+            employment_csv_path.as_deref().map(Path::new),
+            employment_csv_geoid_column.as_deref(),
+            employment_csv_value_column.as_deref(),
+            search_bbox,
+            projection_mode,
+        )?,
+    };
+
+    log::info!(
+        "Indexed {} Census polygons into R*-tree",
+        entries.len()
+    );
+    Ok(RTree::bulk_load(entries))
+}
+
+/// Computes the area-weighted `(pop_density_1000_per_sq_mi, emp_density_1000_per_sq_mi)`
+/// within the `density_radius_miles` buffer around `edge`.
+///
+/// Never drops edges: if no Census polygon overlaps the edge's buffer, returns `(0.0, 0.0)`.
+pub fn compute_edge_census_densities(
+    edge: &OpenNetworkEdge,
+    census_rtree: &RTree<CensusPolygonEntry>,
+    density_radius_miles: f64,
+) -> (f32, f32) {
+    if census_rtree.size() == 0 {
+        return (0.0, 0.0);
+    }
+    let Some(rect) = edge.geometry.bounding_rect() else {
+        return (0.0, 0.0);
+    };
+
+    let radius_m = density_radius_miles * METERS_PER_MILE;
+    let expanded = expand_bbox_by_meters(rect, radius_m);
+    let env = AABB::from_corners(
+        [expanded.min().x, expanded.min().y],
+        [expanded.max().x, expanded.max().y],
+    );
+
+    let candidates: Vec<&CensusPolygonEntry> = census_rtree
+        .locate_in_envelope_intersecting(&env)
+        .collect();
+    if candidates.is_empty() {
+        return (0.0, 0.0);
+    }
+
+    // Fast path: if only 1 candidate polygon's bbox intersects the buffer and contains the center
+    let center = rect.center();
+    if candidates.len() == 1 && candidates[0].geometry.contains(&Point::from(center)) {
+        return (
+            candidates[0].pop_density_1000_per_sq_mi,
+            candidates[0].emp_density_1000_per_sq_mi,
+        );
+    }
+
+    // General path: sample 13 quadrature points across the 0.5-mile buffer capsule around the edge
+    let sample_pts = build_buffer_quadrature_points(&edge.geometry, center, radius_m);
+    let mut sum_pop = 0.0_f64;
+    let mut sum_emp = 0.0_f64;
+    let mut hits = 0usize;
+
+    for pt in &sample_pts {
+        let g_pt = Point::from(*pt);
+        for cand in &candidates {
+            let [min_x, min_y] = cand.bbox.lower();
+            let [max_x, max_y] = cand.bbox.upper();
+            if pt.x >= min_x
+                && pt.x <= max_x
+                && pt.y >= min_y
+                && pt.y <= max_y
+                && cand.geometry.contains(&g_pt)
+            {
+                sum_pop += cand.pop_density_1000_per_sq_mi as f64;
+                sum_emp += cand.emp_density_1000_per_sq_mi as f64;
+                hits += 1;
+                break;
+            }
+        }
+    }
+
+    if hits == 0 {
+        return (0.0, 0.0);
+    }
+    let inv = 1.0 / (hits as f64);
+    ((sum_pop * inv) as f32, (sum_emp * inv) as f32)
+}
+
+/// Generates 13 deterministic quadrature points in WGS84 `(lon, lat)` distributed across
+/// the buffer capsule of radius `radius_m` around `ls`.
+fn build_buffer_quadrature_points(
+    ls: &geo::LineString<f64>,
+    center: Coord<f64>,
+    radius_m: f64,
+) -> [Coord<f64>; 13] {
+    let first = ls.0.first().copied().unwrap_or(center);
+    let last = ls.0.last().copied().unwrap_or(center);
+    let mid = ls.0.get(ls.0.len() / 2).copied().unwrap_or(center);
+
+    let cos_lat = center.y.to_radians().cos().abs().max(0.01);
+    let deg_lat_per_m = 1.0 / 110_574.27;
+    let deg_lon_per_m = 1.0 / (111_319.49 * cos_lat);
+
+    let r1 = 0.45 * radius_m;
+    let r2 = 0.85 * radius_m;
+    let d1_lon = r1 * deg_lon_per_m;
+    let d1_lat = r1 * deg_lat_per_m;
+    let d2_lon = r2 * deg_lon_per_m;
+    let diag = 0.70710678 * r2;
+    let dd_lon = diag * deg_lon_per_m;
+    let dd_lat = diag * deg_lat_per_m;
+
+    [
+        mid,
+        first,
+        last,
+        Coord {
+            x: mid.x + d1_lon,
+            y: mid.y,
+        },
+        Coord {
+            x: mid.x - d1_lon,
+            y: mid.y,
+        },
+        Coord {
+            x: mid.x,
+            y: mid.y + d1_lat,
+        },
+        Coord {
+            x: mid.x,
+            y: mid.y - d1_lat,
+        },
+        Coord {
+            x: mid.x + d2_lon,
+            y: mid.y,
+        },
+        Coord {
+            x: mid.x - d2_lon,
+            y: mid.y,
+        },
+        Coord {
+            x: mid.x + dd_lon,
+            y: mid.y + dd_lat,
+        },
+        Coord {
+            x: mid.x - dd_lon,
+            y: mid.y + dd_lat,
+        },
+        Coord {
+            x: mid.x + dd_lon,
+            y: mid.y - dd_lat,
+        },
+        Coord {
+            x: mid.x - dd_lon,
+            y: mid.y - dd_lat,
+        },
+    ]
+}
+
+fn load_census_shapefile(
+    path: &Path,
+    pop_field: &str,
+    emp_field: &str,
+    search_bbox: Rect<f64>,
+) -> Result<Vec<CensusPolygonEntry>, CongestionError> {
+    let rows = shapefile::read(path).map_err(|e| {
+        CongestionError::SpatialFeature(format!(
+            "failed reading Census shapefile '{}': {e}",
+            path.display()
+        ))
+    })?;
+
+    let mut out = Vec::new();
+    for (idx, (shape, record)) in rows.into_iter().enumerate() {
+        let mp: MultiPolygon<f64> = match shape {
+            shapefile::Shape::Polygon(p) => p.into(),
+            shapefile::Shape::PolygonM(p) => p.into(),
+            shapefile::Shape::PolygonZ(p) => p.into(),
+            _ => continue,
+        };
+        let Some(rect) = mp.bounding_rect() else {
+            continue;
+        };
+        if rect.max().x < search_bbox.min().x
+            || rect.min().x > search_bbox.max().x
+            || rect.max().y < search_bbox.min().y
+            || rect.min().y > search_bbox.max().y
+        {
+            continue;
+        }
+
+        let pop_den_km2 = extract_dbf_numeric(&record, pop_field).unwrap_or(0.0);
+        let emp_den_km2 = extract_dbf_numeric(&record, emp_field).unwrap_or(0.0);
+
+        let bbox = AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]);
+        out.push(CensusPolygonEntry {
+            geoid: idx.to_string(),
+            pop_density_1000_per_sq_mi: (pop_den_km2 * KM2_TO_THOUSAND_PER_SQ_MI) as f32,
+            emp_density_1000_per_sq_mi: (emp_den_km2 * KM2_TO_THOUSAND_PER_SQ_MI) as f32,
+            geometry: mp,
+            bbox,
+        });
+    }
+    Ok(out)
+}
+
+fn extract_dbf_numeric(
+    record: &shapefile::dbase::Record,
+    field_name: &str,
+) -> Option<f64> {
+    match record.get(field_name)? {
+        shapefile::dbase::FieldValue::Numeric(Some(v)) => Some(*v),
+        shapefile::dbase::FieldValue::Float(Some(v)) => Some(*v as f64),
+        shapefile::dbase::FieldValue::Double( v) => Some(*v),
+        shapefile::dbase::FieldValue::Integer(v) => Some(*v as f64),
+        shapefile::dbase::FieldValue::Character(Some(s)) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn load_census_csv_polygons(
+    polygons_csv_path: &Path,
+    geoid_column: &str,
+    wkt_column: &str,
+    population_column: Option<&str>,
+    employment_column: Option<&str>,
+    population_csv_path: Option<&Path>,
+    population_csv_geoid_column: Option<&str>,
+    population_csv_value_column: Option<&str>,
+    employment_csv_path: Option<&Path>,
+    employment_csv_geoid_column: Option<&str>,
+    employment_csv_value_column: Option<&str>,
+    search_bbox: Rect<f64>,
+    projection_mode: ProjectionMode,
+) -> Result<Vec<CensusPolygonEntry>, CongestionError> {
+    let ext_pop_lookup = if let (Some(p), Some(g_col), Some(v_col)) = (
+        population_csv_path,
+        population_csv_geoid_column,
+        population_csv_value_column,
+    ) {
+        Some(load_geoid_value_lookup(p, g_col, v_col)?)
+    } else {
+        None
+    };
+
+    let ext_emp_lookup = if let (Some(p), Some(g_col), Some(v_col)) = (
+        employment_csv_path,
+        employment_csv_geoid_column,
+        employment_csv_value_column,
+    ) {
+        Some(load_geoid_value_lookup(p, g_col, v_col)?)
+    } else {
+        None
+    };
+
+    let reader = open_buffered_reader(polygons_csv_path)?;
+    let mut csv_reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(reader);
+
+    let headers = csv_reader
+        .headers()
+        .map_err(|e| CongestionError::Csv {
+            path: polygons_csv_path.to_path_buf(),
+            message: e.to_string(),
+        })?
+        .clone();
+    let header_map: HashMap<&str, usize> = headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
+
+    let geoid_idx = *header_map.get(geoid_column).ok_or_else(|| {
+        CongestionError::SpatialFeature(format!(
+            "Census CSV '{}' missing column '{}'",
+            polygons_csv_path.display(),
+            geoid_column
+        ))
+    })?;
+    let wkt_idx = *header_map.get(wkt_column).ok_or_else(|| {
+        CongestionError::SpatialFeature(format!(
+            "Census CSV '{}' missing column '{}'",
+            polygons_csv_path.display(),
+            wkt_column
+        ))
+    })?;
+    let pop_col_idx = population_column.and_then(|c| header_map.get(c).copied());
+    let emp_col_idx = employment_column.and_then(|c| header_map.get(c).copied());
+
+    let mut out = Vec::new();
+    for rec_res in csv_reader.records() {
+        let rec = rec_res.map_err(|e| CongestionError::Csv {
+            path: polygons_csv_path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let Some(raw_geoid) = rec.get(geoid_idx) else {
+            continue;
+        };
+        let geoid = normalize_geoid(raw_geoid);
+        let Some(wkt_str) = rec.get(wkt_idx) else {
+            continue;
+        };
+        let Ok(geom) = WktReader(wkt_str.trim()).to_geo() else {
+            continue;
+        };
+        let mp: MultiPolygon<f64> = match geom {
+            Geometry::Polygon(p) => MultiPolygon(vec![p]),
+            Geometry::MultiPolygon(mp) => mp,
+            _ => continue,
+        };
+        let Some(rect) = mp.bounding_rect() else {
+            continue;
+        };
+        if rect.max().x < search_bbox.min().x
+            || rect.min().x > search_bbox.max().x
+            || rect.max().y < search_bbox.min().y
+            || rect.min().y > search_bbox.max().y
+        {
+            continue;
+        }
+
+        let area_km2 = compute_multipolygon_area_km2(&mp, rect.center(), projection_mode);
+        if area_km2 <= 1e-9 {
+            continue;
+        }
+
+        let pop_count = pop_col_idx
+            .and_then(|i| rec.get(i))
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .or_else(|| {
+                ext_pop_lookup
+                    .as_ref()
+                    .and_then(|m| m.get(&geoid).copied())
+            })
+            .unwrap_or(0.0);
+
+        let emp_count = emp_col_idx
+            .and_then(|i| rec.get(i))
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .or_else(|| {
+                ext_emp_lookup
+                    .as_ref()
+                    .and_then(|m| m.get(&geoid).copied())
+            })
+            .unwrap_or(0.0);
+
+        let pop_den_km2 = pop_count / area_km2;
+        let emp_den_km2 = emp_count / area_km2;
+
+        let bbox = AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]);
+        out.push(CensusPolygonEntry {
+            geoid,
+            pop_density_1000_per_sq_mi: (pop_den_km2 * KM2_TO_THOUSAND_PER_SQ_MI) as f32,
+            emp_density_1000_per_sq_mi: (emp_den_km2 * KM2_TO_THOUSAND_PER_SQ_MI) as f32,
+            geometry: mp,
+            bbox,
+        });
+    }
+
+    Ok(out)
+}
+
+fn compute_multipolygon_area_km2(
+    mp: &MultiPolygon<f64>,
+    center: Coord<f64>,
+    projection_mode: ProjectionMode,
+) -> f64 {
+    let mut area_m2 = 0.0;
+    match projection_mode {
+        ProjectionMode::Geodesic => {
+            let proj = LocalMeterProjector::new(center.x, center.y);
+            for poly in &mp.0 {
+                let ext = proj.project_linestring(poly.exterior());
+                let ints: Vec<_> = poly
+                    .interiors()
+                    .iter()
+                    .map(|ls| proj.project_linestring(ls))
+                    .collect();
+                let p_m = Polygon::new(ext, ints);
+                area_m2 += p_m.unsigned_area();
+            }
+        }
+        ProjectionMode::LegacyEpsg3857 => {
+            for poly in &mp.0 {
+                let ext = geo::LineString(
+                    poly.exterior()
+                        .0
+                        .iter()
+                        .map(|c| lonlat_to_epsg3857(*c))
+                        .collect(),
+                );
+                let ints: Vec<_> = poly
+                    .interiors()
+                    .iter()
+                    .map(|ls| {
+                        geo::LineString(ls.0.iter().map(|c| lonlat_to_epsg3857(*c)).collect())
+                    })
+                    .collect();
+                let p_3857 = Polygon::new(ext, ints);
+                area_m2 += p_3857.unsigned_area();
+            }
+        }
+    }
+    area_m2 * 1e-6
+}
+
+fn load_geoid_value_lookup(
+    path: &Path,
+    geoid_col: &str,
+    val_col: &str,
+) -> Result<HashMap<String, f64>, CongestionError> {
+    let reader = open_buffered_reader(path)?;
+    let mut csv_reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(reader);
+    let headers = csv_reader
+        .headers()
+        .map_err(|e| CongestionError::Csv {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?
+        .clone();
+    let header_map: HashMap<&str, usize> = headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
+    let g_idx = *header_map.get(geoid_col).ok_or_else(|| {
+        CongestionError::SpatialFeature(format!(
+            "CSV '{}' missing GEOID column '{}'",
+            path.display(),
+            geoid_col
+        ))
+    })?;
+    let v_idx = *header_map.get(val_col).ok_or_else(|| {
+        CongestionError::SpatialFeature(format!(
+            "CSV '{}' missing value column '{}'",
+            path.display(),
+            val_col
+        ))
+    })?;
+
+    let mut map: HashMap<String, f64> = HashMap::new();
+    for rec_res in csv_reader.records() {
+        let rec = rec_res.map_err(|e| CongestionError::Csv {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let Some(raw_g) = rec.get(g_idx) else {
+            continue;
+        };
+        let Some(raw_v) = rec.get(v_idx) else {
+            continue;
+        };
+        if let Ok(val) = raw_v.trim().parse::<f64>() {
+            if val.is_finite() {
+                let norm_g = normalize_geoid(raw_g);
+                *map.entry(norm_g).or_insert(0.0) += val;
+            }
+        }
+    }
+    Ok(map)
+}
+
+/// Strips Census `AFFGEOID` prefixes like `"1400000US"` or `"1500000US"` so tract/block-group
+/// GEOIDs match cleanly between ACS CSVs, LODES CSVs, and TIGER shapefiles.
+pub fn normalize_geoid(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some((_, suffix)) = trimmed.split_once("US") {
+        suffix.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}

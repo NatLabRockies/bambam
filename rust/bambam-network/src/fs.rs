@@ -275,6 +275,14 @@ where
         )?;
 
         serialize_into_enumerated_txt(
+            &edge_list.posted_speeds,
+            POSTED_SPEEDS_FILENAME,
+            &mode_dir,
+            overwrite,
+            "write posted speeds",
+        )?;
+
+        serialize_into_enumerated_txt(
             edge_list.classes.iter().map(&class_to_str),
             CLASSES_FILENAME,
             &mode_dir,

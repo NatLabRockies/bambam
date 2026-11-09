@@ -29,6 +29,7 @@ pub struct VectorizedEdgeList<C> {
     pub edges: EdgeList,
     pub geometries: Vec<LineString<f32>>,
     pub classes: Vec<C>,
+    pub posted_speeds: Vec<Option<f64>>,
     pub speeds: Vec<f64>,
     pub speed_lookup: HashMap<String, f64>,
     pub bearings: Vec<f64>,
@@ -396,6 +397,16 @@ pub fn clean_edge_list<C: Send>(
         .map(|(_, cls)| cls)
         .collect();
 
+    let posted_speeds = edge_list
+        .posted_speeds
+        .into_iter()
+        .enumerate()
+        .filter(|(idx, _)| mask[*idx])
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|(_, s)| s)
+        .collect();
+
     let speeds = edge_list
         .speeds
         .into_iter()
@@ -435,6 +446,7 @@ pub fn clean_edge_list<C: Send>(
         edges,
         geometries,
         classes,
+        posted_speeds,
         speeds,
         speed_lookup: edge_list.speed_lookup,
         bearings,
@@ -509,6 +521,7 @@ where
                 edges: EdgeList(Box::new([])),
                 geometries: Vec::new(),
                 classes: Vec::new(),
+                posted_speeds: Vec::new(),
                 speeds: Vec::new(),
                 speed_lookup: HashMap::new(),
                 bearings: Vec::new(),
@@ -581,10 +594,10 @@ where
 
         log::info!("Completing speeds vector with default global");
         let speeds = initial_speeds
-            .into_par_iter()
+            .par_iter()
             .zip(&classes)
             .map(|(opt_speed, class)| {
-                opt_speed
+                (*opt_speed)
                     .or_else(|| speed_lookup_by_cls.get(class).copied())
                     .unwrap_or(fallback_speed)
             })
@@ -603,6 +616,7 @@ where
             edges: EdgeList(edges.into_boxed_slice()),
             geometries,
             classes,
+            posted_speeds: initial_speeds,
             speeds,
             speed_lookup,
             bearings,

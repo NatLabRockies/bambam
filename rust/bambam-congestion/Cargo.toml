@@ -1,0 +1,52 @@
+[package]
+name = "bambam-congestion"
+version.workspace = true
+edition = "2021"
+license = "BSD-3-Clause"
+exclude = ["test", "**/.DS_Store", "target/"]
+readme = "README.md"
+repository = "https://github.com/NatLabRockies/bambam"
+documentation = "https://docs.rs/bambam-congestion"
+description = "Congestion calibration and operating speed imputation for BAMBAM and RouteE Compass road networks"
+keywords = ["nlr", "access-model", "congestion", "routing", "network"]
+categories = ["command-line-utilities", "science", "science::geo"]
+
+[dependencies]
+arrow = { workspace = true }
+bambam-core = { workspace = true }
+bambam-network = { workspace = true }
+bambam-omf = { workspace = true }
+bambam-osm = { workspace = true }
+bamcensus = { workspace = true }
+bamcensus-acs = { workspace = true }
+bamcensus-core = { workspace = true }
+bamcensus-lehd = { workspace = true }
+clap = { workspace = true }
+config = { workspace = true }
+csv = { workspace = true }
+env_logger = { workspace = true }
+flate2 = { workspace = true }
+geo = { workspace = true }
+geo-buffer = { workspace = true }
+geo-types = { workspace = true }
+geozero = { workspace = true }
+indexmap = { workspace = true }
+itertools = { workspace = true }
+kdam = { workspace = true }
+log = { workspace = true }
+ordered-float = { workspace = true }
+osmpbf = { workspace = true }
+parquet = { workspace = true }
+rayon = { workspace = true }
+routee-compass-core = { workspace = true }
+rstar = { workspace = true }
+schemars = { workspace = true }
+serde = { workspace = true }
+serde_arrow = { workspace = true }
+serde_json = { workspace = true }
+shapefile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+toml = { workspace = true }
+uom = { workspace = true }
+
