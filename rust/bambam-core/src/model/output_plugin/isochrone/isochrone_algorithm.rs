@@ -14,9 +14,15 @@ pub enum IsochroneAlgorithm {
     /// algorithm, in lat lon. this value should roughly match what would be acceptable smoothing
     /// for the human eye. for example, 0.00135 is approx. 10-15 meters.
     ///
-    /// in addition, the user can filter out sides that are "too long" that appear in sparse settings.
-    /// the value is expressed in lat/lon degrees, so a value between 0.002 and 0.005 removes edges from
-    /// the hull that exceed approx. 200-500m in length.
+    /// in addition, the user can set the minimum edge length for inward subdivision of the hull via length_threshold.
+    /// the value is expressed in lat/lon degrees. some example values:
+    /// Distance (approx.)	Degrees (lat/lon)
+    /// ~15 m	            0.000135
+    /// ~50 m	            0.00045
+    /// ~100 m	            0.0009
+    /// ~150 m	            0.00135
+    /// ~250 m	            0.00225
+    /// ~500 m	            0.0045
     ConcaveHull {
         concavity: f32,
         simplify_epsilon_latlon: Option<f32>,

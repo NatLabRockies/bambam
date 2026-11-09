@@ -82,7 +82,7 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
                         "buffer stride must be strictly positive, found negative"
                     )))
                 } else {
-                    Ok(Self::BufferedLinestring {
+                    Ok(Self::BufferedDestinationPoint {
                         buffer_radius: distance_unit.to_uom(*buffer_radius),
                         buffer_stride: buffer_stride.map(|s| distance_unit.to_uom(s)),
                     })
