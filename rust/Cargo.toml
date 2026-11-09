@@ -46,7 +46,6 @@ flate2 = "1.0"
 futures = { version = "0.3.31", features = ["executor"] }
 gbfs_types = { version = "0.1.6", default-features = false, features = ["reqwest_blocking"] }
 geo = { version = "0.33.1", features = ["use-serde"] }
-geo-buffer = "0.2.0"
 geo-traits = "0.3.0"
 geo-types = "=0.7.19"
 geojson = "0.24"
