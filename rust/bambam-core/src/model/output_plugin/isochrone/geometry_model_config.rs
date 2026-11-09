@@ -14,12 +14,12 @@ pub enum GeometryModelConfig {
     },
     BufferedLinestring {
         buffer_radius: f64,
-        buffer_stride: f64,
+        buffer_stride: Option<f64>,
         distance_unit: DistanceUnit,
     },
     BufferedDestinationPoint {
         buffer_radius: f64,
-        buffer_stride: f64,
+        buffer_stride: Option<f64>,
         distance_unit: DistanceUnit,
     },
 }
