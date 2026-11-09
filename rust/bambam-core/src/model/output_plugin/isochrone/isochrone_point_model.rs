@@ -60,9 +60,7 @@ impl TryFrom<&GeometryModelConfig> for IsochronePointModel {
                 if buffer_radius <= &0.0 {
                     Err(OutputPluginError::BuildFailed(format!("linestring buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride.iter().any(|v| v <= &0.0) {
-                    Err(OutputPluginError::BuildFailed(format!(
-                        "buffer stride must be strictly positive, found negative"
-                    )))
+                    Err(OutputPluginError::BuildFailed("buffer stride must be strictly positive, found negative".to_string()))
                 } else {
                     Ok(Self::BufferedLinestring {
                         buffer_radius: distance_unit.to_uom(*buffer_radius),
@@ -78,9 +76,7 @@ impl TryFrom<&GeometryModelConfig> for IsochronePointModel {
                 if buffer_radius <= &0.0 {
                     Err(OutputPluginError::BuildFailed(format!("destination point buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
                 } else if buffer_stride.iter().any(|v| v <= &0.0) {
-                    Err(OutputPluginError::BuildFailed(format!(
-                        "buffer stride must be strictly positive, found negative"
-                    )))
+                    Err(OutputPluginError::BuildFailed("buffer stride must be strictly positive, found negative".to_string()))
                 } else {
                     Ok(Self::BufferedDestinationPoint {
                         buffer_radius: distance_unit.to_uom(*buffer_radius),
@@ -142,7 +138,7 @@ impl IsochronePointModel {
                 let final_mp = stride(buffered, buffer_stride.as_ref());
                 let result = final_mp
                     .coords_iter()
-                    .map(|coord| Point::from(coord))
+                    .map(Point::from)
                     .collect();
                 Ok(result)
             }
@@ -157,7 +153,7 @@ impl IsochronePointModel {
                 let final_mp = stride(buffered, buffer_stride.as_ref());
                 let result = final_mp
                     .coords_iter()
-                    .map(|coord| Point::from(coord))
+                    .map(Point::from)
                     .collect();
                 Ok(result)
             }
@@ -170,15 +166,15 @@ fn dst_point(linestring: &LineString<f32>) -> Result<Point<f32>, OutputPluginErr
     linestring
         .points()
         .next_back()
-        .ok_or_else(|| OutputPluginError::OutputPluginFailed(format!("geometry has no points",)))
+        .ok_or_else(|| OutputPluginError::OutputPluginFailed("geometry has no points".to_string()))
 }
 
 /// if a stride value is provided, apply it to the multipolygon.
 fn stride(buffered: MultiPolygon<f32>, buffer_stride: Option<&Length>) -> MultiPolygon<f32> {
     if let Some(buffer_stride) = buffer_stride {
         let stride = buffer_stride.get::<uom::si::length::meter>() as f32;
-        let dense_linestring = buffered.densify(&Haversine, stride);
-        dense_linestring
+        
+        buffered.densify(&Haversine, stride)
     } else {
         buffered
     }
