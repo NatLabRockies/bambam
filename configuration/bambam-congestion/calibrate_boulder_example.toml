@@ -1,0 +1,37 @@
+# Example BAMBAM Congestion Calibration Configuration (`bambam-congestion calibrate` / `bambam_util congestion-calibrate`)
+
+[open_network]
+network_dir = "boulder_co"
+mode = "drive"
+legacy_posted_speed_unit = "kph"
+min_imputed_speed_limit_mph = 15.0
+
+[tomtom_network]
+network_dir = "/Users/rfitzger/dev/nrel/routee/routee-compass-tomtom/data/tomtom_national"
+speed_unit = "kph"
+require_time_varying_trace = true
+
+[tomtom_network.period_speed_files]
+wd_am = "/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-wd-am.txt.gz"
+wd_af = "/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-wd-af.txt.gz"
+wd_pm = "/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-wd-pm.txt.gz"
+we_am = "/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-we-am.txt.gz"
+we_af = "/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-we-af.txt.gz"
+we_pm = "/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-we-pm.txt.gz"
+
+[conflation]
+buffer_distance_meters = 5.0
+max_heading_diff_degrees = 45.0
+min_overlap_meters = 1.0
+cap_speed_outliers = true
+speed_cap_above_posted_mph = 10.0
+speed_cap_above_class_max_mph = 5.0
+
+[spatial_features]
+density_radius_miles = 0.5
+projection_mode = "geodesic"
+
+[output]
+output_dir = "output/congestion_calibration_boulder"
+write_parquet = true
+write_csv = true

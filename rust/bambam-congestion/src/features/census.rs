@@ -549,3 +549,92 @@ pub fn normalize_geoid(raw: &str) -> String {
         trimmed.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::taxonomy::CongestionRoadClass;
+    use geo::LineString;
+
+    #[test]
+    fn test_normalize_geoid_and_census_lookup() {
+        assert_eq!(normalize_geoid("1500000US080130122031"), "080130122031");
+        assert_eq!(normalize_geoid("080130122031"), "080130122031");
+
+        // Build two adjacent Census block group polygons split at lon = -105.000:
+        // West BG (-105.02 to -105.00): pop_den = 2.0, emp_den = 1.0
+        // East BG (-105.00 to -104.98): pop_den = 6.0, emp_den = 5.0
+        let west_poly = Polygon::new(
+            LineString::from(vec![
+                (-105.02, 39.98),
+                (-105.00, 39.98),
+                (-105.00, 40.02),
+                (-105.02, 40.02),
+                (-105.02, 39.98),
+            ]),
+            vec![],
+        );
+        let east_poly = Polygon::new(
+            LineString::from(vec![
+                (-105.00, 39.98),
+                (-104.98, 39.98),
+                (-104.98, 40.02),
+                (-105.00, 40.02),
+                (-105.00, 39.98),
+            ]),
+            vec![],
+        );
+
+        let rtree = RTree::bulk_load(vec![
+            CensusPolygonEntry {
+                geoid: "west".to_string(),
+                pop_density_1000_per_sq_mi: 2.0,
+                emp_density_1000_per_sq_mi: 1.0,
+                geometry: MultiPolygon(vec![west_poly]),
+                bbox: AABB::from_corners([-105.02, 39.98], [-105.00, 40.02]),
+            },
+            CensusPolygonEntry {
+                geoid: "east".to_string(),
+                pop_density_1000_per_sq_mi: 6.0,
+                emp_density_1000_per_sq_mi: 5.0,
+                geometry: MultiPolygon(vec![east_poly]),
+                bbox: AABB::from_corners([-105.00, 39.98], [-104.98, 40.02]),
+            },
+        ]);
+
+        // 1. Edge completely inside West BG
+        let west_edge = OpenNetworkEdge {
+            edge_id: 0,
+            source_id: "w".to_string(),
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            length_meters: 100.0,
+            highway_group: "primary".to_string(),
+            road_class: CongestionRoadClass::Primary,
+            posted_speed_mph: Some(35.0),
+            imputed_speed_limit_mph: 35.0,
+            geometry: LineString::from(vec![(-105.015, 40.000), (-105.014, 40.000)]),
+        };
+        let (pop_w, emp_w) = compute_edge_census_densities(&west_edge, &rtree, 0.5);
+        assert!((pop_w - 2.0).abs() < 1e-5);
+        assert!((emp_w - 1.0).abs() < 1e-5);
+
+        // 2. Edge straddling the boundary at -105.000 -> blended density between (2,1) and (6,5)
+        let border_edge = OpenNetworkEdge {
+            geometry: LineString::from(vec![(-105.001, 40.000), (-104.999, 40.000)]),
+            ..west_edge.clone()
+        };
+        let (pop_b, emp_b) = compute_edge_census_densities(&border_edge, &rtree, 0.5);
+        assert!(pop_b > 2.5 && pop_b < 5.5, "expected blended pop_den, got {pop_b}");
+        assert!(emp_b > 1.5 && emp_b < 4.5, "expected blended emp_den, got {emp_b}");
+
+        // 3. Edge over water far from any Census polygon -> returns (0.0, 0.0) without dropping edge
+        let water_edge = OpenNetworkEdge {
+            geometry: LineString::from(vec![(-106.000, 40.000), (-105.999, 40.000)]),
+            ..west_edge
+        };
+        let (pop_zero, emp_zero) = compute_edge_census_densities(&water_edge, &rtree, 0.5);
+        assert_eq!(pop_zero, 0.0);
+        assert_eq!(emp_zero, 0.0);
+    }
+}

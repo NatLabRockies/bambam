@@ -153,8 +153,13 @@ impl LoadedOpenNetwork {
         };
 
         // 5. Load raw posted speed limits (Option<f64> in mph)
-        let posted_speeds_mph =
-            load_posted_speeds_mph(&root_dir, &mode_dir, edge_mappings_opt.as_deref(), n_edges, config.legacy_posted_speed_unit)?;
+        let posted_speeds_mph = load_posted_speeds_mph(
+            &root_dir,
+            &mode_dir,
+            edge_mappings_opt.as_deref(),
+            n_edges,
+            config.legacy_posted_speed_unit,
+        )?;
 
         // 6. Normalize highway groups and compute per-highway median & max speed limits
         let highway_groups: Vec<String> = raw_classes
@@ -224,7 +229,10 @@ impl LoadedOpenNetwork {
             Rect::new(Coord { x: 0.0, y: 0.0 }, Coord { x: 0.0, y: 0.0 })
         };
 
-        let missing_count = edges.iter().filter(|e| e.posted_speed_mph.is_none()).count();
+        let missing_count = edges
+            .iter()
+            .filter(|e| e.posted_speed_mph.is_none())
+            .count();
         let high_func_count = edges
             .iter()
             .filter(|e| e.road_class.is_high_functional())
@@ -326,7 +334,10 @@ pub fn read_optional_speeds(
     let mut out = Vec::with_capacity(lines.len());
     for line in lines {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("nan") || trimmed.eq_ignore_ascii_case("none") {
+        if trimmed.is_empty()
+            || trimmed.eq_ignore_ascii_case("nan")
+            || trimmed.eq_ignore_ascii_case("none")
+        {
             out.push(None);
             continue;
         }
@@ -447,4 +458,42 @@ pub fn compute_highway_speed_stats(
         }
     }
     (medians, maxes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_highway_speed_stats_and_link_masking() {
+        let highways = vec![
+            "primary".to_string(),
+            "primary".to_string(),
+            "primary".to_string(),
+            "motorway_link".to_string(),
+            "motorway_link".to_string(),
+        ];
+        let speeds = vec![Some(30.0), Some(45.0), Some(35.0), Some(50.0), None];
+        let (medians, maxes) = compute_highway_speed_stats(&highways, &speeds);
+
+        assert!((medians["primary"] - 35.0).abs() < 1e-9);
+        assert!((maxes["primary"] - 45.0).abs() < 1e-9);
+        assert!((medians["motorway_link"] - 50.0).abs() < 1e-9);
+
+        // Verify that a Link road masks model_speed_limit_mph() to None even when posted_speed_mph is Some
+        let link_edge = OpenNetworkEdge {
+            edge_id: 0,
+            source_id: "w1".to_string(),
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            length_meters: 100.0,
+            highway_group: "motorway_link".to_string(),
+            road_class: CongestionRoadClass::Link,
+            posted_speed_mph: Some(50.0),
+            imputed_speed_limit_mph: 50.0,
+            geometry: LineString::from(vec![(-105.0, 40.0), (-104.999, 40.0)]),
+        };
+        assert_eq!(link_edge.model_speed_limit_mph(), None);
+        assert!((link_edge.imputed_speed_limit_mph - 50.0).abs() < 1e-9);
+    }
 }

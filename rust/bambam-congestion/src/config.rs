@@ -134,10 +134,9 @@ impl CalibrateCliArgs {
             cfg.output.output_dir = out_dir.clone();
         }
         if let Some(ref pbf_path) = self.osm_pbf_path {
-            cfg.spatial_features.opportunities_source =
-                Some(OpportunitiesSourceConfig::OsmPbf {
-                    pbf_path: pbf_path.clone(),
-                });
+            cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::OsmPbf {
+                pbf_path: pbf_path.clone(),
+            });
         }
 
         Ok(cfg)
@@ -229,10 +228,9 @@ impl ImputeCliArgs {
             cfg.output_dir = Some(out_dir.clone());
         }
         if let Some(ref pbf_path) = self.osm_pbf_path {
-            cfg.spatial_features.opportunities_source =
-                Some(OpportunitiesSourceConfig::OsmPbf {
-                    pbf_path: pbf_path.clone(),
-                });
+            cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::OsmPbf {
+                pbf_path: pbf_path.clone(),
+            });
         }
 
         Ok(cfg)

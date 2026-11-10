@@ -254,7 +254,11 @@ impl EdgeStaticFeatures {
     /// `[Speed Limit, Population Density, Employment Density, Day: Weekday, Hour: AM Peak, Hour: PM Peak,
     ///   Motorway, Trunk, Primary, Secondary, Tertiary, Service, Link, Other,
     ///   Opp Density, Traffic Signal/Crossing/Traffic Stop Density]`
-    pub fn to_features_with_speedlimit(&self, period: TimePeriod, speed_limit_mph: f32) -> [f32; 16] {
+    pub fn to_features_with_speedlimit(
+        &self,
+        period: TimePeriod,
+        speed_limit_mph: f32,
+    ) -> [f32; 16] {
         let (day_wd, hr_am, hr_pm) = period.time_flags();
         let rc = self.road_class.one_hot_8();
         [
@@ -311,10 +315,7 @@ mod tests {
 
     #[test]
     fn test_normalize_and_classify_road_classes() {
-        assert_eq!(
-            normalize_highway_tag("road-motorway-link"),
-            "motorway_link"
-        );
+        assert_eq!(normalize_highway_tag("road-motorway-link"), "motorway_link");
         assert_eq!(
             CongestionRoadClass::from_class_str("road-motorway-link"),
             CongestionRoadClass::Link

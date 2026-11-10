@@ -1,0 +1,18 @@
+# Example BAMBAM Operating Speed Imputation Configuration (`bambam-congestion impute` / `bambam_util congestion-impute`)
+
+[open_network]
+network_dir = "boulder_co"
+mode = "drive"
+legacy_posted_speed_unit = "kph"
+min_imputed_speed_limit_mph = 15.0
+
+[spatial_features]
+density_radius_miles = 0.5
+projection_mode = "geodesic"
+
+[models]
+model_with_speedlimit_path = "output/congestion_models/xgboost_model_with_speedlimit.json"
+model_without_speedlimit_path = "output/congestion_models/xgboost_model_without_speedlimit.json"
+
+write_parquet_summary = true
+write_csv_summary = true

@@ -389,7 +389,8 @@ pub fn build_tomtom_rtree_in_bbox(
         // If `require_time_varying_trace` is enabled, check either the profile ID table
         // or verify that speeds are not completely static across time periods.
         if tomtom_cfg.require_time_varying_trace {
-            if let (Some(ref valid_set), Some(Ok(prof_line))) = (&valid_profile_ids, profile_line_opt)
+            if let (Some(ref valid_set), Some(Ok(prof_line))) =
+                (&valid_profile_ids, profile_line_opt)
             {
                 let trimmed = prof_line.trim();
                 let is_valid = trimmed
@@ -517,7 +518,8 @@ fn conflate_single_edge(
         }
 
         // 2. Project to local tangent-plane meters and compute 5m corridor overlap length
-        let target_m = target_m_opt.get_or_insert_with(|| projector.project_linestring(&edge.geometry));
+        let target_m =
+            target_m_opt.get_or_insert_with(|| projector.project_linestring(&edge.geometry));
         let candidate_m = projector.project_linestring(&candidate.geometry);
         let overlap_m = compute_corridor_overlap_length_meters(target_m, &candidate_m, buffer_m);
         if overlap_m < min_overlap_m {
@@ -594,7 +596,10 @@ mod tests {
         // Due East along equator: (lon=0, lat=0) -> (lon=0.01, lat=0) => 90 degrees
         let east_line = LineString::from(vec![(0.0, 0.0), (0.01, 0.0)]);
         let h_east = length_weighted_circular_mean_heading_deg(&east_line).unwrap();
-        assert!((h_east - 90.0).abs() < 1e-3, "expected ~90 deg, got {h_east}");
+        assert!(
+            (h_east - 90.0).abs() < 1e-3,
+            "expected ~90 deg, got {h_east}"
+        );
 
         // Due North: (lon=-105.0, lat=40.0) -> (lon=-105.0, lat=40.01) => 0 degrees
         let north_line = LineString::from(vec![(-105.0, 40.0), (-105.0, 40.01)]);
@@ -609,25 +614,148 @@ mod tests {
     fn test_corridor_overlap_parallel_and_perpendicular() {
         let proj = LocalMeterProjector::new(-105.0, 40.0);
         // 100-meter segment going East
-        let target = LineString::from(vec![
-            Coord { x: 0.0, y: 0.0 },
-            Coord { x: 100.0, y: 0.0 },
-        ]);
+        let target = LineString::from(vec![Coord { x: 0.0, y: 0.0 }, Coord { x: 100.0, y: 0.0 }]);
         // Parallel segment 3m North (inside 5m buffer) of length 80m
-        let inside = LineString::from(vec![
-            Coord { x: 10.0, y: 3.0 },
-            Coord { x: 90.0, y: 3.0 },
-        ]);
+        let inside = LineString::from(vec![Coord { x: 10.0, y: 3.0 }, Coord { x: 90.0, y: 3.0 }]);
         let overlap_in = compute_corridor_overlap_length_meters(&target, &inside, 5.0);
         assert!((overlap_in - 80.0).abs() < 1e-3);
 
         // Parallel segment 8m North (outside 5m buffer)
-        let outside = LineString::from(vec![
-            Coord { x: 10.0, y: 8.0 },
-            Coord { x: 90.0, y: 8.0 },
-        ]);
+        let outside = LineString::from(vec![Coord { x: 10.0, y: 8.0 }, Coord { x: 90.0, y: 8.0 }]);
         let overlap_out = compute_corridor_overlap_length_meters(&target, &outside, 5.0);
         assert_eq!(overlap_out, 0.0);
         let _ = proj;
+    }
+
+    #[test]
+    fn test_divided_highway_opposing_carriageway_and_weighted_averaging() {
+        use crate::taxonomy::CongestionRoadClass;
+        use std::collections::HashMap;
+
+        // Open network edge: Eastbound (~90 deg) from lon -105.002 to -105.000 at lat 40.000
+        let open_geom = LineString::from(vec![(-105.0020, 40.0000), (-105.0000, 40.0000)]);
+        let open_edge = OpenNetworkEdge {
+            edge_id: 0,
+            source_id: "osm_100".to_string(),
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            length_meters: 170.0,
+            highway_group: "motorway".to_string(),
+            road_class: CongestionRoadClass::Motorway,
+            posted_speed_mph: Some(65.0),
+            imputed_speed_limit_mph: 65.0,
+            geometry: open_geom,
+        };
+
+        // TomTom edge 0: first half Eastbound (~90 deg), 2m north, speed = 50 mph
+        let tt_east_1 = LineString::from(vec![(-105.0020, 40.00002), (-105.0010, 40.00002)]);
+        // TomTom edge 1: second half Eastbound (~90 deg), 2m north, speed = 70 mph
+        let tt_east_2 = LineString::from(vec![(-105.0010, 40.00002), (-105.0000, 40.00002)]);
+        // TomTom edge 2: opposing Westbound carriageway (~270 deg), 3m south, speed = 15 mph (congested opposing direction)
+        let tt_west_opposing = LineString::from(vec![(-105.0000, 39.99997), (-105.0020, 39.99997)]);
+
+        let make_entry = |id: usize, ls: LineString<f64>, spd: f64| -> TomTomEdgeEntry {
+            let rect = ls.bounding_rect().unwrap();
+            TomTomEdgeEntry {
+                tomtom_edge_id: id,
+                mean_heading_deg: length_weighted_circular_mean_heading_deg(&ls).unwrap(),
+                speeds_mph: [Some(spd); 6],
+                bbox: AABB::from_corners(
+                    [rect.min().x, rect.min().y],
+                    [rect.max().x, rect.max().y],
+                ),
+                geometry: ls,
+            }
+        };
+
+        let rtree = RTree::bulk_load(vec![
+            make_entry(0, tt_east_1, 50.0),
+            make_entry(1, tt_east_2, 70.0),
+            make_entry(2, tt_west_opposing, 15.0),
+        ]);
+
+        let max_speeds = HashMap::from([("motorway".to_string(), 75.0)]);
+        let cfg = ConflationConfig::default();
+
+        let matched = conflate_single_edge(
+            &open_edge,
+            &rtree,
+            &max_speeds,
+            cfg.buffer_distance_meters,
+            cfg.max_heading_diff_degrees,
+            cfg.min_overlap_meters,
+            &cfg,
+        )
+        .expect("expected Eastbound TomTom edges to match");
+
+        // Only the 2 Eastbound segments should match; the Westbound segment (~270 deg) must be rejected
+        assert_eq!(matched.matched_tomtom_count, 2);
+        // Equal lengths at 50 mph and 70 mph -> weighted average = 60.0 mph
+        let avg_spd = matched.speeds_mph[0].unwrap();
+        assert!(
+            (avg_spd - 60.0).abs() < 1e-3,
+            "expected 60.0 mph, got {avg_spd}"
+        );
+    }
+
+    #[test]
+    fn test_speed_outlier_capping_posted_and_class_max() {
+        use crate::taxonomy::CongestionRoadClass;
+        use std::collections::HashMap;
+
+        let geom = LineString::from(vec![(-105.0010, 40.0000), (-105.0000, 40.0000)]);
+        let rect = geom.bounding_rect().unwrap();
+        let tt_entry = TomTomEdgeEntry {
+            tomtom_edge_id: 0,
+            mean_heading_deg: length_weighted_circular_mean_heading_deg(&geom).unwrap(),
+            speeds_mph: [Some(95.0); 6], // Extreme outlier speed (95 mph)
+            bbox: AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]),
+            geometry: geom.clone(),
+        };
+        let rtree = RTree::bulk_load(vec![tt_entry]);
+        let max_speeds = HashMap::from([("primary".to_string(), 55.0)]);
+        let cfg = ConflationConfig::default();
+
+        // Case 1: Edge HAS posted speed limit (45 mph) -> capped at 45 + 10 = 55 mph
+        let edge_with_sl = OpenNetworkEdge {
+            edge_id: 0,
+            source_id: "e0".to_string(),
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            length_meters: 85.0,
+            highway_group: "primary".to_string(),
+            road_class: CongestionRoadClass::Primary,
+            posted_speed_mph: Some(45.0),
+            imputed_speed_limit_mph: 45.0,
+            geometry: geom.clone(),
+        };
+        let res_with = conflate_single_edge(
+            &edge_with_sl,
+            &rtree,
+            &max_speeds,
+            cfg.buffer_distance_meters,
+            cfg.max_heading_diff_degrees,
+            cfg.min_overlap_meters,
+            &cfg,
+        )
+        .unwrap();
+        assert!((res_with.speeds_mph[0].unwrap() - 55.0).abs() < 1e-6);
+
+        // Case 2: Edge is MISSING posted speed limit -> capped at max_speed_by_highway["primary"] (55) + 5 = 60 mph
+        let edge_no_sl = OpenNetworkEdge {
+            posted_speed_mph: None,
+            ..edge_with_sl
+        };
+        let res_no = conflate_single_edge(
+            &edge_no_sl,
+            &rtree,
+            &max_speeds,
+            cfg.buffer_distance_meters,
+            cfg.max_heading_diff_degrees,
+            cfg.min_overlap_meters,
+            &cfg,
+        )
+        .unwrap();
+        assert!((res_no.speeds_mph[0].unwrap() - 60.0).abs() < 1e-6);
     }
 }

@@ -829,4 +829,58 @@ mod tests {
             2
         );
     }
+
+    #[test]
+    fn test_analytical_buffer_area_and_radius_density() {
+        use crate::taxonomy::CongestionRoadClass;
+
+        // Straight East-West edge at lat 40.0 of length 1609.344m (1.0 mile)
+        let edge = OpenNetworkEdge {
+            edge_id: 0,
+            source_id: "e0".to_string(),
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            length_meters: 1609.344,
+            highway_group: "primary".to_string(),
+            road_class: CongestionRoadClass::Primary,
+            posted_speed_mph: Some(40.0),
+            imputed_speed_limit_mph: 40.0,
+            geometry: LineString::from(vec![(-105.010, 40.000), (-104.991, 40.000)]),
+        };
+
+        // 1 point right on the midpoint (-105.0005, 40.000) with weight 3.0 (inside 0.5 mi)
+        // 1 traffic control point ~110m north (-105.0005, 40.001) with weight 2.0 (inside 0.5 mi)
+        // 1 point ~2.2km north (-105.0005, 40.020) with weight 100.0 (outside 0.5 mi)
+        let rtree = RTree::bulk_load(vec![
+            SpatialFeaturePoint {
+                lon: -105.0005,
+                lat: 40.000,
+                kind: FeatureKind::Opportunity,
+                weight: 3.0,
+            },
+            SpatialFeaturePoint {
+                lon: -105.0005,
+                lat: 40.001,
+                kind: FeatureKind::TrafficControl,
+                weight: 2.0,
+            },
+            SpatialFeaturePoint {
+                lon: -105.0005,
+                lat: 40.020,
+                kind: FeatureKind::Opportunity,
+                weight: 100.0,
+            },
+        ]);
+
+        let (opp_den, tc_den) =
+            compute_edge_poi_and_traffic_densities(&edge, &rtree, 0.5, ProjectionMode::Geodesic);
+
+        // Analytical buffer area for R = 0.5 mi, L = 1.0 mi: pi * (0.5)^2 + 2 * 0.5 * 1.0 = pi/4 + 1.0
+        let expected_area = std::f64::consts::PI * 0.25 + 1.0;
+        let expected_opp = (3.0 / expected_area) as f32;
+        let expected_tc = (2.0 / expected_area) as f32;
+
+        assert!((opp_den - expected_opp).abs() < 1e-4);
+        assert!((tc_den - expected_tc).abs() < 1e-4);
+    }
 }

@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 bambam = { workspace = true }
+bambam-congestion = { workspace = true }
 bambam-omf = { workspace = true }
 chrono = { workspace = true }
 config = { workspace = true }

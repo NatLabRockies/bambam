@@ -122,6 +122,68 @@ fn network_import_schema() -> PyResult<String> {
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+/// Run the congestion calibration workflow (`bambam_congestion::CalibrationConfig`) from Python.
+#[pyfunction]
+fn run_congestion_calibrate(py: Python<'_>, args: &Bound<'_, PyAny>) -> PyResult<()> {
+    let cfg: bambam_congestion::CalibrationConfig =
+        if let Ok(json_str) = args.extract::<String>() {
+            serde_json::from_str(&json_str).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize JSON string: {e}"
+                ))
+            })?
+        } else if let Ok(dict) = args.call_method0("model_dump") {
+            pythonize::depythonize(&dict).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize Pydantic model: {e}"
+                ))
+            })?
+        } else {
+            pythonize::depythonize(args).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize arguments: {e}"
+                ))
+            })?
+        };
+
+    py.detach(move || {
+        bambam_congestion::run_calibration(&cfg)
+            .map(|_| ())
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    })
+}
+
+/// Run the congestion speed imputation workflow (`bambam_congestion::ImputationConfig`) from Python.
+#[pyfunction]
+fn run_congestion_impute(py: Python<'_>, args: &Bound<'_, PyAny>) -> PyResult<()> {
+    let cfg: bambam_congestion::ImputationConfig =
+        if let Ok(json_str) = args.extract::<String>() {
+            serde_json::from_str(&json_str).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize JSON string: {e}"
+                ))
+            })?
+        } else if let Ok(dict) = args.call_method0("model_dump") {
+            pythonize::depythonize(&dict).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize Pydantic model: {e}"
+                ))
+            })?
+        } else {
+            pythonize::depythonize(args).map_err(|e| {
+                PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                    "failed to deserialize arguments: {e}"
+                ))
+            })?
+        };
+
+    py.detach(move || {
+        bambam_congestion::run_imputation(&cfg)
+            .map(|_| ())
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    })
+}
+
 /// register bambam_py_api as a package in Python
 #[pymodule]
 fn bambam_py_api(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -130,5 +192,7 @@ fn bambam_py_api(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(omf_network_schema, m)?)?;
     m.add_function(wrap_pyfunction!(run_network_import, m)?)?;
     m.add_function(wrap_pyfunction!(network_import_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(run_congestion_calibrate, m)?)?;
+    m.add_function(wrap_pyfunction!(run_congestion_impute, m)?)?;
     Ok(())
 }
