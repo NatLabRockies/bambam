@@ -8,7 +8,7 @@ from joblib import load
 import os
 from shapely.wkt import loads
     
-def predict_speeds(city_name):
+def predict_speeds(city_name: str) -> None:
     print(f"Predicting speed for {city_name}...")
     # import joined data
     data_path = f"./data/{city_name}/prepared_imputation_input.csv"

@@ -7,6 +7,8 @@ Author: Sailesh Acharya, Guangchen Zhao.
 Last update: 2025-3-19
 """
 
+from __future__ import annotations
+
 # import modules
 import geopandas as gpd
 import numpy as np
@@ -19,12 +21,15 @@ import glob
 from geopandas.tools import sjoin
 import sys
 import osmnx as ox
+from shapely.geometry import LineString
+from shapely.geometry.base import BaseGeometry
+from typing import Any
 
 
 # function to obatin city boundary
 def get_city_boundary(
-    city_name, csv_directory, buffer_boundary
-):
+    city_name: str, csv_directory: str, buffer_boundary: bool
+) -> BaseGeometry:
     """
     function to get city boundary from directory 
     """
@@ -66,8 +71,8 @@ def get_city_boundary(
 
 # function to prepare osm network
 def prepare_osm_network(
-    city_name, csv_directory, buffer_boundary
-):
+    city_name: str, csv_directory: str, buffer_boundary: bool
+) -> gpd.GeoDataFrame:
     """
     function to prepare osm data
     """
@@ -138,8 +143,8 @@ def prepare_osm_network(
 
 # function to prepare Tomtom network
 def prepare_tomtom_network(
-    city_name, csv_directory, buffer_boundary
-):
+    city_name: str, csv_directory: str, buffer_boundary: bool
+) -> gpd.GeoDataFrame:
     """
     function to prepare Tomtom data
     """
@@ -227,8 +232,8 @@ def prepare_tomtom_network(
 
 # function to join OSM and Tomtom networks
 def join_osm_tomtom_networks(
-    city_name, csv_directory, buffer_boundary
-):
+    city_name: str, csv_directory: str, buffer_boundary: bool
+) -> None:
     """
     function to join OSM and Tomtom networks for a city
     """
@@ -249,7 +254,7 @@ def join_osm_tomtom_networks(
     print(f"Joining networks for {city_name}.")
 
     # functions to calculate bearings, headings, and mean headings
-    def calculate_bearing(p1, p2):
+    def calculate_bearing(p1: tuple[float, float], p2: tuple[float, float]) -> float:
         lat1, lon1 = p1
         lat2, lon2 = p2
         delta_lon = lon2 - lon1
@@ -260,7 +265,7 @@ def join_osm_tomtom_networks(
         bearing = math.degrees(math.atan2(x, y))
         return bearing
 
-    def calculate_heading(line):
+    def calculate_heading(line: LineString) -> list[float]:
         coordinates = line.coords
         headings = []
         for i in range(len(coordinates) - 1):
@@ -270,7 +275,7 @@ def join_osm_tomtom_networks(
             headings.append(heading)
         return headings
 
-    def calculate_mean_heading(headings):
+    def calculate_mean_heading(headings: list[float]) -> float:
         headings_rad = [math.radians(h) for h in headings]
         mean_heading_rad = math.atan2(
             sum([math.sin(h) for h in headings_rad]),
@@ -402,7 +407,7 @@ def join_osm_tomtom_networks(
 
 
 # function to prepare census (population and employment) data
-def prepare_census_data(city_name, state_abb):
+def prepare_census_data(city_name: str, state_abb: str) -> None:
     """
     function to prepare census data
     """
@@ -476,11 +481,11 @@ def prepare_census_data(city_name, state_abb):
 
 # function to query osm land use opportunities
 def get_osm_opportunities(
-    city_name,
-    csv_directory,
-    buffer_boundary=True,
-    land_use_map_path="../data/land_use_mapping_osm.xlsx",
-):
+    city_name: str,
+    csv_directory: str,
+    buffer_boundary: bool = True,
+    land_use_map_path: str = "../data/land_use_mapping_osm.xlsx",
+) -> None:
     """
     function to query OSM land use opportunites for a city
     """
@@ -506,7 +511,9 @@ def get_osm_opportunities(
     }
 
     # function to clean dataframe
-    def clean_dataframe(gdf, tags):
+    def clean_dataframe(
+        gdf: gpd.GeoDataFrame, tags: dict[str, bool | str | list[str]]
+    ) -> gpd.GeoDataFrame:
         for key in tags:
             if key not in gdf.columns:
                 gdf[key] = np.nan
@@ -515,7 +522,9 @@ def get_osm_opportunities(
         return gdf[relevant_columns]
 
     # funtion to add columns of MEP categories
-    def add_MEP_columns(gdf, uniform_mep_map):
+    def add_MEP_columns(
+        gdf: gpd.GeoDataFrame, uniform_mep_map: dict[str, str]
+    ) -> gpd.GeoDataFrame:
         gdf = gdf.copy()
         for key in tags:
             # assign a MEP category for each tag and place in a tag specific column.
@@ -534,16 +543,18 @@ def get_osm_opportunities(
         return gdf
 
     # function to select relevant columns
-    def select_relevant_columns(gdf, tags):
+    def select_relevant_columns(
+        gdf: gpd.GeoDataFrame, tags: dict[str, bool | str | list[str]]
+    ) -> gpd.GeoDataFrame:
         relevant_columns = [key for key in tags if key in gdf.columns] + ["geometry"]
         return gdf[relevant_columns]
 
     # functionsto check if MEP category exists in a row
-    def contains_MEP_category(row, category):
+    def contains_MEP_category(row: pd.Series[Any], category: str) -> bool:
         return category in set(row)
 
     # function to get the set of MEP categories in a row
-    def get_MEP_set(row):
+    def get_MEP_set(row: pd.Series[Any]) -> set[str]:
         return set(row).intersection(mep_categories)
 
     # read the excel file of tag keys, values, and MEP categories
@@ -566,7 +577,7 @@ def get_osm_opportunities(
         key_MEP_map[key] = dict(zip(map["value"], map["MEP category"]))
 
     # dictionary of tags
-    tags = {
+    tags: dict[str, bool | str | list[str]] = {
         "amenity": list(key_MEP_map["amenity"].keys()),
         "building": list(key_MEP_map["building"].keys()),
         "leisure": True,
@@ -663,8 +674,8 @@ def get_osm_opportunities(
 
 # function to query osm traffic signals and transit stops and upload them to database
 def get_osm_traffic_features(
-    city_name, csv_directory, buffer_boundary=True
-):
+    city_name: str, csv_directory: str, buffer_boundary: bool = True
+) -> None:
     """
     function to query OSM land use opportunites for a city/region and upload them to database
     city boundary is obained from the database
@@ -700,7 +711,7 @@ def get_osm_traffic_features(
     )
     #Done later: transit_stops = transit_stops.loc["node"]  
 
-    def classify_transit_type(osm_stops_data):
+    def classify_transit_type(osm_stops_data: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         osm_stops_data = osm_stops_data.copy()
 
         # bus - check for highway labeled bus stop or public_transport == stop_position + bus == yes
@@ -810,7 +821,7 @@ def get_osm_traffic_features(
 
     # assign a final type to the traffic feature point.
     # points count twice only if there is a signal and a crossing represented with the same node.
-    def highway_and_crossing(hwy, crossing):
+    def highway_and_crossing(hwy: str, crossing: str | float) -> set[str]:
         if crossing == "traffic_signals" and hwy == "crossing":
             output_set = set([hwy, crossing])
         else:
@@ -885,8 +896,12 @@ def get_osm_traffic_features(
 
 
 def add_census_traffic_features_to_joined_network(
-    city_name, csv_directory, buffer_boundary, state_abb, density_distance_mi
-):
+    city_name: str,
+    csv_directory: str,
+    buffer_boundary: bool,
+    state_abb: str,
+    density_distance_mi: float,
+) -> None:
 
     # import census data
     census_path = f"data/{city_name}/census_{state_abb}.shp"
@@ -963,8 +978,12 @@ def add_census_traffic_features_to_joined_network(
 
     # function to count the number of features that lie within a buffer of network links
     def count_features(
-        feature, column_name, feature_data, network, density_distance_mi
-    ):
+        feature: str,
+        column_name: str,
+        feature_data: gpd.GeoDataFrame,
+        network: gpd.GeoDataFrame,
+        density_distance_mi: float,
+    ) -> pd.DataFrame:
 
         # buffer network links
         buffer_distance = density_distance_mi * 1609.34  # buffer distance in meters
@@ -1051,7 +1070,7 @@ def add_census_traffic_features_to_joined_network(
 
 
 # function to prepare calibration model-ready data
-def prepare_data_for_model(city_name):
+def prepare_data_for_model(city_name: str) -> None:
 
     # import prepared data (osm network links with speeds and features)
     data = pd.read_csv(f"data/{city_name}/prepared_data.csv")
@@ -1125,7 +1144,7 @@ def prepare_data_for_model(city_name):
     # lanes column
     data["lanes"] = pd.to_numeric(data["lanes"], errors="coerce")
 
-    def map_to_string(value):
+    def map_to_string(value: float) -> str:
         if pd.isnull(value):
             return "missing"
         elif value == 1:
@@ -1321,8 +1340,8 @@ def prepare_data_for_model(city_name):
 
 # function to prepare osm network only for imputation
 def prepare_osm_network_only(
-    city_name, csv_directory, buffer_boundary
-):
+    city_name: str, csv_directory: str, buffer_boundary: bool
+) -> None:
     """
     function to prepare osm data
     """
@@ -1430,8 +1449,12 @@ def prepare_osm_network_only(
     print(f"OSM network prepared for {city_name}.")
     
 def add_census_traffic_features_to_osm_network(
-    city_name, csv_directory, buffer_boundary, state_abb, density_distance_mi
-):
+    city_name: str,
+    csv_directory: str,
+    buffer_boundary: bool,
+    state_abb: str,
+    density_distance_mi: float,
+) -> None:
 
     # import census data
     census_path = f"data/{city_name}/census_{state_abb}.shp"
@@ -1508,8 +1531,12 @@ def add_census_traffic_features_to_osm_network(
 
     # function to count the number of features that lie within a buffer of network links
     def count_features(
-        feature, column_name, feature_data, network, density_distance_mi
-    ):
+        feature: str,
+        column_name: str,
+        feature_data: gpd.GeoDataFrame,
+        network: gpd.GeoDataFrame,
+        density_distance_mi: float,
+    ) -> pd.DataFrame:
 
         # buffer network links
         buffer_distance = density_distance_mi * 1609.34  # buffer distance in meters
@@ -1596,7 +1623,7 @@ def add_census_traffic_features_to_osm_network(
 
 
 # function to prepare calibration model-ready data
-def prepare_data_for_imputation(city_name):
+def prepare_data_for_imputation(city_name: str) -> None:
 
     # import prepared data (osm network links with speeds and features)
     data = pd.read_csv(f"data/{city_name}/prepared_data_for_imputation.csv")
@@ -1615,7 +1642,7 @@ def prepare_data_for_imputation(city_name):
     # lanes column
     data["lanes"] = pd.to_numeric(data["lanes"], errors="coerce")
 
-    def map_to_string(value):
+    def map_to_string(value: float) -> str:
         if pd.isnull(value):
             return "missing"
         elif value == 1:

@@ -386,7 +386,10 @@ type = "isochrone"
                 }
                 for label, ox, oy in origins
             ]
-            results_by_period[period] = app.run(queries)
+            results = app.run(queries)
+            if not isinstance(results, list):
+                raise RuntimeError("Expected a list of results for batch routing queries")
+            results_by_period[period] = results
         finally:
             tf_path.unlink(missing_ok=True)
 
