@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
-pub enum GeometryModelConfig {
+pub enum IsochronePointModelConfig {
     #[default]
     DestinationPoint,
     LinestringCoordinates,
@@ -14,12 +14,12 @@ pub enum GeometryModelConfig {
     },
     BufferedLinestring {
         buffer_radius: f64,
-        buffer_stride: f64,
+        buffer_stride: Option<f64>,
         distance_unit: DistanceUnit,
     },
     BufferedDestinationPoint {
         buffer_radius: f64,
-        buffer_stride: f64,
+        buffer_stride: Option<f64>,
         distance_unit: DistanceUnit,
     },
 }

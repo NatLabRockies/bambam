@@ -8,13 +8,25 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum IsochroneAlgorithm {
-    /// uses a concave hull agorithm to draw the isochrone. as this can lead to many vertices,
-    /// the user can optionally specify an epsilon value for running the RDP Simplification
+    /// uses a concave hull agorithm to draw the isochrone.
+    ///
+    /// as this can lead to many vertices, the user can optionally specify an epsilon value for running the RDP Simplification
     /// algorithm, in lat lon. this value should roughly match what would be acceptable smoothing
     /// for the human eye. for example, 0.00135 is approx. 10-15 meters.
+    ///
+    /// in addition, the user can set the minimum edge length for inward subdivision of the hull via length_threshold.
+    /// the value is expressed in lat/lon degrees. some example values:
+    /// Distance (approx.)	Degrees (lat/lon)
+    /// ~15 m	            0.000135
+    /// ~50 m	            0.00045
+    /// ~100 m	            0.0009
+    /// ~150 m	            0.00135
+    /// ~250 m	            0.00225
+    /// ~500 m	            0.0045
     ConcaveHull {
         concavity: f32,
         simplify_epsilon_latlon: Option<f32>,
+        length_threshold: Option<f32>,
     },
     /// uses the k-nearest concave hull algorithm. see
     /// <https://docs.rs/geo/latest/geo/algorithm/k_nearest_concave_hull/trait.KNearestConcaveHull.html>
@@ -37,11 +49,12 @@ impl IsochroneAlgorithm {
             IsochroneAlgorithm::ConcaveHull {
                 concavity,
                 simplify_epsilon_latlon,
+                length_threshold,
             } => {
                 if mp.len() < 3 {
                     Ok(Geometry::Polygon(geo::polygon!()))
                 } else {
-                    let options = ConcaveHullOptions::default().concavity(*concavity);
+                    let options = concave_hull_options(concavity, length_threshold.as_ref());
                     let mut hull = mp.concave_hull_with_options(options);
                     if let Some(epsilon) = simplify_epsilon_latlon {
                         hull = hull.simplify(*epsilon);
@@ -93,5 +106,18 @@ impl IsochroneAlgorithm {
                 IsochroneAlgorithm::KNearestConcaveHull { k }.run(mp)
             }
         }
+    }
+}
+
+/// constructs the options for concave hull in a scope where use of moved value will not be inferred.
+fn concave_hull_options(
+    concavity: &f32,
+    length_threshold: Option<&f32>,
+) -> ConcaveHullOptions<f32> {
+    let options = ConcaveHullOptions::default().concavity(*concavity);
+    if let Some(thresh) = length_threshold {
+        options.length_threshold(*thresh)
+    } else {
+        options
     }
 }
