@@ -21,6 +21,7 @@ bamcensus = { workspace = true }
 bamcensus-acs = { workspace = true }
 bamcensus-core = { workspace = true }
 bamcensus-lehd = { workspace = true }
+chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }
 csv = { workspace = true }

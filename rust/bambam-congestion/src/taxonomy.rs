@@ -4,22 +4,35 @@ use std::{
     str::FromStr,
 };
 
+use chrono::{NaiveTime, Timelike, Weekday};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// A single time-of-day bin definition with its canonical name (`name`, e.g. `"wd-am"`)
-/// and its 3 binary time indicator flags (`day_weekday`, `hour_am_peak`, `hour_pm_peak`)
-/// used by the congestion XGBoost models.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+/// A single time-of-day bin definition configured in `congestion.toml` (`[[time_bins]]`).
+///
+/// Defined in domain terms (`name`, `weekday`, `start`, `end`), e.g.:
+/// ```toml
+/// [[time_bins]]
+/// name = "wd-am"
+/// weekday = "Wednesday"
+/// start = "08:00:00"
+/// end = "09:00:00"
+/// ```
+/// The 3 binary time indicator flags (`Day: Weekday`, `Hour: AM Peak`, `Hour: PM Peak`)
+/// required by the XGBoost models are automatically derived from `weekday`, `start`, and `end`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TimeBinSpec {
     /// Unique identifier for this time bin (e.g. `"wd-am"`, `"wd-af"`, `"wd-pm"`, `"we-am"`, `"we-af"`, `"we-pm"`).
     pub name: String,
-    /// `Day: Weekday` indicator (`1.0` for weekday, `0.0` for weekend).
-    pub day_weekday: f32,
-    /// `Hour: AM Peak` indicator (`1.0` for morning peak, `0.0` otherwise).
-    pub hour_am_peak: f32,
-    /// `Hour: PM Peak` indicator (`1.0` for evening peak, `0.0` otherwise; afternoon/midday has `AM = 0, PM = 0`).
-    pub hour_pm_peak: f32,
+    /// Representative day of the week (e.g. `"Wednesday"`, `"Sunday"`, `"Mon"`, etc.).
+    #[schemars(with = "String")]
+    pub weekday: Weekday,
+    /// Start clock time of the window (`"HH:MM:SS"`, e.g. `"08:00:00"`).
+    #[schemars(with = "String")]
+    pub start: NaiveTime,
+    /// End clock time of the window (`"HH:MM:SS"`, e.g. `"09:00:00"`).
+    #[schemars(with = "String")]
+    pub end: NaiveTime,
     /// Optional explicit reference speed filename or path for this time bin.
     /// When `None`, the reference speed file path is resolved from `ReferenceSpeedFilesConfig`
     /// (`<speeds_dir>/<file_prefix>-<name>.<file_extension>` or `file_pattern`).
@@ -30,23 +43,60 @@ pub struct TimeBinSpec {
 impl TimeBinSpec {
     pub fn new(
         name: impl Into<String>,
-        day_weekday: f32,
-        hour_am_peak: f32,
-        hour_pm_peak: f32,
+        weekday: Weekday,
+        start: NaiveTime,
+        end: NaiveTime,
     ) -> Self {
         Self {
             name: name.into(),
-            day_weekday,
-            hour_am_peak,
-            hour_pm_peak,
+            weekday,
+            start,
+            end,
             reference_speed_file: None,
         }
     }
 
-    /// Returns `(day_weekday, hour_am_peak, hour_pm_peak)` indicator flags for XGBoost.
+    /// Returns `true` if `self.weekday` is Monday through Friday (`Day: Weekday = 1.0`).
     #[inline]
-    pub const fn time_flags(&self) -> (f32, f32, f32) {
-        (self.day_weekday, self.hour_am_peak, self.hour_pm_peak)
+    pub const fn is_weekday(&self) -> bool {
+        matches!(
+            self.weekday,
+            Weekday::Mon | Weekday::Tue | Weekday::Wed | Weekday::Thu | Weekday::Fri
+        )
+    }
+
+    /// Returns the midpoint of the `[start, end)` time window in fractional hours from midnight `[0.0, 24.0)`.
+    #[inline]
+    pub fn midpoint_hours_from_midnight(&self) -> f32 {
+        let s = self.start.num_seconds_from_midnight() as f32;
+        let mut e = self.end.num_seconds_from_midnight() as f32;
+        if e < s {
+            e += 86_400.0;
+        }
+        (0.5 * (s + e) / 3600.0).rem_euclid(24.0)
+    }
+
+    /// Derives the `(day_weekday, hour_am_peak, hour_pm_peak)` indicator flags for XGBoost
+    /// from `(self.weekday, self.start, self.end)`:
+    /// - `Day: Weekday = 1.0` for `Mon..=Fri`, `0.0` for `Sat | Sun`.
+    /// - `Hour: AM Peak = 1.0` when window midpoint is in `[06:00, 10:00)`, else `0.0`.
+    /// - `Hour: PM Peak = 1.0` when window midpoint is in `[15:00, 20:00)`, else `0.0`
+    ///   (midday/afternoon `[10:00, 15:00)` has `AM = 0.0, PM = 0.0`).
+    #[inline]
+    pub fn time_flags(&self) -> (f32, f32, f32) {
+        let day_wd = if self.is_weekday() { 1.0 } else { 0.0 };
+        let mid_hr = self.midpoint_hours_from_midnight();
+        let hr_am = if (6.0..10.0).contains(&mid_hr) {
+            1.0
+        } else {
+            0.0
+        };
+        let hr_pm = if (15.0..20.0).contains(&mid_hr) {
+            1.0
+        } else {
+            0.0
+        };
+        (day_wd, hr_am, hr_pm)
     }
 
     /// Standard RouteE Compass enumerated speed filename written by `impute` for this time bin:
@@ -110,28 +160,35 @@ impl TimeBinSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum TimePeriod {
-    /// Weekday Morning Peak (`wd-am`): `Day: Weekday = 1`, `Hour: AM Peak = 1`, `Hour: PM Peak = 0`
+    /// Weekday Morning Peak (`wd-am`): `Wednesday 08:00:00..09:00:00`
     WdAm,
-    /// Weekday Afternoon / Midday (`wd-af`): `Day: Weekday = 1`, `Hour: AM Peak = 0`, `Hour: PM Peak = 0`
+    /// Weekday Afternoon / Midday (`wd-af`): `Wednesday 10:00:00..11:00:00`
     WdAf,
-    /// Weekday Evening Peak (`wd-pm`): `Day: Weekday = 1`, `Hour: AM Peak = 0`, `Hour: PM Peak = 1`
+    /// Weekday Evening Peak (`wd-pm`): `Wednesday 17:00:00..18:00:00`
     WdPm,
-    /// Weekend Morning (`we-am`): `Day: Weekday = 0`, `Hour: AM Peak = 1`, `Hour: PM Peak = 0`
+    /// Weekend Morning (`we-am`): `Sunday 08:00:00..09:00:00`
     WeAm,
-    /// Weekend Afternoon (`we-af`): `Day: Weekday = 0`, `Hour: AM Peak = 0`, `Hour: PM Peak = 0`
+    /// Weekend Afternoon (`we-af`): `Sunday 10:00:00..11:00:00`
     WeAf,
-    /// Weekend Evening (`we-pm`): `Day: Weekday = 0`, `Hour: AM Peak = 0`, `Hour: PM Peak = 1`
+    /// Weekend Evening (`we-pm`): `Sunday 17:00:00..18:00:00`
     WePm,
 }
 
 impl From<TimePeriod> for TimeBinSpec {
     fn from(period: TimePeriod) -> Self {
-        let (day_wd, hr_am, hr_pm) = period.time_flags();
+        let (weekday, start_h, end_h) = match period {
+            TimePeriod::WdAm => (Weekday::Wed, 8, 9),
+            TimePeriod::WdAf => (Weekday::Wed, 10, 11),
+            TimePeriod::WdPm => (Weekday::Wed, 17, 18),
+            TimePeriod::WeAm => (Weekday::Sun, 8, 9),
+            TimePeriod::WeAf => (Weekday::Sun, 10, 11),
+            TimePeriod::WePm => (Weekday::Sun, 17, 18),
+        };
         Self {
             name: period.as_str().to_string(),
-            day_weekday: day_wd,
-            hour_am_peak: hr_am,
-            hour_pm_peak: hr_pm,
+            weekday,
+            start: NaiveTime::from_hms_opt(start_h, 0, 0).unwrap(),
+            end: NaiveTime::from_hms_opt(end_h, 0, 0).unwrap(),
             reference_speed_file: None,
         }
     }
@@ -472,5 +529,26 @@ mod tests {
         assert!(!CongestionRoadClass::Residential.is_high_functional());
         assert!(!CongestionRoadClass::Service.is_high_functional());
         assert!(!CongestionRoadClass::Other.is_high_functional());
+    }
+
+    #[test]
+    fn test_time_bin_spec_toml_deserialization_and_time_flags() {
+        let toml_str = r#"
+            name = "wd-am"
+            weekday = "Wednesday"
+            start = "08:00:00"
+            end = "09:00:00"
+        "#;
+        let bin: TimeBinSpec = toml::from_str(toml_str).unwrap();
+        assert_eq!(bin.name, "wd-am");
+        assert_eq!(bin.weekday, Weekday::Wed);
+        assert_eq!(bin.start, NaiveTime::from_hms_opt(8, 0, 0).unwrap());
+        assert_eq!(bin.end, NaiveTime::from_hms_opt(9, 0, 0).unwrap());
+        assert_eq!(bin.time_flags(), (1.0, 1.0, 0.0));
+
+        for period in TimePeriod::ALL {
+            let spec = TimeBinSpec::from(period);
+            assert_eq!(spec.time_flags(), period.time_flags());
+        }
     }
 }

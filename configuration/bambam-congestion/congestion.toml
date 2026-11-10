@@ -17,39 +17,39 @@ min_imputed_speed_limit_mph = 15.0
 # or in Python via `bambam_py_api.get_congestion_time_bins("...")`.
 [[time_bins]]
 name = "wd-am"
-day_weekday = 1.0
-hour_am_peak = 1.0
-hour_pm_peak = 0.0
+weekday = "Wednesday"
+start = "08:00:00"
+end = "09:00:00"
 
 [[time_bins]]
 name = "wd-af"
-day_weekday = 1.0
-hour_am_peak = 0.0
-hour_pm_peak = 0.0
+weekday = "Wednesday"
+start = "10:00:00"
+end = "11:00:00"
 
 [[time_bins]]
 name = "wd-pm"
-day_weekday = 1.0
-hour_am_peak = 0.0
-hour_pm_peak = 1.0
+weekday = "Wednesday"
+start = "17:00:00"
+end = "18:00:00"
 
 [[time_bins]]
 name = "we-am"
-day_weekday = 0.0
-hour_am_peak = 1.0
-hour_pm_peak = 0.0
+weekday = "Sunday"
+start = "08:00:00"
+end = "09:00:00"
 
 [[time_bins]]
 name = "we-af"
-day_weekday = 0.0
-hour_am_peak = 0.0
-hour_pm_peak = 0.0
+weekday = "Sunday"
+start = "10:00:00"
+end = "11:00:00"
 
 [[time_bins]]
 name = "we-pm"
-day_weekday = 0.0
-hour_am_peak = 0.0
-hour_pm_peak = 1.0
+weekday = "Sunday"
+start = "17:00:00"
+end = "18:00:00"
 
 [spatial_features]
 density_radius_miles = 0.5

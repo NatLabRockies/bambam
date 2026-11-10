@@ -13,11 +13,10 @@ pub use calibrate::{
 };
 pub use config::{
     CalibrateCliArgs, CalibrationConfig, CalibrationOutputConfig, CensusSourceConfig,
-    ConflationConfig, CongestionApp, CongestionCommand, CongestionPipelineConfig,
-    ImputationConfig, ImputationModelConfig, ImputeCliArgs, ListTimeBinsCliArgs,
-    OpenNetworkConfig, OpportunitiesSourceConfig, PipelineArtifactsConfig, ProjectionMode,
-    ReferenceNetworkConfig, ReferenceSpeedFilesConfig, SpatialFeaturesConfig,
-    TrafficControlsSourceConfig,
+    ConflationConfig, CongestionApp, CongestionCommand, CongestionPipelineConfig, ImputationConfig,
+    ImputationModelConfig, ImputeCliArgs, ListTimeBinsCliArgs, OpenNetworkConfig,
+    OpportunitiesSourceConfig, PipelineArtifactsConfig, ProjectionMode, ReferenceNetworkConfig,
+    ReferenceSpeedFilesConfig, SpatialFeaturesConfig, TrafficControlsSourceConfig,
 };
 pub use error::CongestionError;
 pub use impute::{run_imputation, ImputationSummary, PredictedEdgeSpeedsRow};
@@ -44,9 +43,10 @@ impl CongestionCommand {
                     TimeBinSpec::default_six_bins()
                 };
                 for b in &bins {
+                    let (day_wd, hr_am, hr_pm) = b.time_flags();
                     println!(
-                        "{}\tday_weekday={}\thour_am_peak={}\thour_pm_peak={}",
-                        b.name, b.day_weekday, b.hour_am_peak, b.hour_pm_peak
+                        "{}\tweekday={}\tstart={}\tend={}\t(day_weekday={day_wd}, hour_am_peak={hr_am}, hour_pm_peak={hr_pm})",
+                        b.name, b.weekday, b.start, b.end
                     );
                 }
                 Ok(())
