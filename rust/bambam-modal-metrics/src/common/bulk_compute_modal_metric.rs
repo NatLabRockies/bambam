@@ -29,7 +29,13 @@ where
     E: SpatialEdge + EdgeForModalMetric + DeserializeOwned + Clone + Send + Sync,
     V: VertexForModalMetric + DeserializeOwned + Send + Sync,
 {
-    bulk_compute_modal_metric_with_context::<E, V>(metric, edges_file, vertices_file, &[], output_file)
+    bulk_compute_modal_metric_with_context::<E, V>(
+        metric,
+        edges_file,
+        vertices_file,
+        &[],
+        output_file,
+    )
 }
 
 /// Bulk compute a specific modal metric for all edges in `edges_file`, optionally populating

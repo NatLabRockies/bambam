@@ -450,7 +450,10 @@ mod tests {
         let wci_csv = fs::read_to_string(&wci_out_path).unwrap();
         let lines: Vec<&str> = wci_csv.lines().collect();
         assert_eq!(lines.len(), 2);
-        assert_eq!(lines[0], "wci_total,wci_walk,wci_speed,wci_cycle,wci_signal");
+        assert_eq!(
+            lines[0],
+            "wci_total,wci_walk,wci_speed,wci_cycle,wci_signal"
+        );
         // walk (-2) + speed from 25 mph drive neighbor (+2) + cycle weighted across neighbors (+1) + stop sign (+1) = 2
         assert_eq!(lines[1], "2,-2,2,1,1");
 
