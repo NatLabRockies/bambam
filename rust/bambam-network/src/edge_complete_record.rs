@@ -316,4 +316,160 @@ mod tests {
         let lts_bike = compute_lts(&rtree, &bike_entry).unwrap();
         assert_eq!(lts_bike, Lts::new(1).unwrap());
     }
+
+    #[test]
+    fn test_bulk_compute_modal_metric_with_gzipped_files_and_context() {
+        use crate::fs::serialize_into_csv;
+        use bambam_modal_metrics::common::{
+            bulk_compute_modal_metric::bulk_compute_modal_metric_with_context,
+            modal_metrics::ModalMetric,
+        };
+        use std::fs;
+        use std::path::Path;
+
+        let tmp_dir = Path::new("target/test_tmp_modal_metric_omf");
+        let _ = fs::remove_dir_all(tmp_dir);
+        let walk_dir = tmp_dir.join("walk");
+        let drive_dir = tmp_dir.join("drive");
+        let bike_dir = tmp_dir.join("bike");
+        fs::create_dir_all(&walk_dir).unwrap();
+        fs::create_dir_all(&drive_dir).unwrap();
+        fs::create_dir_all(&bike_dir).unwrap();
+
+        let vertices = vec![
+            VertexCompleteRecord {
+                vertex_id: 0,
+                connector_id: "conn-0".to_string(),
+                x: -105.170735,
+                y: 39.773087,
+                traffic_signals: false,
+                stop: true,
+                give_way: false,
+                crossing: false,
+                infrastructure_ids: None,
+            },
+            VertexCompleteRecord {
+                vertex_id: 1,
+                connector_id: "conn-1".to_string(),
+                x: -105.170445,
+                y: 39.773137,
+                traffic_signals: false,
+                stop: false,
+                give_way: false,
+                crossing: false,
+                infrastructure_ids: None,
+            },
+        ];
+        serialize_into_csv(
+            vertices.iter(),
+            "vertices-complete.csv.gz",
+            tmp_dir,
+            true,
+            "write vertices",
+        )
+        .unwrap();
+
+        // Walk edge without its own posted speed limit, adjacent to a 25 mph drive edge and a bike cycleway
+        let walk_edges = vec![sample_edge(
+            0,
+            "seg-walk-res",
+            "road-residential",
+            None,
+            false,
+            vec![(-105.170735, 39.773087), (-105.170445, 39.773137)],
+        )];
+        let drive_edges = vec![sample_edge(
+            0,
+            "seg-drive-adj",
+            "road-secondary",
+            Some(25.0),
+            false,
+            vec![(-105.170735, 39.773090), (-105.170445, 39.773140)],
+        )];
+        let bike_edges = vec![sample_edge(
+            0,
+            "seg-bike-adj",
+            "road-cycleway",
+            None,
+            false,
+            vec![(-105.170612, 39.773116), (-105.170499, 39.773017)],
+        )];
+
+        serialize_into_csv(
+            walk_edges.iter(),
+            "edges-complete.csv.gz",
+            &walk_dir,
+            true,
+            "write walk edges",
+        )
+        .unwrap();
+        serialize_into_csv(
+            drive_edges.iter(),
+            "edges-complete.csv.gz",
+            &drive_dir,
+            true,
+            "write drive edges",
+        )
+        .unwrap();
+        serialize_into_csv(
+            bike_edges.iter(),
+            "edges-complete.csv.gz",
+            &bike_dir,
+            true,
+            "write bike edges",
+        )
+        .unwrap();
+
+        let vertices_path = tmp_dir
+            .join("vertices-complete.csv.gz")
+            .to_string_lossy()
+            .into_owned();
+        let walk_edges_path = walk_dir
+            .join("edges-complete.csv.gz")
+            .to_string_lossy()
+            .into_owned();
+        let drive_edges_path = drive_dir
+            .join("edges-complete.csv.gz")
+            .to_string_lossy()
+            .into_owned();
+        let bike_edges_path = bike_dir
+            .join("edges-complete.csv.gz")
+            .to_string_lossy()
+            .into_owned();
+        let wci_out_path = walk_dir.join("wci.csv").to_string_lossy().into_owned();
+
+        bulk_compute_modal_metric_with_context::<EdgeCompleteRecord, VertexCompleteRecord>(
+            ModalMetric::WalkingComfortIndex,
+            &walk_edges_path,
+            &vertices_path,
+            &[drive_edges_path, bike_edges_path],
+            &wci_out_path,
+        )
+        .unwrap();
+
+        let wci_csv = fs::read_to_string(&wci_out_path).unwrap();
+        let lines: Vec<&str> = wci_csv.lines().collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "wci_total,wci_walk,wci_speed,wci_cycle,wci_signal");
+        // walk (-2) + speed from 25 mph drive neighbor (+2) + cycle weighted across neighbors (+1) + stop sign (+1) = 2
+        assert_eq!(lines[1], "2,-2,2,1,1");
+
+        // Also verify writing compressed .csv.gz output directly
+        let lts_out_gz_path = bike_dir.join("lts.csv.gz").to_string_lossy().into_owned();
+        let bike_edges_path2 = bike_dir
+            .join("edges-complete.csv.gz")
+            .to_string_lossy()
+            .into_owned();
+        bulk_compute_modal_metric_with_context::<EdgeCompleteRecord, VertexCompleteRecord>(
+            ModalMetric::LevelOfTrafficStress,
+            &bike_edges_path2,
+            &vertices_path,
+            &[],
+            &lts_out_gz_path,
+        )
+        .unwrap();
+        assert!(Path::new(&lts_out_gz_path).exists());
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
 }

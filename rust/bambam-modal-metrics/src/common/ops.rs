@@ -1,17 +1,19 @@
 use std::error::Error;
 
 use geo::{Distance, Euclidean};
+use routee_compass_core::util::fs::read_utils;
 use serde::de::DeserializeOwned;
 
 use crate::{
-    common::edge_rtree_entry::EdgeRTreeEntry,
+    common::{edge_rtree_entry::EdgeRTreeEntry, modal_metrics::ModalMetricError},
     network_traits::{
         edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge,
         vertex_for_modal_metric::VertexForModalMetric,
     },
 };
 
-/// Load edges from a CSV file and create R-tree entries for each edge.
+/// Load edges from a CSV or `.csv.gz` file and create R-tree entries for each edge,
+/// preserving 1-to-1 row order with the input file.
 pub fn load_edge_rtree_entries<E, V>(
     edges_file: &str,
     vertices: &[V],
@@ -20,32 +22,24 @@ where
     E: SpatialEdge + DeserializeOwned,
     V: VertexForModalMetric,
 {
-    let mut edge_reader = csv::Reader::from_path(edges_file)?;
-    let mut edge_entries = Vec::new();
+    let edges: Box<[E]> = read_utils::from_csv(&edges_file, true, None, None)?;
+    let mut edge_entries = Vec::with_capacity(edges.len());
 
-    for record in edge_reader.deserialize::<E>() {
-        let edge = match record {
-            Ok(edge) => edge,
-            Err(err) => {
-                eprintln!("Error reading row: {err}");
-                continue;
-            }
-        };
-
+    for (row_idx, edge) in edges.into_vec().into_iter().enumerate() {
         let src = edge.src_vertex_id();
         if vertices.get(src).is_none() {
-            eprintln!(
-                "Warning: source vertex {src} not found for edge {}; skipping",
+            log::warn!(
+                "source vertex {src} not found for edge {} (row {row_idx}); proceeding without source vertex attributes",
                 edge.id()
             );
-            continue;
         }
 
         let id = edge.id();
-        let Some(entry) = EdgeRTreeEntry::new(edge) else {
-            eprintln!("Warning: could not create R-tree entry for edge {id}");
-            continue;
-        };
+        let entry = EdgeRTreeEntry::new(edge).ok_or_else(|| {
+            ModalMetricError::Other(format!(
+                "could not create R-tree entry for edge '{id}' at row {row_idx} in '{edges_file}'"
+            ))
+        })?;
 
         edge_entries.push(entry);
     }
