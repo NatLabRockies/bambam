@@ -388,9 +388,9 @@ pub fn load_census_bamcensus(
         if val.is_finite() {
             *pop_by_geoid.entry(geoid.clone()).or_insert(0.0) += val;
         }
-        if !geom_by_geoid.contains_key(&geoid) {
+        if let std::collections::hash_map::Entry::Vacant(e) = geom_by_geoid.entry(geoid) {
             if let Some(mp) = geometry_to_multipolygon(row.geometry) {
-                geom_by_geoid.insert(geoid, mp);
+                e.insert(mp);
             }
         }
     }
@@ -401,9 +401,9 @@ pub fn load_census_bamcensus(
         if val.is_finite() {
             *emp_by_geoid.entry(geoid.clone()).or_insert(0.0) += val;
         }
-        if !geom_by_geoid.contains_key(&geoid) {
+        if let std::collections::hash_map::Entry::Vacant(e) = geom_by_geoid.entry(geoid) {
             if let Some(mp) = geometry_to_multipolygon(row.geometry) {
-                geom_by_geoid.insert(geoid, mp);
+                e.insert(mp);
             }
         }
     }
