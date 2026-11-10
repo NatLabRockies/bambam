@@ -10,6 +10,7 @@ keywords = ["nlr", "routing", "network", "osm", "overture-maps"]
 categories = ["science", "science::geo"]
 
 [dependencies]
+bambam-modal-metrics = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }

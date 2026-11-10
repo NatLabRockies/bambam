@@ -16,12 +16,13 @@ use serde::Serialize;
 
 use crate::{
     consts::*,
+    edge_complete_record::EdgeCompleteRecord,
     error::NetworkImportError,
     serialize_ops::VectorizedEdgeList,
     taxonomy::{SegmentClass, SegmentFullType, SegmentSubtype},
-    vertex_serializable::{
-        EdgeCompleteRecord, VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord,
-    },
+    vertex_compass_record::VertexCompassRecord,
+    vertex_complete_record::VertexCompleteRecord,
+    vertex_mapping_record::VertexMappingRecord,
 };
 
 /// Copies the shared default `bambam.toml` configuration file from `bambam-network`

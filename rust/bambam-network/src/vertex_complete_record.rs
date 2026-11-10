@@ -1,13 +1,10 @@
-use geo::{Convert, Distance, Haversine, LineString, MapCoords, Point};
-use geozero::{wkt::Wkt as WktReader, ToGeo, ToWkt};
+use bambam_modal_metrics::network_traits::vertex_for_modal_metric::VertexForModalMetric;
+use geo::{Distance, Haversine, Point};
 use routee_compass_core::model::network::Vertex;
 use rstar::{RTree, RTreeObject, AABB};
-use serde::{de, Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 
-use crate::{
-    model::{ImportInfrastructure, SegmentHeading},
-    taxonomy::SegmentFullType,
-};
+use crate::model::ImportInfrastructure;
 
 /// Default maximum Haversine distance (in meters) to snap an infrastructure
 /// feature to its nearest connector vertex.
@@ -15,24 +12,6 @@ pub const DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS: f64 = 15.0;
 
 /// Delimiter used when joining multiple matched infrastructure IDs on a single vertex.
 pub const INFRASTRUCTURE_ID_DELIMITER: &str = ";";
-
-/// RouteE Compass vertex coordinate record (`vertices-compass.csv.gz`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VertexCompassRecord {
-    pub vertex_id: usize,
-    pub x: f32,
-    pub y: f32,
-}
-
-impl From<Vertex> for VertexCompassRecord {
-    fn from(value: Vertex) -> Self {
-        Self {
-            vertex_id: value.vertex_id.0,
-            x: value.x(),
-            y: value.y(),
-        }
-    }
-}
 
 /// Complete vertex record including source connector ID and spatially attached
 /// infrastructure attributes (`vertices-complete.csv.gz`).
@@ -49,102 +28,14 @@ pub struct VertexCompleteRecord {
     pub infrastructure_ids: Option<String>,
 }
 
-/// Standardized mapping between a RouteE Compass `vertex_id` and its source Connector/Node ID
-/// (`vertices-mapping.csv.gz`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VertexMappingRecord {
-    pub vertex_id: usize,
-    pub source_id: String,
-}
-
-/// Standardized mapping between a RouteE Compass `edge_id` and its source Segment/Way ID,
-/// linear reference bounds, and travel heading (`<mode>/edges-mapping.csv.gz`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct EdgeMappingRecord {
-    pub edge_id: usize,
-    pub source_id: String,
-    pub start_lr: f64,
-    pub end_lr: f64,
-    pub heading: SegmentHeading,
-}
-
-/// Complete edge record combining RouteE Compass topology, source segment mapping,
-/// Overture/Compass classification, speed limits, directionality, and WKT geometry
-/// (`<mode>/edges-complete.csv.gz`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct EdgeCompleteRecord {
-    pub edge_id: usize,
-    pub source_id: String,
-    pub start_lr: f64,
-    pub end_lr: f64,
-    pub heading: SegmentHeading,
-    pub src_vertex_id: usize,
-    pub dst_vertex_id: usize,
-    pub distance: f64,
-    pub class: SegmentFullType,
-    pub posted_speed_mph: Option<f64>,
-    pub speed_mph: f64,
-    pub bearing: f64,
-    pub oneway: bool,
-    #[serde(
-        serialize_with = "serialize_linestring_wkt",
-        deserialize_with = "deserialize_linestring_wkt"
-    )]
-    pub linestring: LineString<f32>,
-}
-
-/// Serializes a `LineString<f32>` as a WKT `LINESTRING(...)` string.
-pub fn serialize_linestring_wkt<S>(row: &LineString<f32>, s: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let row_f64: LineString<f64> = row.convert();
-    let wkt = geo::Geometry::from(row_f64).to_wkt().unwrap_or_default();
-    s.serialize_str(&wkt)
-}
-
-/// Deserializes a WKT `LINESTRING(...)` string into a `LineString<f32>`.
-pub fn deserialize_linestring_wkt<'de, D>(d: D) -> Result<LineString<f32>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    struct LineStringVisitor;
-
-    impl<'de> de::Visitor<'de> for LineStringVisitor {
-        type Value = LineString<f32>;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-            formatter.write_str("a WKT LineString<f32>")
-        }
-
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            let cleaned = v.trim().trim_matches('"');
-            let geometry_f64 = WktReader(cleaned)
-                .to_geo()
-                .map_err(|e| de::Error::custom(format!("failed to parse WKT string: {e}")))?;
-            match geometry_f64 {
-                geo::Geometry::LineString(ls) => Ok(ls.map_coords(|c| geo::Coord {
-                    x: c.x as f32,
-                    y: c.y as f32,
-                })),
-                _ => Err(de::Error::custom(
-                    "expected a LINESTRING, got a different geometry type",
-                )),
-            }
-        }
-
-        fn visit_string<E>(self, v: String) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            self.visit_str(&v)
-        }
+impl VertexForModalMetric for VertexCompleteRecord {
+    fn has_traffic_signals(&self) -> bool {
+        self.traffic_signals
     }
 
-    d.deserialize_str(LineStringVisitor)
+    fn has_stop_sign(&self) -> bool {
+        self.stop
+    }
 }
 
 #[derive(Clone, Debug)]

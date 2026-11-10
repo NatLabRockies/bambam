@@ -11,7 +11,6 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["science", "science::geo"]
 
 [dependencies]
-bambam-network = { workspace = true }
 csv = { workspace = true }
 geo = { workspace = true }
 kdam = { workspace = true }

@@ -4,10 +4,8 @@ use crate::{
     app::network::NetworkEdgeListConfiguration,
     collection::{OvertureMapsCollectionError, SegmentFullType, TransportationCollection},
     graph::{
-        island_detection::IslandDetectionAlgorithm,
-        segment_ops,
-        vertex_serializable::{VertexCompleteRecord, VertexMappingRecord},
-        NetworkGraphSummary,
+        island_detection::IslandDetectionAlgorithm, segment_ops, NetworkGraphSummary,
+        VertexCompleteRecord, VertexMappingRecord,
     },
 };
 use bambam_network::{build_vectorized_network_graph, write_summary, VectorizedEdgeList};
