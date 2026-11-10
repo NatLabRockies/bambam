@@ -64,11 +64,8 @@ impl SpatialFeatureEngine {
                 self.density_radius_miles,
                 self.projection_mode,
             );
-            let (pop, emp) = compute_edge_census_densities(
-                edge,
-                &self.census_rtree,
-                self.density_radius_miles,
-            );
+            let (pop, emp) =
+                compute_edge_census_densities(edge, &self.census_rtree, self.density_radius_miles);
             (pop, emp, opp, tc)
         } else {
             (0.0, 0.0, 0.0, 0.0)

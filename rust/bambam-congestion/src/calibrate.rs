@@ -1,11 +1,7 @@
 use std::{fs::File, path::Path};
 
 use arrow::datatypes::FieldRef;
-use parquet::{
-    arrow::ArrowWriter,
-    basic::Compression,
-    file::properties::WriterProperties,
-};
+use parquet::{arrow::ArrowWriter, basic::Compression, file::properties::WriterProperties};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_arrow::schema::{SchemaLike, TracingOptions};
 
@@ -148,9 +144,7 @@ pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary,
         .edges
         .par_iter()
         .zip(conflated_per_edge.par_iter())
-        .map(|(edge, conf_opt)| {
-            feature_engine.compute_edge_features(edge, conf_opt.is_some())
-        })
+        .map(|(edge, conf_opt)| feature_engine.compute_edge_features(edge, conf_opt.is_some()))
         .collect();
 
     let mut samples_with_sl: Vec<CalibrationSampleRow> = Vec::new();
@@ -320,12 +314,13 @@ where
     let props = WriterProperties::builder()
         .set_compression(Compression::SNAPPY)
         .build();
-    let mut writer = ArrowWriter::try_new(file, first_batch.schema(), Some(props)).map_err(|e| {
-        CongestionError::Parquet(format!(
-            "failed to initialize Parquet writer for '{}': {e}",
-            filepath.display()
-        ))
-    })?;
+    let mut writer =
+        ArrowWriter::try_new(file, first_batch.schema(), Some(props)).map_err(|e| {
+            CongestionError::Parquet(format!(
+                "failed to initialize Parquet writer for '{}': {e}",
+                filepath.display()
+            ))
+        })?;
 
     writer.write(&first_batch).map_err(|e| {
         CongestionError::Parquet(format!(

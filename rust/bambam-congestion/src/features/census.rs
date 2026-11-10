@@ -91,10 +91,7 @@ pub fn build_census_rtree(
         )?,
     };
 
-    log::info!(
-        "Indexed {} Census polygons into R*-tree",
-        entries.len()
-    );
+    log::info!("Indexed {} Census polygons into R*-tree", entries.len());
     Ok(RTree::bulk_load(entries))
 }
 
@@ -121,9 +118,8 @@ pub fn compute_edge_census_densities(
         [expanded.max().x, expanded.max().y],
     );
 
-    let candidates: Vec<&CensusPolygonEntry> = census_rtree
-        .locate_in_envelope_intersecting(&env)
-        .collect();
+    let candidates: Vec<&CensusPolygonEntry> =
+        census_rtree.locate_in_envelope_intersecting(&env).collect();
     if candidates.is_empty() {
         return (0.0, 0.0);
     }
@@ -287,14 +283,11 @@ fn load_census_shapefile(
     Ok(out)
 }
 
-fn extract_dbf_numeric(
-    record: &shapefile::dbase::Record,
-    field_name: &str,
-) -> Option<f64> {
+fn extract_dbf_numeric(record: &shapefile::dbase::Record, field_name: &str) -> Option<f64> {
     match record.get(field_name)? {
         shapefile::dbase::FieldValue::Numeric(Some(v)) => Some(*v),
         shapefile::dbase::FieldValue::Float(Some(v)) => Some(*v as f64),
-        shapefile::dbase::FieldValue::Double( v) => Some(*v),
+        shapefile::dbase::FieldValue::Double(v) => Some(*v),
         shapefile::dbase::FieldValue::Integer(v) => Some(*v as f64),
         shapefile::dbase::FieldValue::Character(Some(s)) => s.trim().parse::<f64>().ok(),
         _ => None,
@@ -349,7 +342,8 @@ fn load_census_csv_polygons(
             message: e.to_string(),
         })?
         .clone();
-    let header_map: HashMap<&str, usize> = headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
+    let header_map: HashMap<&str, usize> =
+        headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
 
     let geoid_idx = *header_map.get(geoid_column).ok_or_else(|| {
         CongestionError::SpatialFeature(format!(
@@ -408,21 +402,13 @@ fn load_census_csv_polygons(
         let pop_count = pop_col_idx
             .and_then(|i| rec.get(i))
             .and_then(|s| s.trim().parse::<f64>().ok())
-            .or_else(|| {
-                ext_pop_lookup
-                    .as_ref()
-                    .and_then(|m| m.get(&geoid).copied())
-            })
+            .or_else(|| ext_pop_lookup.as_ref().and_then(|m| m.get(&geoid).copied()))
             .unwrap_or(0.0);
 
         let emp_count = emp_col_idx
             .and_then(|i| rec.get(i))
             .and_then(|s| s.trim().parse::<f64>().ok())
-            .or_else(|| {
-                ext_emp_lookup
-                    .as_ref()
-                    .and_then(|m| m.get(&geoid).copied())
-            })
+            .or_else(|| ext_emp_lookup.as_ref().and_then(|m| m.get(&geoid).copied()))
             .unwrap_or(0.0);
 
         let pop_den_km2 = pop_count / area_km2;
@@ -501,7 +487,8 @@ fn load_geoid_value_lookup(
             message: e.to_string(),
         })?
         .clone();
-    let header_map: HashMap<&str, usize> = headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
+    let header_map: HashMap<&str, usize> =
+        headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
     let g_idx = *header_map.get(geoid_col).ok_or_else(|| {
         CongestionError::SpatialFeature(format!(
             "CSV '{}' missing GEOID column '{}'",
@@ -625,8 +612,14 @@ mod tests {
             ..west_edge.clone()
         };
         let (pop_b, emp_b) = compute_edge_census_densities(&border_edge, &rtree, 0.5);
-        assert!(pop_b > 2.5 && pop_b < 5.5, "expected blended pop_den, got {pop_b}");
-        assert!(emp_b > 1.5 && emp_b < 4.5, "expected blended emp_den, got {emp_b}");
+        assert!(
+            pop_b > 2.5 && pop_b < 5.5,
+            "expected blended pop_den, got {pop_b}"
+        );
+        assert!(
+            emp_b > 1.5 && emp_b < 4.5,
+            "expected blended emp_den, got {emp_b}"
+        );
 
         // 3. Edge over water far from any Census polygon -> returns (0.0, 0.0) without dropping edge
         let water_edge = OpenNetworkEdge {

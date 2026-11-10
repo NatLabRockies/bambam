@@ -130,11 +130,7 @@ impl XgboostJsonModel {
             for i in 0..n {
                 let left = tree.left_children[i];
                 let right = tree.right_children[i];
-                let default_left = tree
-                    .default_left
-                    .get(i)
-                    .map(|&v| v != 0)
-                    .unwrap_or(true);
+                let default_left = tree.default_left.get(i).map(|&v| v != 0).unwrap_or(true);
                 nodes.push(FlatTreeNode {
                     left_child: if left < 0 { -1 } else { base_offset + left },
                     right_child: if right < 0 { -1 } else { base_offset + right },
@@ -202,9 +198,9 @@ fn parse_xgb_float_str(raw: &str) -> Result<f32, CongestionError> {
         .trim_start_matches('[')
         .trim_end_matches(']')
         .trim();
-    trimmed.parse::<f32>().map_err(|e| {
-        CongestionError::Model(format!("failed to parse XGBoost float '{raw}': {e}"))
-    })
+    trimmed
+        .parse::<f32>()
+        .map_err(|e| CongestionError::Model(format!("failed to parse XGBoost float '{raw}': {e}")))
 }
 
 #[cfg(test)]

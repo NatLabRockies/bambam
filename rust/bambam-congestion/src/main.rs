@@ -108,7 +108,11 @@ mod tests {
         // 3. Build a single unified CongestionPipelineConfig (`congestion.toml`) and verify TOML roundtrip
         let pipeline_cfg = CongestionPipelineConfig {
             open_network: OpenNetworkConfig {
-                network_dir: open_drive_dir.parent().unwrap().to_string_lossy().into_owned(),
+                network_dir: open_drive_dir
+                    .parent()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned(),
                 mode: "drive".to_string(),
                 ..Default::default()
             },
@@ -145,7 +149,9 @@ mod tests {
         assert_eq!(calib_summary.conflated_edges, 2);
         assert_eq!(calib_summary.samples_with_speedlimit, 6);
         assert_eq!(calib_summary.samples_without_speedlimit, 6);
-        assert!(calib_out_dir.join("calibration_with_speedlimit.parquet").exists());
+        assert!(calib_out_dir
+            .join("calibration_with_speedlimit.parquet")
+            .exists());
         assert!(calib_out_dir
             .join("calibration_without_speedlimit.parquet")
             .exists());
@@ -195,4 +201,3 @@ mod tests {
         let _ = fs::remove_dir_all(tmp_root);
     }
 }
-

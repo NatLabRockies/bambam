@@ -161,7 +161,8 @@ pub fn build_poi_and_traffic_rtree(
                     None
                 };
                 if let Some(path) = vc_path {
-                    let mut tc_pts = load_traffic_controls_from_vertices_complete(&path, search_bbox)?;
+                    let mut tc_pts =
+                        load_traffic_controls_from_vertices_complete(&path, search_bbox)?;
                     points.append(&mut tc_pts);
                 }
             }
@@ -171,7 +172,8 @@ pub fn build_poi_and_traffic_rtree(
                     .map(Path::new)
                     .map(|p| p.to_path_buf())
                     .unwrap_or_else(|| open_net.root_dir.join(COMPLETE_VERTEX_FILENAME));
-                let mut tc_pts = load_traffic_controls_from_vertices_complete(&resolved, search_bbox)?;
+                let mut tc_pts =
+                    load_traffic_controls_from_vertices_complete(&resolved, search_bbox)?;
                 points.append(&mut tc_pts);
             }
             Some(TrafficControlsSourceConfig::OsmPbf { pbf_path }) => {
@@ -263,10 +265,7 @@ pub fn compute_edge_poi_and_traffic_densities(
                 }
             }
 
-            (
-                (opp_sum / area_sq_mi) as f32,
-                (tc_sum / area_sq_mi) as f32,
-            )
+            ((opp_sum / area_sq_mi) as f32, (tc_sum / area_sq_mi) as f32)
         }
         ProjectionMode::LegacyEpsg3857 => {
             // Legacy EPSG:3857 planar buffer & area matching calibration_utils.py
@@ -309,10 +308,7 @@ pub fn compute_edge_poi_and_traffic_densities(
                 }
             }
 
-            (
-                (opp_sum / area_sq_mi) as f32,
-                (tc_sum / area_sq_mi) as f32,
-            )
+            ((opp_sum / area_sq_mi) as f32, (tc_sum / area_sq_mi) as f32)
         }
     }
 }
@@ -334,12 +330,9 @@ fn load_traffic_controls_from_vertices_complete(
     path: &Path,
     search_bbox: Rect<f64>,
 ) -> Result<Vec<SpatialFeaturePoint>, CongestionError> {
-    let vertices: Box<[VertexCompleteRecord]> =
-        read_utils::from_csv(&path, true, None, None).map_err(|e| {
-            CongestionError::SpatialFeature(format!(
-                "failed reading '{}': {e}",
-                path.display()
-            ))
+    let vertices: Box<[VertexCompleteRecord]> = read_utils::from_csv(&path, true, None, None)
+        .map_err(|e| {
+            CongestionError::SpatialFeature(format!("failed reading '{}': {e}", path.display()))
         })?;
     let mut out = Vec::new();
     for v in vertices.iter() {
@@ -469,7 +462,8 @@ fn load_csv_feature_points(
         })?
         .clone();
 
-    let header_map: HashMap<&str, usize> = headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
+    let header_map: HashMap<&str, usize> =
+        headers.iter().enumerate().map(|(i, h)| (h, i)).collect();
     let wkt_idx = wkt_column.and_then(|c| header_map.get(c).copied());
     let x_idx = header_map.get(x_column).copied();
     let y_idx = header_map.get(y_column).copied();
@@ -594,9 +588,7 @@ pub fn extract_overture_maps_opportunities(
     let taxonomy_model = TaxonomyModelBuilder::new(places_mapping.clone(), None)
         .build()
         .map_err(|e| {
-            CongestionError::SpatialFeature(format!(
-                "failed building Overture taxonomy model: {e}"
-            ))
+            CongestionError::SpatialFeature(format!("failed building Overture taxonomy model: {e}"))
         })?;
 
     let collector = OvertureMapsCollector::try_from(OvertureMapsCollectorConfig::default())
@@ -694,11 +686,7 @@ pub fn extract_overture_maps_opportunities(
         };
         let raw_bldgs = if let Some(dir) = local_source_dir {
             let obj_path = object_store::path::Path::from(dir.to_string_lossy().as_ref());
-            collector.collect_from_path(
-                obj_path,
-                &OvertureRecordType::Buildings,
-                Some(bldg_filter),
-            )
+            collector.collect_from_path(obj_path, &OvertureRecordType::Buildings, Some(bldg_filter))
         } else {
             collector.collect_from_release(
                 &release,
@@ -741,10 +729,7 @@ pub fn extract_osm_pbf_features(
     extract_traffic_controls: bool,
 ) -> Result<Vec<SpatialFeaturePoint>, CongestionError> {
     let reader = ElementReader::from_path(pbf_path).map_err(|e| {
-        CongestionError::SpatialFeature(format!(
-            "failed opening PBF '{}': {e}",
-            pbf_path.display()
-        ))
+        CongestionError::SpatialFeature(format!("failed opening PBF '{}': {e}", pbf_path.display()))
     })?;
 
     // Map node_id -> (lon, lat) inside expanded bbox for computing way centroids
@@ -889,11 +874,11 @@ where
                     mask |= 1 << 4; // recreation
                 }
             }
-            "shop" => mask |= 1 << 1,       // retail
-            "healthcare" => mask |= 1 << 3, // health care
+            "shop" => mask |= 1 << 1,                   // retail
+            "healthcare" => mask |= 1 << 3,             // health care
             "education" | "religion" => mask |= 1 << 0, // specialty
-            "cuisine" => mask |= 1 << 2,    // food
-            "sport" => mask |= 1 << 4,      // recreation
+            "cuisine" => mask |= 1 << 2,                // food
+            "sport" => mask |= 1 << 4,                  // recreation
             "amenity" => {
                 if let Some(bit) = classify_osm_amenity(v) {
                     mask |= 1 << bit;
@@ -938,8 +923,15 @@ fn classify_osm_amenity(v: &str) -> Option<u8> {
         | "place_of_worship" | "community_centre" | "social_facility" | "townhall"
         | "courthouse" | "post_office" | "police" | "fire_station" => Some(0),
         // retail / errands (bit 1)
-        "bank" | "atm" | "marketplace" | "fuel" | "car_wash" | "car_rental" | "car_repair"
-        | "bureau_de_change" | "veterinary_pharmacy" => Some(1),
+        "bank"
+        | "atm"
+        | "marketplace"
+        | "fuel"
+        | "car_wash"
+        | "car_rental"
+        | "car_repair"
+        | "bureau_de_change"
+        | "veterinary_pharmacy" => Some(1),
         // recreation (bit 4)
         "arts_centre" | "cinema" | "theatre" | "nightclub" | "casino" | "planetarium"
         | "events_venue" | "public_bath" | "fountain" => Some(4),
@@ -1031,10 +1023,7 @@ mod tests {
             0
         );
         // street_lamp is ignored (not used by model)
-        assert_eq!(
-            count_traffic_control_node([("highway", "street_lamp")]),
-            0
-        );
+        assert_eq!(count_traffic_control_node([("highway", "street_lamp")]), 0);
         // stop sign counts as 1
         assert_eq!(count_traffic_control_node([("highway", "stop")]), 1);
     }

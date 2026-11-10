@@ -65,19 +65,19 @@ pub struct ImputationSummary {
 pub fn run_imputation(config: &ImputationConfig) -> Result<ImputationSummary, CongestionError> {
     let open_net = LoadedOpenNetwork::load(&config.open_network)?;
 
-    let model_with_sl = XgboostJsonModel::from_json_file(Path::new(
-        &config.models.model_with_speedlimit_path,
-    ))?;
-    let model_without_sl = XgboostJsonModel::from_json_file(Path::new(
-        &config.models.model_without_speedlimit_path,
-    ))?;
+    let model_with_sl =
+        XgboostJsonModel::from_json_file(Path::new(&config.models.model_with_speedlimit_path))?;
+    let model_without_sl =
+        XgboostJsonModel::from_json_file(Path::new(&config.models.model_without_speedlimit_path))?;
 
     let feature_engine = SpatialFeatureEngine::build(&open_net, &config.spatial_features)?;
     let static_features = feature_engine.compute_all_edge_features(&open_net, true);
 
     let predictions: Vec<Vec<f32>> = static_features
         .par_iter()
-        .map(|feat| predict_edge_for_bins(feat, &config.time_bins, &model_with_sl, &model_without_sl))
+        .map(|feat| {
+            predict_edge_for_bins(feat, &config.time_bins, &model_with_sl, &model_without_sl)
+        })
         .collect();
 
     let out_dir = config
