@@ -66,11 +66,20 @@ type = "osm_pbf"
 pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf"
 
 # Census source can be:
+#   - `type = "csv_polygons"` (local WKT CSV polygons with inline or external population/employment columns,
+#      such as the committed `boulder_co/census_tracts_bamcensus.csv.gz` fixture exported by `bambam-congestion export-census`)
 #   - `type = "bamcensus"` (downloads TIGER/Line polygons + ACS population + LEHD LODES employment;
 #      requires `CENSUS_API_KEY` or `CENSUS_API_TOKEN` in the environment)
-#   - `type = "csv_polygons"` (local WKT CSV polygons joined with population/employment CSVs)
 #   - `type = "shapefile"` (local shapefile with `pop-den` and `emp-den` fields)
-# Example `bamcensus` configuration (matching `bambam.toml` population_source & lodes opportunity_source):
+[spatial_features.census_source]
+type = "csv_polygons"
+polygons_csv_path = "boulder_co/census_tracts_bamcensus.csv.gz"
+geoid_column = "geoid"
+wkt_column = "geometry"
+population_column = "population"
+employment_column = "jobs"
+
+# Online `bamcensus` alternative (can also re-generate the fixture via `bambam-congestion export-census` or `--save-bamcensus-csv`):
 # [spatial_features.census_source]
 # type = "bamcensus"
 # [spatial_features.census_source.population_source]
@@ -87,17 +96,6 @@ pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf"
 # job_type = "JT00"
 # segment = "S000"
 # year = 2022
-[spatial_features.census_source] 
-type = "csv_polygons"
-polygons_csv_path = "/Users/rfitzger/data/bam/mep3/in/tiger-lines/tracts.csv"
-geoid_column = "geoid"
-wkt_column = "geometry"
-population_csv_path = "/Users/rfitzger/data/bam/mep3/in/population/2025-12-09-aceee-poverty-population.csv"
-population_csv_geoid_column = "geoid"
-population_csv_value_column = "population"
-employment_csv_path = "/Users/rfitzger/data/bam/mep3/in/lodes/LODES8_wac_2022_JT00_S000_census_tract.csv.gz"
-employment_csv_geoid_column = "geoid"
-employment_csv_value_column = "jobs"
 
 [reference_network]
 network_dir = "/Users/rfitzger/dev/nrel/routee/routee-compass-tomtom/data/tomtom_national"

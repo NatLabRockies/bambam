@@ -12,9 +12,10 @@ pub use calibrate::{
     run_calibration, CalibrationSampleRow, CalibrationSummary, ConflatedEdgeSummaryRow,
 };
 pub use config::{
-    CalibrateCliArgs, CalibrationConfig, CalibrationOutputConfig, CensusSourceConfig,
-    ConflationConfig, CongestionApp, CongestionCommand, CongestionPipelineConfig, ImputationConfig,
-    ImputationModelConfig, ImputeCliArgs, ListTimeBinsCliArgs, OpenNetworkConfig,
+    BamcensusLodesConfig, BamcensusPopulationConfig, CalibrateCliArgs, CalibrationConfig,
+    CalibrationOutputConfig, CensusSourceConfig, CensusStudyRegion, ConflationConfig,
+    CongestionApp, CongestionCommand, CongestionPipelineConfig, ExportCensusCliArgs,
+    ImputationConfig, ImputationModelConfig, ImputeCliArgs, ListTimeBinsCliArgs, OpenNetworkConfig,
     OpportunitiesSourceConfig, PipelineArtifactsConfig, ProjectionMode, ReferenceNetworkConfig,
     ReferenceSpeedFilesConfig, SpatialFeaturesConfig, TrafficControlsSourceConfig,
 };
@@ -49,6 +50,47 @@ impl CongestionCommand {
                         b.name, b.weekday, b.start, b.end
                     );
                 }
+                Ok(())
+            }
+            CongestionCommand::ExportCensus(args) => {
+                let mut pipeline_cfg = if let Some(ref p) = args.config {
+                    CongestionPipelineConfig::from_file(std::path::Path::new(p))?
+                } else {
+                    CongestionPipelineConfig {
+                        open_network: OpenNetworkConfig::default(),
+                        time_bins: TimeBinSpec::default_six_bins(),
+                        spatial_features: SpatialFeaturesConfig::default(),
+                        reference_network: None,
+                        conflation: ConflationConfig::default(),
+                        artifacts: PipelineArtifactsConfig::default(),
+                    }
+                };
+                if let Some(ref open_dir) = args.open_network_dir {
+                    pipeline_cfg.open_network.network_dir = open_dir.clone();
+                }
+                let open_net = LoadedOpenNetwork::load(&pipeline_cfg.open_network)?;
+                let (pop_src, emp_src) = match pipeline_cfg.spatial_features.census_source {
+                    Some(CensusSourceConfig::Bamcensus {
+                        population_source,
+                        employment_source,
+                        ..
+                    }) => (population_source, employment_source),
+                    _ => (
+                        BamcensusPopulationConfig::default(),
+                        BamcensusLodesConfig::default(),
+                    ),
+                };
+                let census_cfg = CensusSourceConfig::Bamcensus {
+                    population_source: pop_src,
+                    employment_source: emp_src,
+                    save_csv_path: Some(args.output_csv.clone()),
+                };
+                crate::features::census::build_census_rtree(
+                    Some(&census_cfg),
+                    open_net.bbox,
+                    pipeline_cfg.spatial_features.density_radius_miles,
+                    pipeline_cfg.spatial_features.projection_mode,
+                )?;
                 Ok(())
             }
         }

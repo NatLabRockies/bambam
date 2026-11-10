@@ -41,6 +41,26 @@ pub enum CongestionCommand {
 
     /// Print the configured time-bin names and indicator flags (from `--config` or the default 6 BAMBAM time bins).
     ListTimeBins(ListTimeBinsCliArgs),
+
+    /// Download Census TIGER/Line polygons tagged with ACS population and LEHD LODES employment
+    /// via `bamcensus` for an Open Network's bounding box and save them to a CSV (or `.csv.gz`) file.
+    ExportCensus(ExportCensusCliArgs),
+}
+
+/// CLI arguments for `bambam-congestion export-census`.
+#[derive(Debug, Clone, Args, Serialize, Deserialize, JsonSchema)]
+pub struct ExportCensusCliArgs {
+    /// Optional path to a `congestion.toml` configuration file.
+    #[arg(short, long)]
+    pub config: Option<String>,
+
+    /// Optional override: path to the Open Network directory (used to determine the study bounding box).
+    #[arg(long)]
+    pub open_network_dir: Option<String>,
+
+    /// Output CSV (or `.csv.gz`) file path to write the `bamcensus` polygons (`geoid,population,jobs,geometry`).
+    #[arg(short, long)]
+    pub output_csv: String,
 }
 
 /// CLI arguments for `bambam-congestion list-time-bins`.
@@ -89,6 +109,11 @@ pub struct CalibrateCliArgs {
     /// Optional `.osm.pbf` path for extracting MEP land-use opportunities and traffic controls.
     #[arg(long)]
     pub osm_pbf_path: Option<String>,
+
+    /// Optional CSV (or `.csv.gz`) path to save the downloaded `bamcensus` dataset
+    /// (`geoid,population,jobs,geometry`) when using `CensusSourceConfig::Bamcensus`.
+    #[arg(long)]
+    pub save_bamcensus_csv: Option<String>,
 }
 
 impl CalibrateCliArgs {
@@ -169,6 +194,23 @@ impl CalibrateCliArgs {
                 pbf_path: pbf_path.clone(),
             });
         }
+        if let Some(ref save_path) = self.save_bamcensus_csv {
+            match cfg.spatial_features.census_source {
+                Some(CensusSourceConfig::Bamcensus {
+                    ref mut save_csv_path,
+                    ..
+                }) => {
+                    *save_csv_path = Some(save_path.clone());
+                }
+                _ => {
+                    cfg.spatial_features.census_source = Some(CensusSourceConfig::Bamcensus {
+                        population_source: BamcensusPopulationConfig::default(),
+                        employment_source: BamcensusLodesConfig::default(),
+                        save_csv_path: Some(save_path.clone()),
+                    });
+                }
+            }
+        }
 
         Ok(cfg)
     }
@@ -207,6 +249,11 @@ pub struct ImputeCliArgs {
     /// Optional `.osm.pbf` path for extracting MEP land-use opportunities and traffic controls.
     #[arg(long)]
     pub osm_pbf_path: Option<String>,
+
+    /// Optional CSV (or `.csv.gz`) path to save the downloaded `bamcensus` dataset
+    /// (`geoid,population,jobs,geometry`) when using `CensusSourceConfig::Bamcensus`.
+    #[arg(long)]
+    pub save_bamcensus_csv: Option<String>,
 }
 
 impl ImputeCliArgs {
@@ -271,6 +318,23 @@ impl ImputeCliArgs {
             cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::OsmPbf {
                 pbf_path: pbf_path.clone(),
             });
+        }
+        if let Some(ref save_path) = self.save_bamcensus_csv {
+            match cfg.spatial_features.census_source {
+                Some(CensusSourceConfig::Bamcensus {
+                    ref mut save_csv_path,
+                    ..
+                }) => {
+                    *save_csv_path = Some(save_path.clone());
+                }
+                _ => {
+                    cfg.spatial_features.census_source = Some(CensusSourceConfig::Bamcensus {
+                        population_source: BamcensusPopulationConfig::default(),
+                        employment_source: BamcensusLodesConfig::default(),
+                        save_csv_path: Some(save_path.clone()),
+                    });
+                }
+            }
         }
 
         Ok(cfg)
@@ -851,9 +915,15 @@ pub enum CensusSourceConfig {
     #[serde(alias = "acs_lodes")]
     Bamcensus {
         /// ACS population configuration (mirrors `PopulationSourceConfig::UsCensusAcs`).
+        #[serde(default)]
         population_source: BamcensusPopulationConfig,
         /// LEHD LODES employment configuration (mirrors `OpportunitySource::UsCensusLehdLodes`).
+        #[serde(default)]
         employment_source: BamcensusLodesConfig,
+        /// Optional path to save the downloaded Census polygons (`geoid,population,jobs,geometry`)
+        /// as a CSV or `.csv.gz` fixture (can also be set via `--save-bamcensus-csv`).
+        #[serde(default)]
+        save_csv_path: Option<String>,
     },
     /// Read a prepared Census shapefile containing `pop-den` and `emp-den` (per $\text{km}^2$) or
     /// `population` and `employment` counts.
@@ -924,6 +994,19 @@ pub struct BamcensusPopulationConfig {
     pub api_token: Option<String>,
 }
 
+impl Default for BamcensusPopulationConfig {
+    fn default() -> Self {
+        Self {
+            r#type: Some("acs".to_string()),
+            acs_type: default_acs_type(),
+            acs_year: default_acs_year(),
+            acs_resolution: default_acs_resolution(),
+            acs_categories: None,
+            api_token: None,
+        }
+    }
+}
+
 impl BamcensusPopulationConfig {
     /// Resolves the Census API key from `self.api_token`, `CENSUS_API_KEY`, or `CENSUS_API_TOKEN`.
     pub fn resolve_api_token(&self) -> Result<String, CongestionError> {
@@ -991,6 +1074,22 @@ pub struct BamcensusLodesConfig {
     #[serde(default)]
     #[schemars(with = "Option<HashMap<String, Vec<String>>>")]
     pub activity_mapping: Option<HashMap<WacSegment, Vec<String>>>,
+}
+
+impl Default for BamcensusLodesConfig {
+    fn default() -> Self {
+        Self {
+            r#type: Some("lodes".to_string()),
+            study_region: None,
+            data_granularity: default_acs_resolution(),
+            edition: LodesEdition::default(),
+            job_type: LodesJobType::default(),
+            segment: WorkplaceSegment::default(),
+            year: default_acs_year(),
+            wac_segments: None,
+            activity_mapping: None,
+        }
+    }
 }
 
 impl BamcensusLodesConfig {

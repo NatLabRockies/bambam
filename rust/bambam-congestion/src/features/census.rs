@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
-    io::Read,
+    fs::File,
+    io::{BufWriter, Read, Write},
     path::Path,
 };
 
@@ -8,12 +9,13 @@ use bamcensus::app::{acs_tiger, lodes_tiger};
 use bamcensus_acs::model::{AcsApiQueryParams, AcsGeoidQuery};
 use bamcensus_core::model::identifier::{Geoid, HasGeoidString, StateCode};
 use bamcensus_lehd::model::LodesDataset;
-use flate2::read::GzDecoder;
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use geo::{Area, BoundingRect, Contains, Coord, Geometry, MultiPolygon, Point, Polygon, Rect};
-use geozero::{geojson::GeoJsonString, wkt::Wkt as WktReader, ToGeo};
+use geozero::{geojson::GeoJsonString, wkt::Wkt as WktReader, ToGeo, ToWkt};
 use itertools::Itertools;
 use routee_compass_core::util::geo::PolygonalRTree;
 use rstar::{RTree, RTreeObject, AABB};
+use serde::Serialize;
 
 use crate::{
     config::{
@@ -69,9 +71,11 @@ pub fn build_census_rtree(
         CensusSourceConfig::Bamcensus {
             population_source,
             employment_source,
+            save_csv_path,
         } => load_census_bamcensus(
             population_source,
             employment_source,
+            save_csv_path.as_deref().map(Path::new),
             search_bbox,
             projection_mode,
         )?,
@@ -261,14 +265,16 @@ fn build_buffer_quadrature_points(
 
 /// Downloads US Census ACS population counts, LEHD LODES employment counts, and TIGER/Line
 /// polygons via `bamcensus` (`acs_tiger::run_batch` and `lodes_tiger::run`), filters to polygons
-/// intersecting `search_bbox`, and converts counts into `pop_density_1000_per_sq_mi` and
+/// intersecting `search_bbox`, optionally writes the joined table (`geoid,population,jobs,geometry`)
+/// to `save_csv_path`, and converts counts into `pop_density_1000_per_sq_mi` and
 /// `emp_density_1000_per_sq_mi` (`count / area_km2 * 2.59 / 1000.0`).
 ///
 /// Requires the user's Census API key in `CENSUS_API_KEY` (or `CENSUS_API_TOKEN`) in the environment
 /// (or set on `population_source.api_token`).
-fn load_census_bamcensus(
+pub fn load_census_bamcensus(
     population_source: &BamcensusPopulationConfig,
     employment_source: &BamcensusLodesConfig,
+    save_csv_path: Option<&Path>,
     search_bbox: Rect<f64>,
     projection_mode: ProjectionMode,
 ) -> Result<Vec<CensusPolygonEntry>, CongestionError> {
@@ -403,7 +409,14 @@ fn load_census_bamcensus(
     }
 
     let mut out = Vec::new();
-    for (geoid, mp) in geom_by_geoid {
+    let mut csv_rows: Vec<SavedBamcensusRow> = Vec::new();
+    let mut sorted_geoids: Vec<String> = geom_by_geoid.keys().cloned().collect();
+    sorted_geoids.sort();
+
+    for geoid in sorted_geoids {
+        let Some(mp) = geom_by_geoid.remove(&geoid) else {
+            continue;
+        };
         let Some(rect) = mp.bounding_rect() else {
             continue;
         };
@@ -423,6 +436,17 @@ fn load_census_bamcensus(
         let pop_den_km2 = pop_count / area_km2;
         let emp_den_km2 = emp_count / area_km2;
 
+        if save_csv_path.is_some() {
+            if let Ok(wkt_geom) = Geometry::MultiPolygon(mp.clone()).to_wkt() {
+                csv_rows.push(SavedBamcensusRow {
+                    geoid: geoid.clone(),
+                    population: pop_count,
+                    jobs: emp_count,
+                    geometry: wkt_geom,
+                });
+            }
+        }
+
         let bbox = AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]);
         out.push(CensusPolygonEntry {
             geoid,
@@ -433,7 +457,65 @@ fn load_census_bamcensus(
         });
     }
 
+    if let Some(save_path) = save_csv_path {
+        write_bamcensus_csv(save_path, &csv_rows)?;
+    }
+
     Ok(out)
+}
+
+#[derive(Debug, Serialize)]
+struct SavedBamcensusRow {
+    geoid: String,
+    population: f64,
+    jobs: f64,
+    geometry: String,
+}
+
+/// Writes the downloaded `bamcensus` polygon dataset (`geoid,population,jobs,geometry`) to a
+/// CSV or `.csv.gz` file on disk so it can be reused offline via `CensusSourceConfig::CsvPolygons`.
+fn write_bamcensus_csv(path: &Path, rows: &[SavedBamcensusRow]) -> Result<(), CongestionError> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|source| CongestionError::Io {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
+    }
+    let file = File::create(path).map_err(|source| CongestionError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let is_gz = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gz"));
+    let writer: Box<dyn Write> = if is_gz {
+        Box::new(GzEncoder::new(BufWriter::new(file), Compression::default()))
+    } else {
+        Box::new(BufWriter::new(file))
+    };
+
+    let mut csv_writer = csv::WriterBuilder::new()
+        .has_headers(true)
+        .from_writer(writer);
+    for row in rows {
+        csv_writer.serialize(row).map_err(|e| CongestionError::Csv {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+    }
+    csv_writer.flush().map_err(|source| CongestionError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    log::info!(
+        "Saved {} bamcensus polygons (geoid, population, jobs, geometry) to '{}'",
+        rows.len(),
+        path.display()
+    );
+    Ok(())
 }
 
 /// Converts a [`geo::Geometry`] into a [`MultiPolygon`] if it is a `Polygon` or `MultiPolygon`.
@@ -953,9 +1035,11 @@ year = 2022
             CensusSourceConfig::Bamcensus {
                 population_source,
                 employment_source,
+                save_csv_path,
             } => {
                 assert_eq!(population_source.acs_year, 2022);
                 assert_eq!(employment_source.year, 2022);
+                assert!(save_csv_path.is_none());
                 assert_eq!(
                     employment_source.resolved_wac_segments(),
                     vec![bamcensus_lehd::model::WacSegment::C000]

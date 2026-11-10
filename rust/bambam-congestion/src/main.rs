@@ -41,7 +41,7 @@ mod tests {
         fs::create_dir_all(&calib_out_dir).unwrap();
         fs::create_dir_all(&models_dir).unwrap();
 
-        // 1. Create a 3-edge synthetic Open Network:
+        // 1. Create a 3-edge synthetic Open Network inside Boulder (-105.260, 40.015):
         //    - edge 0: primary road with posted speed 35 mph (Eastbound)
         //    - edge 1: motorway_link (Link class -> forces without_speedlimit model) with posted speed 45 mph (Eastbound)
         //    - edge 2: residential road with missing posted speed (low-functional -> uses sl-med-imp floor = 15 mph)
@@ -49,10 +49,10 @@ mod tests {
             &open_drive_dir.parent().unwrap().join("vertices-complete.csv.gz"),
             &[
                 "vertex_id,connector_id,x,y,traffic_signals,stop,give_way,crossing,infrastructure_ids",
-                "0,n0,-105.0000,40.0000,true,false,false,true,sig1",
-                "1,n1,-104.9980,40.0000,false,true,false,false,stp1",
-                "2,n2,-104.9960,40.0000,false,false,false,false,",
-                "3,n3,-104.9940,40.0000,false,false,false,false,",
+                "0,n0,-105.2600,40.0150,true,false,false,true,sig1",
+                "1,n1,-105.2580,40.0150,false,true,false,false,stp1",
+                "2,n2,-105.2560,40.0150,false,false,false,false,",
+                "3,n3,-105.2540,40.0150,false,false,false,false,",
             ],
         );
         write_gz_lines(
@@ -67,9 +67,9 @@ mod tests {
         write_gz_lines(
             &open_drive_dir.join("edges-geometries-enumerated.txt.gz"),
             &[
-                "LINESTRING(-105.0000 40.0000,-104.9980 40.0000)",
-                "LINESTRING(-104.9980 40.0000,-104.9960 40.0000)",
-                "LINESTRING(-104.9960 40.0000,-104.9940 40.0000)",
+                "LINESTRING(-105.2600 40.0150,-105.2580 40.0150)",
+                "LINESTRING(-105.2580 40.0150,-105.2560 40.0150)",
+                "LINESTRING(-105.2560 40.0150,-105.2540 40.0150)",
             ],
         );
         write_gz_lines(
@@ -89,8 +89,8 @@ mod tests {
         write_gz_lines(
             &ref_dir.join("edges-geometries-enumerated.txt.gz"),
             &[
-                "LINESTRING(-105.0000 40.00001,-104.9980 40.00001)",
-                "LINESTRING(-104.9980 40.00001,-104.9960 40.00001)",
+                "LINESTRING(-105.2600 40.01501,-105.2580 40.01501)",
+                "LINESTRING(-105.2580 40.01501,-105.2560 40.01501)",
             ],
         );
         let period_speeds_kph = [
@@ -106,6 +106,32 @@ mod tests {
         }
 
         // 3. Build a single unified CongestionPipelineConfig (`congestion.toml`) and verify TOML roundtrip
+        let fixture_census_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("boulder_co")
+            .join("census_tracts_bamcensus.csv.gz");
+        let spatial_features = if fixture_census_path.exists() {
+            SpatialFeaturesConfig {
+                census_source: Some(bambam_congestion::CensusSourceConfig::CsvPolygons {
+                    polygons_csv_path: fixture_census_path.to_string_lossy().into_owned(),
+                    geoid_column: "geoid".to_string(),
+                    wkt_column: "geometry".to_string(),
+                    population_column: Some("population".to_string()),
+                    employment_column: Some("jobs".to_string()),
+                    population_csv_path: None,
+                    population_csv_geoid_column: None,
+                    population_csv_value_column: None,
+                    employment_csv_path: None,
+                    employment_csv_geoid_column: None,
+                    employment_csv_value_column: None,
+                }),
+                ..Default::default()
+            }
+        } else {
+            SpatialFeaturesConfig::default()
+        };
+
         let pipeline_cfg = CongestionPipelineConfig {
             open_network: OpenNetworkConfig {
                 network_dir: open_drive_dir
@@ -117,7 +143,7 @@ mod tests {
                 ..Default::default()
             },
             time_bins: TimeBinSpec::default_six_bins(),
-            spatial_features: SpatialFeaturesConfig::default(),
+            spatial_features,
             reference_network: Some(ReferenceNetworkConfig {
                 network_dir: ref_dir.to_string_lossy().into_owned(),
                 require_time_varying_speeds: true,
@@ -156,6 +182,19 @@ mod tests {
             .join("calibration_without_speedlimit.parquet")
             .exists());
         assert!(calib_out_dir.join("conflated_edges.parquet").exists());
+        let conflated_csv = fs::read_to_string(calib_out_dir.join("conflated_edges.csv")).unwrap();
+        let mut rdr = csv::Reader::from_reader(conflated_csv.as_bytes());
+        for rec in rdr.deserialize::<bambam_congestion::ConflatedEdgeSummaryRow>() {
+            let row = rec.unwrap();
+            assert!(
+                row.pop_density_1000_per_sq_mi > 0.0,
+                "expected non-zero pop_density from boulder_co/census_tracts_bamcensus.csv.gz"
+            );
+            assert!(
+                row.emp_density_1000_per_sq_mi > 0.0,
+                "expected non-zero emp_density from boulder_co/census_tracts_bamcensus.csv.gz"
+            );
+        }
 
         // 5. Write toy XGBoost JSON models into `artifacts.models_dir` and run Imputation from the SAME unified config
         let model_with_sl_path = models_dir.join("xgboost_model_with_speedlimit.json");
