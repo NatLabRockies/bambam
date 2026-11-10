@@ -1,19 +1,22 @@
-use geo::{line_measures::Densifiable, Haversine, LineString, MultiPoint, Point};
+use geo::{
+    line_measures::Densifiable, Buffer, CoordsIter, Haversine, LineString, MultiPoint,
+    MultiPolygon, Point,
+};
 use routee_compass::plugin::output::OutputPluginError;
 use routee_compass_core::{
     algorithm::search::SearchTreeNode,
-    model::{label::Label, map::MapModel, network::EdgeId},
+    model::{label::Label, map::MapModel},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uom::si::f64::Length;
 
-use crate::model::output_plugin::isochrone::GeometryModelConfig;
+use crate::model::output_plugin::isochrone::IsochronePointModelConfig;
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
-pub enum GeometryModel {
+pub enum IsochronePointModel {
     DestinationPoint,
     LinestringCoordinates,
     LinestringStride {
@@ -21,19 +24,19 @@ pub enum GeometryModel {
     },
     BufferedLinestring {
         buffer_radius: Length,
-        buffer_stride: Length,
+        buffer_stride: Option<Length>,
     },
     BufferedDestinationPoint {
         buffer_radius: Length,
-        buffer_stride: Length,
+        buffer_stride: Option<Length>,
     },
 }
 
-impl TryFrom<&GeometryModelConfig> for GeometryModel {
+impl TryFrom<&IsochronePointModelConfig> for IsochronePointModel {
     type Error = OutputPluginError;
 
-    fn try_from(value: &GeometryModelConfig) -> Result<Self, Self::Error> {
-        use GeometryModelConfig as Conf;
+    fn try_from(value: &IsochronePointModelConfig) -> Result<Self, Self::Error> {
+        use IsochronePointModelConfig as Conf;
         match value {
             Conf::DestinationPoint => Ok(Self::DestinationPoint),
             Conf::LinestringCoordinates => Ok(Self::LinestringCoordinates),
@@ -56,12 +59,14 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
             } => {
                 if buffer_radius <= &0.0 {
                     Err(OutputPluginError::BuildFailed(format!("linestring buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
-                } else if buffer_stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("linestring stride must be strictly positive, found {buffer_stride} {distance_unit}")))
+                } else if buffer_stride.iter().any(|v| v <= &0.0) {
+                    Err(OutputPluginError::BuildFailed(
+                        "buffer stride must be strictly positive, found negative".to_string(),
+                    ))
                 } else {
                     Ok(Self::BufferedLinestring {
-                        buffer_stride: distance_unit.to_uom(*buffer_stride),
                         buffer_radius: distance_unit.to_uom(*buffer_radius),
+                        buffer_stride: buffer_stride.map(|s| distance_unit.to_uom(s)),
                     })
                 }
             }
@@ -72,12 +77,14 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
             } => {
                 if buffer_radius <= &0.0 {
                     Err(OutputPluginError::BuildFailed(format!("destination point buffer radius must be strictly positive, found {buffer_radius} {distance_unit}")))
-                } else if buffer_stride <= &0.0 {
-                    Err(OutputPluginError::BuildFailed(format!("destination point stride must be strictly positive, found {buffer_stride} {distance_unit}")))
+                } else if buffer_stride.iter().any(|v| v <= &0.0) {
+                    Err(OutputPluginError::BuildFailed(
+                        "buffer stride must be strictly positive, found negative".to_string(),
+                    ))
                 } else {
                     Ok(Self::BufferedDestinationPoint {
-                        buffer_stride: distance_unit.to_uom(*buffer_stride),
                         buffer_radius: distance_unit.to_uom(*buffer_radius),
+                        buffer_stride: buffer_stride.map(|s| distance_unit.to_uom(s)),
                     })
                 }
             }
@@ -85,7 +92,7 @@ impl TryFrom<&GeometryModelConfig> for GeometryModel {
     }
 }
 
-impl GeometryModel {
+impl IsochronePointModel {
     pub fn generate_destination_points(
         &self,
         destinations: &[(Label, &SearchTreeNode)],
@@ -101,7 +108,7 @@ impl GeometryModel {
                             "failure generating destination points: {e}"
                         ))
                     })?;
-                let points = self.linestring_to_points(e.edge_id, linestring)?;
+                let points = self.linestring_to_points(linestring)?;
                 result.extend(points);
             }
         }
@@ -112,34 +119,61 @@ impl GeometryModel {
 
     pub fn linestring_to_points(
         &self,
-        edge_id: EdgeId,
         linestring: &LineString<f32>,
     ) -> Result<Vec<Point<f32>>, OutputPluginError> {
         match self {
-            GeometryModel::DestinationPoint => {
-                let last_point = linestring.points().next_back().ok_or_else(|| {
-                    OutputPluginError::OutputPluginFailed(format!(
-                        "geometry for edge_id {edge_id} has no points",
-                    ))
-                })?;
+            IsochronePointModel::DestinationPoint => {
+                let last_point = dst_point(linestring)?;
                 Ok(vec![last_point])
             }
-            GeometryModel::LinestringCoordinates => Ok(linestring.points().collect()),
-            GeometryModel::LinestringStride { stride } => {
+            IsochronePointModel::LinestringCoordinates => Ok(linestring.points().collect()),
+            IsochronePointModel::LinestringStride { stride } => {
                 let meters = stride.get::<uom::si::length::meter>() as f32;
                 let dense_linestring = linestring.densify(&Haversine, meters);
                 Ok(dense_linestring.into_points())
             }
-            GeometryModel::BufferedLinestring {
-                buffer_radius: _,
-                buffer_stride: _,
+            IsochronePointModel::BufferedLinestring {
+                buffer_radius,
+                buffer_stride,
             } => {
-                todo!("geo rust does not currently support geometry buffering")
+                let radius = buffer_radius.get::<uom::si::length::meter>() as f32;
+                let radius_latlon = radius / 111132.0;
+                let buffered = linestring.buffer(radius_latlon);
+                let final_mp = stride(buffered, buffer_stride.as_ref());
+                let result = final_mp.coords_iter().map(Point::from).collect();
+                Ok(result)
             }
-            GeometryModel::BufferedDestinationPoint {
-                buffer_radius: _,
-                buffer_stride: _,
-            } => todo!("geo rust does not currently support geometry buffering"),
+            IsochronePointModel::BufferedDestinationPoint {
+                buffer_radius,
+                buffer_stride,
+            } => {
+                let radius = buffer_radius.get::<uom::si::length::meter>() as f32;
+                let radius_latlon = radius / 111132.0;
+                let dst = dst_point(linestring)?;
+                let buffered = dst.buffer(radius_latlon);
+                let final_mp = stride(buffered, buffer_stride.as_ref());
+                let result = final_mp.coords_iter().map(Point::from).collect();
+                Ok(result)
+            }
         }
+    }
+}
+
+/// grab the last point in a linestring. assumes a non-empty linestring.
+fn dst_point(linestring: &LineString<f32>) -> Result<Point<f32>, OutputPluginError> {
+    linestring
+        .points()
+        .next_back()
+        .ok_or_else(|| OutputPluginError::OutputPluginFailed("geometry has no points".to_string()))
+}
+
+/// if a stride value is provided, apply it to the multipolygon.
+fn stride(buffered: MultiPolygon<f32>, buffer_stride: Option<&Length>) -> MultiPolygon<f32> {
+    if let Some(buffer_stride) = buffer_stride {
+        let stride = buffer_stride.get::<uom::si::length::meter>() as f32;
+
+        buffered.densify(&Haversine, stride)
+    } else {
+        buffered
     }
 }

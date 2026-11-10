@@ -1,7 +1,7 @@
 use crate::model::{
     destination::{BinningConfig, DestinationPredicate},
     output_plugin::{
-        isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
+        isochrone::{IsochroneAlgorithm, IsochroneOutputFormat, IsochronePointModelConfig},
         opportunity::OpportunityOrientation,
         GlobalOrModal,
     },
@@ -22,7 +22,7 @@ pub enum BambamOutputConfig {
         destination_filter: Option<GlobalOrModal<Vec<DestinationPredicate>>>,
         /// algorithm for assigning physical destination locations from a search tree branch.
         /// used in the isochrone drawing procedure.
-        geometry_model: GlobalOrModal<GeometryModelConfig>,
+        isochrone_point_model: GlobalOrModal<IsochronePointModelConfig>,
         /// algorithm used to draw isochrones from the destination points.
         isochrone_algorithm: GlobalOrModal<IsochroneAlgorithm>,
         /// geometry format to use when writing isochrones.

@@ -46,7 +46,7 @@ use crate::model::{
     bambam_field,
     destination::{BinningConfig, DestinationFilter, DestinationPredicate},
     output_plugin::{
-        isochrone::{GeometryModelConfig, IsochroneAlgorithm, IsochroneOutputFormat},
+        isochrone::{IsochroneAlgorithm, IsochroneOutputFormat, IsochronePointModelConfig},
         opportunity::{OpportunityFormat, OpportunityOrientation},
     },
 };
@@ -180,8 +180,10 @@ impl<'a> InfoSectionRef<'a> {
         get_field_opt(self.0, bambam_field::DESTINATION_FILTER)
     }
 
-    pub fn get_geometry_model(&self) -> Result<Option<GeometryModelConfig>, OutputPluginError> {
-        get_field_opt(self.0, bambam_field::GEOMETRY_MODEL)
+    pub fn get_isochrone_point_model(
+        &self,
+    ) -> Result<Option<IsochronePointModelConfig>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::ISOCHRONE_POINT_MODEL)
     }
 
     pub fn get_isochrone_algorithm(&self) -> Result<Option<IsochroneAlgorithm>, OutputPluginError> {
@@ -247,11 +249,16 @@ impl<'a> InfoSectionMut<'a> {
         set_field(self.0, bambam_field::DESTINATION_FILTER, v)
     }
 
-    pub fn get_geometry_model(&self) -> Result<Option<GeometryModelConfig>, OutputPluginError> {
-        get_field_opt(self.0, bambam_field::GEOMETRY_MODEL)
+    pub fn get_isochrone_point_model(
+        &self,
+    ) -> Result<Option<IsochronePointModelConfig>, OutputPluginError> {
+        get_field_opt(self.0, bambam_field::ISOCHRONE_POINT_MODEL)
     }
-    pub fn set_geometry_model(&mut self, v: &GeometryModelConfig) -> Result<(), OutputPluginError> {
-        set_field(self.0, bambam_field::GEOMETRY_MODEL, v)
+    pub fn set_isochrone_point_model(
+        &mut self,
+        v: &IsochronePointModelConfig,
+    ) -> Result<(), OutputPluginError> {
+        set_field(self.0, bambam_field::ISOCHRONE_POINT_MODEL, v)
     }
 
     pub fn get_isochrone_algorithm(&self) -> Result<Option<IsochroneAlgorithm>, OutputPluginError> {
@@ -566,7 +573,7 @@ mod tests {
         assert!(info.get_config_destination_predicates().unwrap().is_none());
         assert!(info.get_opportunity_format().unwrap().is_none());
         assert!(info.get_opportunity_orientation().unwrap().is_none());
-        assert!(info.get_geometry_model().unwrap().is_none());
+        assert!(info.get_isochrone_point_model().unwrap().is_none());
         assert!(info.get_isochrone_algorithm().unwrap().is_none());
         assert!(info.get_isochrone_format().unwrap().is_none());
     }

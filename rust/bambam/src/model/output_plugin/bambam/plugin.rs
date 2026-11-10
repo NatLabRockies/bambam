@@ -27,7 +27,7 @@ impl OutputPlugin for BambamOutputPlugin {
             BambamOutputConfig::Aggregate {
                 binning,
                 destination_filter,
-                geometry_model,
+                isochrone_point_model,
                 isochrone_algorithm,
                 isochrone_format,
                 opportunity_orientation,
@@ -42,7 +42,7 @@ impl OutputPlugin for BambamOutputPlugin {
                 if let Some(f) = destination_filter {
                     info.set_destination_filter(f.get_value(&mode)?)?;
                 }
-                info.set_geometry_model(geometry_model.get_value(&mode)?)?;
+                info.set_isochrone_point_model(isochrone_point_model.get_value(&mode)?)?;
                 info.set_isochrone_algorithm(isochrone_algorithm.get_value(&mode)?)?;
             }
             BambamOutputConfig::Disaggregate {

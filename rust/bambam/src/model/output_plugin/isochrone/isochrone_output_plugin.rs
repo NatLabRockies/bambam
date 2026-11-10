@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bambam_core::model::bambam_typed::BambamOutputRow;
 use bambam_core::model::destination::{self, BinInterval, DestinationFilter, DestinationPredicate};
 use bambam_core::model::output_plugin::isochrone::{
-    GeometryModel, IsochroneAlgorithm, IsochroneOutputFormat,
+    IsochroneAlgorithm, IsochroneOutputFormat, IsochronePointModel,
 };
 use bambam_core::model::output_plugin::opportunity::OpportunityFormat;
 use bambam_core::model::{bambam_field as field, bambam_ops, bambam_typed, TimeBin};
@@ -113,7 +113,7 @@ pub fn run_isochrone(
 
 struct GetIsochroneRequest {
     filter: Option<DestinationFilter>,
-    geometry_model: GeometryModel,
+    isochrone_point_model: IsochronePointModel,
     isochrone_algorithm: IsochroneAlgorithm,
     isochrone_format: IsochroneOutputFormat,
 }
@@ -125,10 +125,10 @@ impl<'a> TryFrom<&'a BambamOutputRow<'a>> for GetIsochroneRequest {
         let info = value.info_ref()?;
         let format = info.get_opportunity_format()?;
         let filter = value.get_destination_filter()?;
-        let geometry_model_config = info
-            .get_geometry_model()?
-            .ok_or_else(|| missing_expected("info.geometry_model"))?;
-        let geometry_model = GeometryModel::try_from(&geometry_model_config)?;
+        let isochrone_point_model_config = info
+            .get_isochrone_point_model()?
+            .ok_or_else(|| missing_expected("info.isochrone_point_model"))?;
+        let isochrone_point_model = IsochronePointModel::try_from(&isochrone_point_model_config)?;
         let isochrone_algorithm = info
             .get_isochrone_algorithm()?
             .ok_or_else(|| missing_expected("info.isochrone_algorithm"))?;
@@ -137,7 +137,7 @@ impl<'a> TryFrom<&'a BambamOutputRow<'a>> for GetIsochroneRequest {
             .ok_or_else(|| missing_expected("info.isochrone_format"))?;
         Ok(Self {
             filter,
-            geometry_model,
+            isochrone_point_model,
             isochrone_algorithm,
             isochrone_format,
         })
@@ -163,7 +163,7 @@ impl GetIsochroneRequest {
 
         // draw isochrone and serialize result
         let tree_mp = self
-            .geometry_model
+            .isochrone_point_model
             .generate_destination_points(tree_destinations, si.map_model.clone())?;
         let geometry = self.isochrone_algorithm.run(tree_mp)?;
         let isochrone = self.isochrone_format.serialize_geometry(&geometry)?;

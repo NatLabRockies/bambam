@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 /// Geometry Model linestring sampling density varying by mode:
 ///
 /// ```toml
-/// [plugin.output_plugins.geometry_model]
+/// [plugin.output_plugins.isochrone_point_model]
 /// type = "modal"
 /// values.walk = { type = "linestring_stride", stride = 20.0, distance_unit = "meters" }
 /// values.bike = { type = "linestring_stride", stride = 50.0, distance_unit = "meters" }

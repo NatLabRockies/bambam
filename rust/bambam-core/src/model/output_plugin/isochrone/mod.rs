@@ -1,9 +1,9 @@
-mod geometry_model;
-mod geometry_model_config;
 mod isochrone_algorithm;
 mod isochrone_output_format;
+mod isochrone_point_model;
+mod isochrone_point_model_config;
 
-pub use geometry_model::GeometryModel;
-pub use geometry_model_config::GeometryModelConfig;
 pub use isochrone_algorithm::IsochroneAlgorithm;
 pub use isochrone_output_format::IsochroneOutputFormat;
+pub use isochrone_point_model::IsochronePointModel;
+pub use isochrone_point_model_config::IsochronePointModelConfig;

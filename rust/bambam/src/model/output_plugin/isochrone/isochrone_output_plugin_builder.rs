@@ -1,5 +1,5 @@
 use super::isochrone_output_plugin::IsochroneOutputPlugin;
-use bambam_core::model::output_plugin::isochrone::GeometryModel;
+use bambam_core::model::output_plugin::isochrone::IsochronePointModel;
 use routee_compass::app::compass::CompassComponentError;
 use routee_compass::plugin::output::{OutputPlugin, OutputPluginBuilder, OutputPluginError};
 use routee_compass::plugin::PluginError;
