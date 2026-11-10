@@ -5,8 +5,6 @@ import pandas as pd
 import geopandas as gpd
 import numpy as np
 from joblib import load
-import os
-from shapely.wkt import loads
     
 def predict_speeds(city_name: str) -> None:
     print(f"Predicting speed for {city_name}...")

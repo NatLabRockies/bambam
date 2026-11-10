@@ -26,7 +26,7 @@ if __name__ == "__main__":
             nested = ["state", "cost"]
             for nest in nested:
                 for k, v in feature["properties"][nest].items():
-                    key = k if not k in feature["properties"] else f"{nest}.{k}"
+                    key = k if k not in feature["properties"] else f"{nest}.{k}"
                     feature["properties"][key] = v  
                 del feature["properties"][nest]
         with open(f"{out_base}-tree-{idx}.json", "w") as f:
