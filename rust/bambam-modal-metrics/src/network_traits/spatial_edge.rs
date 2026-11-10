@@ -1,3 +1,4 @@
+use bambam_network::EdgeCompleteRecord;
 use geo::LineString;
 /// An edge that exposes the geometry and identity required to participate in a
 /// spatial index (R-tree) for neighbor-aware modal penalty computations.
@@ -14,4 +15,18 @@ pub trait SpatialEdge {
     fn linestring(&self) -> Option<&LineString<f32>>;
     /// the source vertex of the edge.
     fn src_vertex_id(&self) -> usize;
+}
+
+impl SpatialEdge for EdgeCompleteRecord {
+    fn id(&self) -> String {
+        self.source_id.clone()
+    }
+
+    fn linestring(&self) -> Option<&LineString<f32>> {
+        Some(&self.linestring)
+    }
+
+    fn src_vertex_id(&self) -> usize {
+        self.src_vertex_id
+    }
 }

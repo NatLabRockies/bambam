@@ -43,7 +43,7 @@ pub use taxonomy::{
     SegmentVehicleComparator, SegmentVehicleDimension, SegmentWeightUnit, TravelModeFilter,
 };
 pub use vertex_serializable::{
-    attach_infrastructure_to_vertices, EdgeMappingRecord, VertexCompassRecord,
+    attach_infrastructure_to_vertices, EdgeCompleteRecord, EdgeMappingRecord, VertexCompassRecord,
     VertexCompleteRecord, VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
     INFRASTRUCTURE_ID_DELIMITER,
 };

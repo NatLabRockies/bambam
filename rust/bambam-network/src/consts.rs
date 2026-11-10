@@ -13,6 +13,7 @@ pub const VERTEX_STOP_FILENAME: &str = "vertices-stop-enumerated.txt.gz";
 pub const VERTEX_GIVE_WAY_FILENAME: &str = "vertices-give-way-enumerated.txt.gz";
 pub const VERTEX_CROSSING_FILENAME: &str = "vertices-crossing-enumerated.txt.gz";
 pub const COMPASS_EDGES_FILENAME: &str = "edges-compass.csv.gz";
+pub const COMPLETE_EDGES_FILENAME: &str = "edges-complete.csv.gz";
 pub const EDGE_MAPPING_FILENAME: &str = "edges-mapping.csv.gz";
 pub const GEOMETRIES_FILENAME: &str = "edges-geometries-enumerated.txt.gz";
 pub const SPEEDS_FILENAME: &str = "edges-speeds-mph-enumerated.txt.gz";

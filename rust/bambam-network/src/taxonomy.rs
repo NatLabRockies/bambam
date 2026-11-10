@@ -126,6 +126,19 @@ impl fmt::Display for SegmentSubtype {
     }
 }
 
+impl FromStr for SegmentSubtype {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim() {
+            "road" => Ok(Self::Road),
+            "rail" => Ok(Self::Rail),
+            "water" => Ok(Self::Water),
+            other => Err(format!("unknown SegmentSubtype '{other}'")),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, JsonSchema)]
 pub enum SegmentClass {
     Motorway,
@@ -189,7 +202,15 @@ impl<'de> Deserialize<'de> for SegmentClass {
         D: serde::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Ok(match s.as_str() {
+        Ok(Self::from_str(&s).unwrap_or(Self::Custom(s)))
+    }
+}
+
+impl FromStr for SegmentClass {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.trim() {
             "motorway" => Self::Motorway,
             "primary" => Self::Primary,
             "secondary" => Self::Secondary,
@@ -207,7 +228,7 @@ impl<'de> Deserialize<'de> for SegmentClass {
             "cycleway" => Self::Cycleway,
             "bridleway" => Self::Bridleway,
             "unknown" => Self::Unknown,
-            _ => Self::Custom(s),
+            other => Self::Custom(other.to_string()),
         })
     }
 }
@@ -239,6 +260,23 @@ impl fmt::Display for SegmentSubclass {
     }
 }
 
+impl FromStr for SegmentSubclass {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim() {
+            "link" => Ok(Self::Link),
+            "sidewalk" => Ok(Self::Sidewalk),
+            "crosswalk" => Ok(Self::Crosswalk),
+            "parking_aisle" => Ok(Self::ParkingAisle),
+            "driveway" => Ok(Self::Driveway),
+            "alley" => Ok(Self::Alley),
+            "cycle_crossing" => Ok(Self::CycleCrossing),
+            other => Err(format!("unknown SegmentSubclass '{other}'")),
+        }
+    }
+}
+
 /// Fully qualified segment type including type, class and subclass. E.g. `road-service-driveway`.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct SegmentFullType(
@@ -267,6 +305,47 @@ impl SegmentFullType {
 impl fmt::Display for SegmentFullType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.as_str())
+    }
+}
+
+impl FromStr for SegmentFullType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let trimmed = s.trim();
+        let (subtype_str, rest) = trimmed
+            .split_once('-')
+            .ok_or_else(|| format!("expected '<subtype>-<class>[-<subclass>]', got '{trimmed}'"))?;
+        let subtype = SegmentSubtype::from_str(subtype_str)?;
+
+        if let Some((class_str, subclass_str)) = rest.rsplit_once('-') {
+            if let Ok(subclass) = SegmentSubclass::from_str(subclass_str) {
+                let class = SegmentClass::from_str(class_str).unwrap();
+                return Ok(Self(subtype, class, Some(subclass)));
+            }
+        }
+
+        let class = SegmentClass::from_str(rest).unwrap();
+        Ok(Self(subtype, class, None))
+    }
+}
+
+impl Serialize for SegmentFullType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SegmentFullType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::from_str(&s).map_err(serde::de::Error::custom)
     }
 }
 
