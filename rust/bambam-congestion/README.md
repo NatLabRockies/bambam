@@ -45,44 +45,42 @@ This software will impute speeds into an OSM/OMF network dataset, trained from r
 | `14` | `13` | `Opp Density` | MEP opportunities per `sq mi` within `0.5 mi` buffer ($\pi R^2 + 2RL$). |
 | `15` | `14` | `Traffic Signal/Crossing/Traffic Stop Density` | Traffic controls per `sq mi` within `0.5 mi` buffer ($\pi R^2 + 2RL$). |
 
-See `configuration/bambam-congestion/calibrate_boulder_example.toml` and `configuration/bambam-congestion/impute_boulder_example.toml` for complete configuration examples.
+See `configuration/bambam-congestion/congestion.toml` (`bambam_congestion::CongestionPipelineConfig`) for the unified pipeline configuration example.
 
-## Example pipeline
+## Example
+
+Assumes the following:
+  - all of the time-binned speed files (`[[time_bins]]`) and their reference speed dataset resolution (`speeds_dir` + `file_prefix`/`file_pattern`, or explicit per-bin filenames) are configured in `configuration/bambam-congestion/congestion.toml`.
+  - those speeds files are flat (Compass "enumerated"-style) files matching row-by-row with a reference road network dataset in RouteE Compass format.
 
 ```sh
 # 0. Build the release binaries from the repository root
 cargo build --manifest-path rust/Cargo.toml --release -p bambam-congestion -p bambam
 
-# 1. (Optional) Import an OpenStreetMap or Overture Maps road network into RouteE Compass format
+# 1. (Optional) Import an OpenStreetMap or Overture Maps (OMF) road network into RouteE Compass format
 RUST_LOG=info ./rust/target/release/bambam_util import-network \
-    --source osm \
-    --input-path colorado-latest.osm.pbf \
+    --source omf \
     --extent-file query/boulder_extent.json \
     --output-directory output/boulder_network
 
-# 2. Conflate the Open Network with local TomTom MultiNet-R speeds and compute 0.5-mile spatial features
-#    Produces calibration_with_speedlimit.parquet and calibration_without_speedlimit.parquet
+# (Optional) Inspect the configured time bins programmatically
+./rust/target/release/bambam-congestion list-time-bins \
+    --config configuration/bambam-congestion/congestion.toml
+
+# 2. Conflate the Open Network with the Reference Network speeds and compute 0.5-mile spatial features
+#    Produces calibration_with_speedlimit.parquet and calibration_without_speedlimit.parquet in [artifacts].calibration_dir
 RUST_LOG=info ./rust/target/release/bambam-congestion calibrate \
-    --config configuration/bambam-congestion/calibrate_boulder_example.toml \
-    --open-network-dir output/boulder_network \
-    --tomtom-network-dir tomtom_national \
-    --tomtom-speeds-dir tomtom_speeds \
-    --osm-pbf-path colorado-latest.osm.pbf \
-    --output-dir output/congestion_calibration_boulder
+    --config configuration/bambam-congestion/congestion.toml
 
 # 3. Train the calibrated XGBoost models (`with_speedlimit` and `without_speedlimit`)
-#    Exports portable xgboost_model_with_speedlimit.json and xgboost_model_without_speedlimit.json
+#    Reads [artifacts].calibration_dir and exports portable .json models to [artifacts].models_dir
 uv run python python/nlr/bambam/congestion/train_congestion_models.py \
-    --calibration-dir output/congestion_calibration_boulder \
-    --output-dir output/congestion_models \
+    --config configuration/bambam-congestion/congestion.toml \
     --n-iter 25
 
-# 4. Impute operating speeds across all 6 time-of-day periods (wd-am, wd-af, wd-pm, we-am, we-af, we-pm)
-#    Writes edges-speeds-{period}-mph-enumerated.txt.gz and predicted-speeds.parquet into output/boulder_network/drive/
+# 4. Impute operating speeds across all configured time bins
+#    Reads models from [artifacts].models_dir and writes edges-speeds-{bin}-mph-enumerated.txt.gz
+#    and predicted-speeds.parquet into output/boulder_network/drive/
 RUST_LOG=info ./rust/target/release/bambam-congestion impute \
-    --config configuration/bambam-congestion/impute_boulder_example.toml \
-    --open-network-dir output/boulder_network \
-    --osm-pbf-path colorado-latest.osm.pbf \
-    --model-with-speedlimit output/congestion_models/xgboost_model_with_speedlimit.json \
-    --model-without-speedlimit output/congestion_models/xgboost_model_without_speedlimit.json
+    --config configuration/bambam-congestion/congestion.toml
 ```

@@ -11,14 +11,15 @@ use serde_arrow::schema::{SchemaLike, TracingOptions};
 
 use crate::{
     config::CalibrationConfig,
-    conflate::{build_tomtom_rtree_in_bbox, conflate_open_network_with_tomtom, ConflatedEdgeSpeeds},
+    conflate::{
+        build_reference_rtree_in_bbox, conflate_open_network_with_reference, ConflatedEdgeSpeeds,
+    },
     error::CongestionError,
     features::SpatialFeatureEngine,
     network::LoadedOpenNetwork,
-    taxonomy::TimePeriod,
 };
 
-/// A single long-format training observation (`(edge_id, time_period)`) ready for XGBoost calibration.
+/// A single long-format training observation (`(edge_id, time_bin)`) ready for XGBoost calibration.
 ///
 /// Field names are serialized to match the exact predictor names in `models.py`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,7 +63,7 @@ pub struct CalibrationSampleRow {
     #[serde(rename = "Speed")]
     pub observed_speed_mph: f32,
     pub overlap_meters: f32,
-    pub matched_tomtom_count: u32,
+    pub matched_reference_count: u32,
 }
 
 /// Wide-format summary row for each conflated Open Network edge.
@@ -79,7 +80,7 @@ pub struct ConflatedEdgeSummaryRow {
     pub emp_density_1000_per_sq_mi: f32,
     pub opp_density_per_sq_mi: f32,
     pub traffic_control_density_per_sq_mi: f32,
-    pub matched_tomtom_count: usize,
+    pub matched_reference_count: usize,
     pub total_overlap_meters: f64,
     #[serde(rename = "med-wd-am")]
     pub med_wd_am: Option<f64>,
@@ -107,22 +108,27 @@ pub struct CalibrationSummary {
 
 /// Runs the end-to-end congestion calibration pipeline:
 /// 1. Loads the Open Network (OSM/OMF) in RouteE Compass format.
-/// 2. Streams and indexes TomTom MultiNet-R edges within the Open Network's bounding box.
-/// 3. Conflates high-functional class Open Network edges with TomTom edges (5m corridor, $\le 45^\circ$ circular heading).
+/// 2. Streams and indexes Reference Network edges within the Open Network's bounding box across `config.time_bins`.
+/// 3. Conflates high-functional class Open Network edges with Reference Network edges (5m corridor, $\le 45^\circ$ circular heading).
 /// 4. Computes 0.5-mile spatial densities (`Opp Density`, `Traffic Control Density`, `Population Density`, `Employment Density`)
 ///    for all conflated edges.
 /// 5. Writes `calibration_with_speedlimit.{parquet,csv}`, `calibration_without_speedlimit.{parquet,csv}`,
 ///    and `conflated_edges.{parquet,csv}`.
 pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary, CongestionError> {
     let open_net = LoadedOpenNetwork::load(&config.open_network)?;
-    let tomtom_rtree = build_tomtom_rtree_in_bbox(
-        &config.tomtom_network,
+    let reference_rtree = build_reference_rtree_in_bbox(
+        &config.reference_network,
+        &config.time_bins,
         open_net.bbox,
         config.conflation.buffer_distance_meters,
     )?;
 
-    let conflated_per_edge: Vec<Option<ConflatedEdgeSpeeds>> =
-        conflate_open_network_with_tomtom(&open_net, &tomtom_rtree, &config.conflation);
+    let conflated_per_edge: Vec<Option<ConflatedEdgeSpeeds>> = conflate_open_network_with_reference(
+        &open_net,
+        &reference_rtree,
+        config.time_bins.len(),
+        &config.conflation,
+    );
 
     let conflated_count = conflated_per_edge.iter().filter(|c| c.is_some()).count();
     let high_func_count = open_net
@@ -131,12 +137,12 @@ pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary,
         .filter(|e| e.road_class.is_high_functional())
         .count();
     log::info!(
-        "Conflated {conflated_count} / {high_func_count} high-functional edges with TomTom speeds"
+        "Conflated {conflated_count} / {high_func_count} high-functional edges with reference network speeds"
     );
 
     let feature_engine = SpatialFeatureEngine::build(&open_net, &config.spatial_features)?;
 
-    // Only compute spatial densities for edges that actually matched TomTom
+    // Only compute spatial densities for edges that actually matched the reference network
     use rayon::prelude::*;
     let edge_features: Vec<_> = open_net
         .edges
@@ -161,6 +167,14 @@ pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary,
             continue;
         };
 
+        let find_bin_speed = |target_name: &str| -> Option<f64> {
+            config
+                .time_bins
+                .iter()
+                .position(|b| b.name == target_name)
+                .and_then(|idx| conf.speeds_mph.get(idx).copied().flatten())
+        };
+
         wide_rows.push(ConflatedEdgeSummaryRow {
             edge_id: edge.edge_id,
             source_id: edge.source_id.clone(),
@@ -173,26 +187,26 @@ pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary,
             emp_density_1000_per_sq_mi: feat.emp_density_1000_per_sq_mi,
             opp_density_per_sq_mi: feat.opp_density_per_sq_mi,
             traffic_control_density_per_sq_mi: feat.traffic_control_density_per_sq_mi,
-            matched_tomtom_count: conf.matched_tomtom_count,
+            matched_reference_count: conf.matched_reference_count,
             total_overlap_meters: conf.total_overlap_meters,
-            med_wd_am: conf.speeds_mph[0],
-            med_wd_af: conf.speeds_mph[1],
-            med_wd_pm: conf.speeds_mph[2],
-            med_we_am: conf.speeds_mph[3],
-            med_we_af: conf.speeds_mph[4],
-            med_we_pm: conf.speeds_mph[5],
+            med_wd_am: find_bin_speed("wd-am"),
+            med_wd_af: find_bin_speed("wd-af"),
+            med_wd_pm: find_bin_speed("wd-pm"),
+            med_we_am: find_bin_speed("we-am"),
+            med_we_af: find_bin_speed("we-af"),
+            med_we_pm: find_bin_speed("we-pm"),
         });
 
         let rc = feat.road_class.one_hot_8();
-        for (p_idx, period) in TimePeriod::ALL.into_iter().enumerate() {
-            let Some(obs_speed) = conf.speeds_mph[p_idx] else {
+        for (p_idx, bin) in config.time_bins.iter().enumerate() {
+            let Some(obs_speed) = conf.speeds_mph.get(p_idx).copied().flatten() else {
                 continue;
             };
-            let (day_wd, hr_am, hr_pm) = period.time_flags();
+            let (day_wd, hr_am, hr_pm) = bin.time_flags();
             let sample = CalibrationSampleRow {
                 source_id: edge.source_id.clone(),
                 edge_id: edge.edge_id,
-                period: period.as_str().to_string(),
+                period: bin.name.clone(),
                 speed_limit: feat.model_speed_limit_mph,
                 population_density: feat.pop_density_1000_per_sq_mi,
                 employment_density: feat.emp_density_1000_per_sq_mi,
@@ -211,7 +225,7 @@ pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary,
                 traffic_control_density: feat.traffic_control_density_per_sq_mi,
                 observed_speed_mph: obs_speed as f32,
                 overlap_meters: conf.total_overlap_meters as f32,
-                matched_tomtom_count: conf.matched_tomtom_count as u32,
+                matched_reference_count: conf.matched_reference_count as u32,
             };
 
             if feat.model_speed_limit_mph.is_some() {

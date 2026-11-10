@@ -1,9 +1,103 @@
-use std::{fmt, str::FromStr};
+use std::{fmt, path::{Path, PathBuf}, str::FromStr};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The 6 operating speed time-of-day periods modeled in BAMBAM congestion calibration and imputation.
+/// A single time-of-day bin definition with its canonical name (`name`, e.g. `"wd-am"`)
+/// and its 3 binary time indicator flags (`day_weekday`, `hour_am_peak`, `hour_pm_peak`)
+/// used by the congestion XGBoost models.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct TimeBinSpec {
+    /// Unique identifier for this time bin (e.g. `"wd-am"`, `"wd-af"`, `"wd-pm"`, `"we-am"`, `"we-af"`, `"we-pm"`).
+    pub name: String,
+    /// `Day: Weekday` indicator (`1.0` for weekday, `0.0` for weekend).
+    pub day_weekday: f32,
+    /// `Hour: AM Peak` indicator (`1.0` for morning peak, `0.0` otherwise).
+    pub hour_am_peak: f32,
+    /// `Hour: PM Peak` indicator (`1.0` for evening peak, `0.0` otherwise; afternoon/midday has `AM = 0, PM = 0`).
+    pub hour_pm_peak: f32,
+    /// Optional explicit reference speed filename or path for this time bin.
+    /// When `None`, the reference speed file path is resolved from `ReferenceSpeedFilesConfig`
+    /// (`<speeds_dir>/<file_prefix>-<name>.<file_extension>` or `file_pattern`).
+    #[serde(default)]
+    pub reference_speed_file: Option<String>,
+}
+
+impl TimeBinSpec {
+    pub fn new(name: impl Into<String>, day_weekday: f32, hour_am_peak: f32, hour_pm_peak: f32) -> Self {
+        Self {
+            name: name.into(),
+            day_weekday,
+            hour_am_peak,
+            hour_pm_peak,
+            reference_speed_file: None,
+        }
+    }
+
+    /// Returns `(day_weekday, hour_am_peak, hour_pm_peak)` indicator flags for XGBoost.
+    #[inline]
+    pub const fn time_flags(&self) -> (f32, f32, f32) {
+        (self.day_weekday, self.hour_am_peak, self.hour_pm_peak)
+    }
+
+    /// Standard RouteE Compass enumerated speed filename written by `impute` for this time bin:
+    /// `edges-speeds-{name}-mph-enumerated.txt.gz`.
+    pub fn enumerated_speed_filename(&self) -> String {
+        format!("edges-speeds-{}-mph-enumerated.txt.gz", self.name)
+    }
+
+    /// Resolves the reference speed file path for this time bin given a base directory,
+    /// optional `file_pattern` (containing `{bin}` or `{name}`), or `file_prefix` + `file_extension`.
+    pub fn resolve_reference_speed_path(
+        &self,
+        speeds_dir: Option<&Path>,
+        file_prefix: Option<&str>,
+        file_pattern: Option<&str>,
+        file_extension: &str,
+    ) -> Result<PathBuf, String> {
+        if let Some(ref explicit) = self.reference_speed_file {
+            let p = PathBuf::from(explicit);
+            if p.is_absolute() || speeds_dir.is_none() {
+                return Ok(p);
+            }
+            return Ok(speeds_dir.unwrap().join(p));
+        }
+
+        let filename = if let Some(pattern) = file_pattern {
+            pattern
+                .replace("{bin}", &self.name)
+                .replace("{name}", &self.name)
+                .replace("{period}", &self.name)
+        } else if let Some(prefix) = file_prefix {
+            let ext = file_extension.trim_start_matches('.');
+            if prefix.is_empty() {
+                format!("{}.{}", self.name, ext)
+            } else {
+                format!("{}-{}.{}", prefix.trim_end_matches('-'), self.name, ext)
+            }
+        } else {
+            let ext = file_extension.trim_start_matches('.');
+            format!("{}.{}", self.name, ext)
+        };
+
+        match speeds_dir {
+            Some(dir) => Ok(dir.join(filename)),
+            None => Ok(PathBuf::from(filename)),
+        }
+    }
+
+    /// Returns the default 6 BAMBAM / MEP time bins (`wd-am`, `wd-af`, `wd-pm`, `we-am`, `we-af`, `we-pm`).
+    pub fn default_six_bins() -> Vec<Self> {
+        TimePeriod::ALL.into_iter().map(Self::from).collect()
+    }
+
+    /// Returns the programmatic list of time-bin names from a slice of `TimeBinSpec`s.
+    pub fn names(bins: &[Self]) -> Vec<&str> {
+        bins.iter().map(|b| b.name.as_str()).collect()
+    }
+}
+
+/// The standard 6 operating speed time-of-day periods modeled in BAMBAM congestion calibration and imputation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum TimePeriod {
@@ -19,6 +113,19 @@ pub enum TimePeriod {
     WeAf,
     /// Weekend Evening (`we-pm`): `Day: Weekday = 0`, `Hour: AM Peak = 0`, `Hour: PM Peak = 1`
     WePm,
+}
+
+impl From<TimePeriod> for TimeBinSpec {
+    fn from(period: TimePeriod) -> Self {
+        let (day_wd, hr_am, hr_pm) = period.time_flags();
+        Self {
+            name: period.as_str().to_string(),
+            day_weekday: day_wd,
+            hour_am_peak: hr_am,
+            hour_pm_peak: hr_pm,
+            reference_speed_file: None,
+        }
+    }
 }
 
 impl TimePeriod {
@@ -249,17 +356,17 @@ pub struct EdgeStaticFeatures {
 }
 
 impl EdgeStaticFeatures {
-    /// Builds the 16-feature vector for `model_with_speedlimit` for the given `TimePeriod`:
+    /// Builds the 16-feature vector for `model_with_speedlimit` for the given `TimeBinSpec`:
     ///
     /// `[Speed Limit, Population Density, Employment Density, Day: Weekday, Hour: AM Peak, Hour: PM Peak,
     ///   Motorway, Trunk, Primary, Secondary, Tertiary, Service, Link, Other,
     ///   Opp Density, Traffic Signal/Crossing/Traffic Stop Density]`
-    pub fn to_features_with_speedlimit(
+    pub fn to_features_with_speedlimit_for_bin(
         &self,
-        period: TimePeriod,
+        bin: &TimeBinSpec,
         speed_limit_mph: f32,
     ) -> [f32; 16] {
-        let (day_wd, hr_am, hr_pm) = period.time_flags();
+        let (day_wd, hr_am, hr_pm) = bin.time_flags();
         let rc = self.road_class.one_hot_8();
         [
             speed_limit_mph,
@@ -281,13 +388,13 @@ impl EdgeStaticFeatures {
         ]
     }
 
-    /// Builds the 15-feature vector for `model_without_speedlimit` for the given `TimePeriod`:
+    /// Builds the 15-feature vector for `model_without_speedlimit` for the given `TimeBinSpec`:
     ///
     /// `[Population Density, Employment Density, Day: Weekday, Hour: AM Peak, Hour: PM Peak,
     ///   Motorway, Trunk, Primary, Secondary, Tertiary, Service, Link, Other,
     ///   Opp Density, Traffic Signal/Crossing/Traffic Stop Density]`
-    pub fn to_features_without_speedlimit(&self, period: TimePeriod) -> [f32; 15] {
-        let (day_wd, hr_am, hr_pm) = period.time_flags();
+    pub fn to_features_without_speedlimit_for_bin(&self, bin: &TimeBinSpec) -> [f32; 15] {
+        let (day_wd, hr_am, hr_pm) = bin.time_flags();
         let rc = self.road_class.one_hot_8();
         [
             self.pop_density_1000_per_sq_mi,
@@ -306,6 +413,20 @@ impl EdgeStaticFeatures {
             self.opp_density_per_sq_mi,
             self.traffic_control_density_per_sq_mi,
         ]
+    }
+
+    /// Convenience wrapper accepting `TimePeriod`.
+    pub fn to_features_with_speedlimit(
+        &self,
+        period: TimePeriod,
+        speed_limit_mph: f32,
+    ) -> [f32; 16] {
+        self.to_features_with_speedlimit_for_bin(&TimeBinSpec::from(period), speed_limit_mph)
+    }
+
+    /// Convenience wrapper accepting `TimePeriod`.
+    pub fn to_features_without_speedlimit(&self, period: TimePeriod) -> [f32; 15] {
+        self.to_features_without_speedlimit_for_bin(&TimeBinSpec::from(period))
     }
 }
 

@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use clap::{Args, Parser, Subcommand};
 use config::{Config, File};
@@ -6,7 +9,7 @@ use routee_compass_core::model::unit::SpeedUnit;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::error::CongestionError;
+use crate::{error::CongestionError, taxonomy::TimeBinSpec};
 
 /// CLI entry point for `bambam-congestion`.
 #[derive(Debug, Parser)]
@@ -25,22 +28,33 @@ pub struct CongestionApp {
 #[derive(Debug, Clone, Subcommand, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum CongestionCommand {
-    /// Conflate an Open Network (OSM/OMF) with a TomTom MultiNet-R Compass dataset,
+    /// Conflate an Open Network (OSM/OMF) with a Reference Road Network in RouteE Compass format,
     /// compute 0.5-mile spatial features, and export calibration training tables (Parquet/CSV).
     Calibrate(CalibrateCliArgs),
 
-    /// Impute operating speeds across all 6 time-of-day periods (`wd-am`, `wd-af`, `wd-pm`,
-    /// `we-am`, `we-af`, `we-pm`) for a BAMBAM / RouteE Compass road network using calibrated XGBoost models.
+    /// Impute operating speeds across all configured `time_bins` for a BAMBAM / RouteE Compass
+    /// road network using calibrated XGBoost models.
     Impute(ImputeCliArgs),
+
+    /// Print the configured time-bin names and indicator flags (from `--config` or the default 6 BAMBAM time bins).
+    ListTimeBins(ListTimeBinsCliArgs),
+}
+
+/// CLI arguments for `bambam-congestion list-time-bins`.
+#[derive(Debug, Clone, Args, Serialize, Deserialize, JsonSchema)]
+pub struct ListTimeBinsCliArgs {
+    /// Optional path to a `congestion.toml` configuration file. If omitted, prints the default 6 BAMBAM time bins.
+    #[arg(short, long)]
+    pub config: Option<String>,
 }
 
 /// CLI arguments for `bambam-congestion calibrate`.
 ///
-/// Complex configurations can be passed via `--config <path.toml|.json>`, with optional
-/// CLI flag overrides.
+/// Accepts a unified `congestion.toml` (`CongestionPipelineConfig`) or standalone `CalibrationConfig`
+/// via `--config <path.toml|.json>`, with optional CLI flag overrides.
 #[derive(Debug, Clone, Args, Serialize, Deserialize, JsonSchema)]
 pub struct CalibrateCliArgs {
-    /// Path to a TOML or JSON calibration configuration file (`CalibrationConfig`).
+    /// Path to a TOML or JSON configuration file (`congestion.toml`).
     #[arg(short, long)]
     pub config: Option<String>,
 
@@ -52,13 +66,18 @@ pub struct CalibrateCliArgs {
     #[arg(long)]
     pub mode: Option<String>,
 
-    /// Override: path to the TomTom MultiNet-R RouteE Compass directory.
-    #[arg(long)]
-    pub tomtom_network_dir: Option<String>,
+    /// Override: path to the Reference Road Network RouteE Compass directory.
+    #[arg(long, visible_alias = "tomtom-network-dir")]
+    pub reference_network_dir: Option<String>,
 
-    /// Override: directory containing `tomtom-natl-{wd,we}-{am,af,pm}.txt.gz` speed files.
+    /// Override: directory containing enumerated reference speed files per time bin.
+    #[arg(long, visible_alias = "tomtom-speeds-dir")]
+    pub reference_speeds_dir: Option<String>,
+
+    /// Override: filename prefix for reference speed files in `--reference-speeds-dir`
+    /// (`<prefix>-<bin>.txt.gz`).
     #[arg(long)]
-    pub tomtom_speeds_dir: Option<String>,
+    pub reference_file_prefix: Option<String>,
 
     /// Override: output directory for calibration Parquet/CSV tables.
     #[arg(short, long)]
@@ -72,21 +91,26 @@ pub struct CalibrateCliArgs {
 impl CalibrateCliArgs {
     pub fn resolve_config(&self) -> Result<CalibrationConfig, CongestionError> {
         let mut cfg = if let Some(ref config_path) = self.config {
-            CalibrationConfig::from_file(Path::new(config_path))?
+            let path = Path::new(config_path);
+            if let Ok(pipeline) = CongestionPipelineConfig::from_file(path) {
+                pipeline.into_calibration_config()?
+            } else {
+                CalibrationConfig::from_file(path)?
+            }
         } else {
             let open_dir = self.open_network_dir.clone().ok_or_else(|| {
                 CongestionError::Configuration(
                     "must provide either --config or --open-network-dir".to_string(),
                 )
             })?;
-            let tomtom_dir = self.tomtom_network_dir.clone().ok_or_else(|| {
+            let ref_dir = self.reference_network_dir.clone().ok_or_else(|| {
                 CongestionError::Configuration(
-                    "must provide either --config or --tomtom-network-dir".to_string(),
+                    "must provide either --config or --reference-network-dir".to_string(),
                 )
             })?;
-            let speeds_dir = self.tomtom_speeds_dir.clone().ok_or_else(|| {
+            let speeds_dir = self.reference_speeds_dir.clone().ok_or_else(|| {
                 CongestionError::Configuration(
-                    "must provide either --config or --tomtom-speeds-dir".to_string(),
+                    "must provide either --config or --reference-speeds-dir".to_string(),
                 )
             })?;
             let output_dir = self.output_dir.clone().ok_or_else(|| {
@@ -100,12 +124,14 @@ impl CalibrateCliArgs {
                     mode: self.mode.clone().unwrap_or_else(|| "drive".to_string()),
                     ..Default::default()
                 },
-                tomtom_network: TomTomNetworkConfig {
-                    network_dir: tomtom_dir,
-                    period_speed_files: PeriodSpeedFilesConfig::from_directory(
-                        Path::new(&speeds_dir),
-                        "tomtom-natl",
-                    ),
+                time_bins: TimeBinSpec::default_six_bins(),
+                reference_network: ReferenceNetworkConfig {
+                    network_dir: ref_dir,
+                    speed_files: ReferenceSpeedFilesConfig {
+                        speeds_dir: Some(speeds_dir),
+                        file_prefix: self.reference_file_prefix.clone(),
+                        ..Default::default()
+                    },
                     ..Default::default()
                 },
                 conflation: ConflationConfig::default(),
@@ -123,12 +149,14 @@ impl CalibrateCliArgs {
         if let Some(ref mode) = self.mode {
             cfg.open_network.mode = mode.clone();
         }
-        if let Some(ref tomtom_dir) = self.tomtom_network_dir {
-            cfg.tomtom_network.network_dir = tomtom_dir.clone();
+        if let Some(ref ref_dir) = self.reference_network_dir {
+            cfg.reference_network.network_dir = ref_dir.clone();
         }
-        if let Some(ref speeds_dir) = self.tomtom_speeds_dir {
-            cfg.tomtom_network.period_speed_files =
-                PeriodSpeedFilesConfig::from_directory(Path::new(speeds_dir), "tomtom-natl");
+        if let Some(ref speeds_dir) = self.reference_speeds_dir {
+            cfg.reference_network.speed_files.speeds_dir = Some(speeds_dir.clone());
+        }
+        if let Some(ref prefix) = self.reference_file_prefix {
+            cfg.reference_network.speed_files.file_prefix = Some(prefix.clone());
         }
         if let Some(ref out_dir) = self.output_dir {
             cfg.output.output_dir = out_dir.clone();
@@ -144,9 +172,12 @@ impl CalibrateCliArgs {
 }
 
 /// CLI arguments for `bambam-congestion impute`.
+///
+/// Accepts the same unified `congestion.toml` (`CongestionPipelineConfig`) used for `calibrate`
+/// or a standalone `ImputationConfig` via `--config <path.toml|.json>`.
 #[derive(Debug, Clone, Args, Serialize, Deserialize, JsonSchema)]
 pub struct ImputeCliArgs {
-    /// Path to a TOML or JSON imputation configuration file (`ImputationConfig`).
+    /// Path to a TOML or JSON configuration file (`congestion.toml`).
     #[arg(short, long)]
     pub config: Option<String>,
 
@@ -178,7 +209,12 @@ pub struct ImputeCliArgs {
 impl ImputeCliArgs {
     pub fn resolve_config(&self) -> Result<ImputationConfig, CongestionError> {
         let mut cfg = if let Some(ref config_path) = self.config {
-            ImputationConfig::from_file(Path::new(config_path))?
+            let path = Path::new(config_path);
+            if let Ok(pipeline) = CongestionPipelineConfig::from_file(path) {
+                pipeline.into_imputation_config()
+            } else {
+                ImputationConfig::from_file(path)?
+            }
         } else {
             let open_dir = self.open_network_dir.clone().ok_or_else(|| {
                 CongestionError::Configuration(
@@ -201,6 +237,7 @@ impl ImputeCliArgs {
                     mode: self.mode.clone().unwrap_or_else(|| "drive".to_string()),
                     ..Default::default()
                 },
+                time_bins: TimeBinSpec::default_six_bins(),
                 spatial_features: SpatialFeaturesConfig::default(),
                 models: ImputationModelConfig {
                     model_with_speedlimit_path: model_with_sl,
@@ -237,11 +274,189 @@ impl ImputeCliArgs {
     }
 }
 
+/// Unified pipeline configuration struct matching `congestion.toml`.
+///
+/// Can be passed directly to `bambam-congestion calibrate --config congestion.toml`,
+/// `train_congestion_models.py --config congestion.toml`, and
+/// `bambam-congestion impute --config congestion.toml` so that `[open_network]`,
+/// `[[time_bins]]`, `[spatial_features]`, and `[artifacts]` stay in lockstep across
+/// the entire workflow.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct CongestionPipelineConfig {
+    /// Target Open Network (OSM or Overture Maps) in RouteE Compass format.
+    #[serde(alias = "network")]
+    pub open_network: OpenNetworkConfig,
+
+    /// Explicit list of time-of-day bins (`[[time_bins]]`) with their names and indicator flags.
+    /// Defaults to the 6 standard BAMBAM bins (`wd-am`, `wd-af`, `wd-pm`, `we-am`, `we-af`, `we-pm`)
+    /// if omitted in TOML.
+    #[serde(default = "TimeBinSpec::default_six_bins")]
+    pub time_bins: Vec<TimeBinSpec>,
+
+    /// Shared 0.5-mile spatial feature configuration (POIs, traffic controls, and Census densities).
+    #[serde(default)]
+    pub spatial_features: SpatialFeaturesConfig,
+
+    /// Reference road network (in RouteE Compass format) with observed speed tables per time bin.
+    /// Required for `calibrate`; optional when only running `impute`.
+    #[serde(default, alias = "tomtom_network")]
+    pub reference_network: Option<ReferenceNetworkConfig>,
+
+    /// Spatial conflation parameters between `open_network` and `reference_network`.
+    #[serde(default)]
+    pub conflation: ConflationConfig,
+
+    /// Shared artifact directories for calibration training tables, fitted models, and imputed outputs.
+    #[serde(default)]
+    pub artifacts: PipelineArtifactsConfig,
+}
+
+impl CongestionPipelineConfig {
+    /// Loads a [`CongestionPipelineConfig`] from a `.toml` or `.json` file.
+    pub fn from_file(filepath: &Path) -> Result<Self, CongestionError> {
+        let cfg = Config::builder()
+            .add_source(File::from(filepath))
+            .build()
+            .map_err(|e| {
+                CongestionError::Configuration(format!(
+                    "failed to read config '{}': {e}",
+                    filepath.display()
+                ))
+            })?;
+        cfg.try_deserialize().map_err(|e| {
+            CongestionError::Configuration(format!(
+                "failed to deserialize CongestionPipelineConfig from '{}': {e}",
+                filepath.display()
+            ))
+        })
+    }
+
+    /// Returns the programmatic list of configured time-bin names in order.
+    pub fn time_bin_names(&self) -> Vec<&str> {
+        TimeBinSpec::names(&self.time_bins)
+    }
+
+    /// Resolves the reference speed file path for each configured time bin.
+    pub fn resolve_reference_speed_files(
+        &self,
+    ) -> Result<Vec<(TimeBinSpec, PathBuf)>, CongestionError> {
+        let ref_net = self.reference_network.as_ref().ok_or_else(|| {
+            CongestionError::Configuration(
+                "missing `[reference_network]` section in congestion config".to_string(),
+            )
+        })?;
+        ref_net.resolve_bin_speed_paths(&self.time_bins)
+    }
+
+    /// Converts this unified pipeline config into a [`CalibrationConfig`].
+    pub fn into_calibration_config(self) -> Result<CalibrationConfig, CongestionError> {
+        let reference_network = self.reference_network.ok_or_else(|| {
+            CongestionError::Configuration(
+                "`[reference_network]` is required in config when running `calibrate`".to_string(),
+            )
+        })?;
+        Ok(CalibrationConfig {
+            open_network: self.open_network,
+            time_bins: self.time_bins,
+            reference_network,
+            conflation: self.conflation,
+            spatial_features: self.spatial_features,
+            output: CalibrationOutputConfig {
+                output_dir: self.artifacts.calibration_dir,
+                write_parquet: self.artifacts.write_parquet,
+                write_csv: self.artifacts.write_csv,
+            },
+        })
+    }
+
+    /// Converts this unified pipeline config into an [`ImputationConfig`].
+    pub fn into_imputation_config(self) -> ImputationConfig {
+        let models = self.artifacts.resolve_model_paths();
+        ImputationConfig {
+            open_network: self.open_network,
+            time_bins: self.time_bins,
+            spatial_features: self.spatial_features,
+            models,
+            output_dir: self.artifacts.imputation_output_dir,
+            write_parquet_summary: self.artifacts.write_parquet,
+            write_csv_summary: self.artifacts.write_csv,
+        }
+    }
+}
+
+/// Shared artifact paths in `congestion.toml` (`[artifacts]`) connecting `calibrate`,
+/// `train_congestion_models.py`, and `impute`.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PipelineArtifactsConfig {
+    /// Directory where `calibrate` writes `calibration_with_speedlimit.parquet` and
+    /// `calibration_without_speedlimit.parquet`.
+    #[serde(default = "default_calibration_dir")]
+    pub calibration_dir: String,
+    /// Directory where `train_congestion_models.py` writes (and `impute` reads)
+    /// `xgboost_model_with_speedlimit.json` and `xgboost_model_without_speedlimit.json`.
+    #[serde(default = "default_models_dir")]
+    pub models_dir: String,
+    /// Optional explicit override path for `with_speedlimit` model JSON.
+    #[serde(default)]
+    pub model_with_speedlimit_path: Option<String>,
+    /// Optional explicit override path for `without_speedlimit` model JSON.
+    #[serde(default)]
+    pub model_without_speedlimit_path: Option<String>,
+    /// Optional output directory for `impute` (defaults to `<open_network.network_dir>/<open_network.mode>`).
+    #[serde(default)]
+    pub imputation_output_dir: Option<String>,
+    #[serde(default = "default_true")]
+    pub write_parquet: bool,
+    #[serde(default = "default_true")]
+    pub write_csv: bool,
+}
+
+impl Default for PipelineArtifactsConfig {
+    fn default() -> Self {
+        Self {
+            calibration_dir: default_calibration_dir(),
+            models_dir: default_models_dir(),
+            model_with_speedlimit_path: None,
+            model_without_speedlimit_path: None,
+            imputation_output_dir: None,
+            write_parquet: true,
+            write_csv: true,
+        }
+    }
+}
+
+impl PipelineArtifactsConfig {
+    pub fn resolve_model_paths(&self) -> ImputationModelConfig {
+        let base = Path::new(&self.models_dir);
+        let with_sl = self.model_with_speedlimit_path.clone().unwrap_or_else(|| {
+            base.join("xgboost_model_with_speedlimit.json")
+                .to_string_lossy()
+                .into_owned()
+        });
+        let without_sl = self
+            .model_without_speedlimit_path
+            .clone()
+            .unwrap_or_else(|| {
+                base.join("xgboost_model_without_speedlimit.json")
+                    .to_string_lossy()
+                    .into_owned()
+            });
+        ImputationModelConfig {
+            model_with_speedlimit_path: with_sl,
+            model_without_speedlimit_path: without_sl,
+        }
+    }
+}
+
 /// Top-level configuration for the congestion calibration workflow.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CalibrationConfig {
+    #[serde(alias = "network")]
     pub open_network: OpenNetworkConfig,
-    pub tomtom_network: TomTomNetworkConfig,
+    #[serde(default = "TimeBinSpec::default_six_bins")]
+    pub time_bins: Vec<TimeBinSpec>,
+    #[serde(alias = "tomtom_network")]
+    pub reference_network: ReferenceNetworkConfig,
     #[serde(default)]
     pub conflation: ConflationConfig,
     #[serde(default)]
@@ -267,12 +482,19 @@ impl CalibrationConfig {
             ))
         })
     }
+
+    pub fn time_bin_names(&self) -> Vec<&str> {
+        TimeBinSpec::names(&self.time_bins)
+    }
 }
 
 /// Top-level configuration for the operating speed imputation workflow.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ImputationConfig {
+    #[serde(alias = "network")]
     pub open_network: OpenNetworkConfig,
+    #[serde(default = "TimeBinSpec::default_six_bins")]
+    pub time_bins: Vec<TimeBinSpec>,
     #[serde(default)]
     pub spatial_features: SpatialFeaturesConfig,
     pub models: ImputationModelConfig,
@@ -302,6 +524,10 @@ impl ImputationConfig {
                 filepath.display()
             ))
         })
+    }
+
+    pub fn time_bin_names(&self) -> Vec<&str> {
+        TimeBinSpec::names(&self.time_bins)
     }
 }
 
@@ -335,79 +561,141 @@ impl Default for OpenNetworkConfig {
     }
 }
 
-/// Configuration for the reference TomTom MultiNet-R Compass dataset.
+/// Configuration for a Reference Road Network in RouteE Compass format with observed speed files per time bin.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TomTomNetworkConfig {
+pub struct ReferenceNetworkConfig {
     /// Directory containing `edges-geometries-enumerated.txt.gz` (and optionally
     /// `edges-speed-profile-id-mapping-enumerated.txt.gz` and `speed-profile.csv.gz`).
     pub network_dir: String,
-    /// Speed unit of the values in `period_speed_files` (defaults to `SpeedUnit::KPH`).
+    /// Speed unit of the values in the reference speed files (defaults to `SpeedUnit::KPH`).
     #[serde(default = "default_kph_unit")]
     #[schemars(with = "String")]
     pub speed_unit: SpeedUnit,
-    /// When `true`, only TomTom edges with time-varying speed profiles (i.e. not flat daily fallback)
+    /// When `true`, only reference edges with time-varying speeds across time bins (i.e. not flat daily fallback)
     /// are used as ground-truth calibration targets.
-    #[serde(default = "default_true")]
-    pub require_time_varying_trace: bool,
-    /// Enumerated speed files for the 6 time periods.
-    pub period_speed_files: PeriodSpeedFilesConfig,
+    #[serde(default = "default_true", alias = "require_time_varying_trace")]
+    pub require_time_varying_speeds: bool,
+    /// Resolution strategy for locating the enumerated speed file for each configured `TimeBinSpec`:
+    /// supports explicit per-bin filenames (`files = { "wd-am" = "..." }`) OR `speeds_dir` + `file_prefix` / `file_pattern`.
+    #[serde(default, flatten)]
+    pub speed_files: ReferenceSpeedFilesConfig,
 }
 
-impl Default for TomTomNetworkConfig {
+impl Default for ReferenceNetworkConfig {
     fn default() -> Self {
         Self {
             network_dir: String::new(),
             speed_unit: default_kph_unit(),
-            require_time_varying_trace: true,
-            period_speed_files: PeriodSpeedFilesConfig::default(),
+            require_time_varying_speeds: true,
+            speed_files: ReferenceSpeedFilesConfig::default(),
         }
     }
 }
 
-/// Paths to the 6 enumerated speed files (`wd-am`, `wd-af`, `wd-pm`, `we-am`, `we-af`, `we-pm`).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
-pub struct PeriodSpeedFilesConfig {
-    pub wd_am: String,
-    pub wd_af: String,
-    pub wd_pm: String,
-    pub we_am: String,
-    pub we_af: String,
-    pub we_pm: String,
+impl ReferenceNetworkConfig {
+    /// Resolves the `(TimeBinSpec, PathBuf)` pairs for all configured `time_bins`.
+    pub fn resolve_bin_speed_paths(
+        &self,
+        time_bins: &[TimeBinSpec],
+    ) -> Result<Vec<(TimeBinSpec, PathBuf)>, CongestionError> {
+        self.speed_files.resolve_for_bins(time_bins)
+    }
 }
 
-impl PeriodSpeedFilesConfig {
-    /// Constructs file paths following `<dir>/<prefix>-{wd,we}-{am,af,pm}.txt.gz`.
+/// Flexible configuration for locating reference speed files per time bin.
+///
+/// Users can either:
+/// 1. Provide `speeds_dir` plus `file_prefix` (e.g. `file_prefix = "tomtom-natl"` -> `<speeds_dir>/tomtom-natl-<bin>.txt.gz`)
+///    or `file_pattern` (e.g. `file_pattern = "speeds-{bin}.txt.gz"`), OR
+/// 2. Provide explicit per-bin filenames in `files = { "wd-am" = "path/to/wd_am.txt.gz", ... }`
+///    (or set `reference_speed_file` directly on each `[[time_bins]]` entry).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ReferenceSpeedFilesConfig {
+    /// Optional directory containing the reference speed files.
+    #[serde(default)]
+    pub speeds_dir: Option<String>,
+    /// Optional filename prefix combined with each time bin's `name` (`<file_prefix>-<bin.name>.<file_extension>`).
+    #[serde(default)]
+    pub file_prefix: Option<String>,
+    /// Optional filename pattern containing `{bin}` (or `{name}`), e.g. `"tomtom-natl-{bin}.txt.gz"`.
+    #[serde(default)]
+    pub file_pattern: Option<String>,
+    /// File extension used when constructing filenames from `file_prefix` (defaults to `"txt.gz"`).
+    #[serde(default = "default_speed_file_ext")]
+    pub file_extension: String,
+    /// Optional explicit map from time-bin name (e.g. `"wd-am"` or `"wd_am"`) to file path.
+    #[serde(default, alias = "period_speed_files")]
+    pub files: HashMap<String, String>,
+}
+
+impl Default for ReferenceSpeedFilesConfig {
+    fn default() -> Self {
+        Self {
+            speeds_dir: None,
+            file_prefix: None,
+            file_pattern: None,
+            file_extension: default_speed_file_ext(),
+            files: HashMap::new(),
+        }
+    }
+}
+
+impl ReferenceSpeedFilesConfig {
+    /// Helper to construct a directory + prefix configuration (`<dir>/<prefix>-<bin>.txt.gz`).
     pub fn from_directory(dir: &Path, prefix: &str) -> Self {
         Self {
-            wd_am: dir
-                .join(format!("{prefix}-wd-am.txt.gz"))
-                .to_string_lossy()
-                .into_owned(),
-            wd_af: dir
-                .join(format!("{prefix}-wd-af.txt.gz"))
-                .to_string_lossy()
-                .into_owned(),
-            wd_pm: dir
-                .join(format!("{prefix}-wd-pm.txt.gz"))
-                .to_string_lossy()
-                .into_owned(),
-            we_am: dir
-                .join(format!("{prefix}-we-am.txt.gz"))
-                .to_string_lossy()
-                .into_owned(),
-            we_af: dir
-                .join(format!("{prefix}-we-af.txt.gz"))
-                .to_string_lossy()
-                .into_owned(),
-            we_pm: dir
-                .join(format!("{prefix}-we-pm.txt.gz"))
-                .to_string_lossy()
-                .into_owned(),
+            speeds_dir: Some(dir.to_string_lossy().into_owned()),
+            file_prefix: Some(prefix.to_string()),
+            file_pattern: None,
+            file_extension: default_speed_file_ext(),
+            files: HashMap::new(),
         }
+    }
+
+    /// Resolves the concrete `PathBuf` for each `TimeBinSpec` in `time_bins`.
+    pub fn resolve_for_bins(
+        &self,
+        time_bins: &[TimeBinSpec],
+    ) -> Result<Vec<(TimeBinSpec, PathBuf)>, CongestionError> {
+        if time_bins.is_empty() {
+            return Err(CongestionError::Configuration(
+                "`time_bins` cannot be empty".to_string(),
+            ));
+        }
+        let base_dir = self.speeds_dir.as_deref().map(Path::new);
+        let mut resolved = Vec::with_capacity(time_bins.len());
+
+        for bin in time_bins {
+            let underscore_key = bin.name.replace('-', "_");
+            if let Some(explicit) = self
+                .files
+                .get(&bin.name)
+                .or_else(|| self.files.get(&underscore_key))
+            {
+                let p = PathBuf::from(explicit);
+                let full_path = if p.is_absolute() || base_dir.is_none() {
+                    p
+                } else {
+                    base_dir.unwrap().join(p)
+                };
+                resolved.push((bin.clone(), full_path));
+            } else {
+                let path = bin
+                    .resolve_reference_speed_path(
+                        base_dir,
+                        self.file_prefix.as_deref(),
+                        self.file_pattern.as_deref(),
+                        &self.file_extension,
+                    )
+                    .map_err(CongestionError::Configuration)?;
+                resolved.push((bin.clone(), path));
+            }
+        }
+        Ok(resolved)
     }
 }
 
-/// Parameters controlling Open Network <-> TomTom spatial conflation.
+/// Parameters controlling Open Network <-> Reference Network spatial conflation.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ConflationConfig {
     /// Corridor buffer distance in meters around each open-network edge (defaults to `5.0`).
@@ -416,10 +704,10 @@ pub struct ConflationConfig {
     /// Maximum circular mean heading difference in degrees (`[0, 180]`, defaults to `45.0`).
     #[serde(default = "default_max_heading_diff_degrees")]
     pub max_heading_diff_degrees: f64,
-    /// Minimum overlapping corridor length in meters required to accept a TomTom match (defaults to `1.0`).
+    /// Minimum overlapping corridor length in meters required to accept a reference network match (defaults to `1.0`).
     #[serde(default = "default_min_overlap_meters")]
     pub min_overlap_meters: f64,
-    /// Whether to cap observed TomTom speeds above `posted_speed + 10 mph` (or `max_class_speed + 5 mph`).
+    /// Whether to cap observed reference speeds above `posted_speed + 10 mph` (or `max_class_speed + 5 mph`).
     #[serde(default = "default_true")]
     pub cap_speed_outliers: bool,
     /// Maximum allowed mph above a link's posted speed limit (defaults to `10.0`).
@@ -463,12 +751,13 @@ pub struct SpatialFeaturesConfig {
     /// Coordinate projection mode (`geodesic` or `legacy_epsg3857`).
     #[serde(default)]
     pub projection_mode: ProjectionMode,
-    /// Optional source for MEP land-use opportunity points.
+    /// Optional source for MEP land-use opportunity points (`overture_maps`, `osm_pbf`, `csv_points`, or `vertex_opportunities_csv`).
+    /// Note: can be mixed and matched freely with any Open Network source (e.g. OMF road network + OSM PBF opportunities, or vice versa).
     #[serde(default)]
     pub opportunities_source: Option<OpportunitiesSourceConfig>,
     /// Optional override source for traffic controls (`traffic_signals`, `stop`, `crossing`).
     /// When `None`, traffic controls are automatically loaded from `<open_network>/vertices-complete.csv.gz`
-    /// (or extracted from `opportunities_source` if it is an `.osm.pbf`).
+    /// (which is produced by both `bambam-omf` and `bambam-osm`).
     #[serde(default)]
     pub traffic_controls_source: Option<TrafficControlsSourceConfig>,
     /// Optional source for Census population and employment density polygons.
@@ -492,7 +781,18 @@ impl Default for SpatialFeaturesConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OpportunitiesSourceConfig {
-    /// Extract MEP land-use opportunities (and traffic controls) directly from a local `.osm.pbf` file.
+    /// Collect MEP land-use opportunities (`places` and `buildings`) directly from Overture Maps
+    /// over the network's bounding box (via AWS S3 or a local OMF Parquet directory).
+    OvertureMaps {
+        /// Optional local directory containing Overture `places` / `buildings` Parquet files;
+        /// when `None`, fetches directly from the public Overture Maps S3 bucket for the network's bbox.
+        #[serde(default)]
+        local_source_dir: Option<String>,
+        /// Whether to also collect Overture `buildings` in addition to `places` (defaults to `true`).
+        #[serde(default = "default_true")]
+        include_buildings: bool,
+    },
+    /// Extract MEP land-use opportunities (and optionally traffic controls) directly from a local `.osm.pbf` file.
     OsmPbf { pbf_path: String },
     /// Read point opportunities from a CSV or `.csv.gz` file containing `x`/`y` (lon/lat) or WKT `geometry`
     /// and an optional count column.
@@ -672,4 +972,16 @@ fn default_geoid_col() -> String {
 
 fn default_geom_col() -> String {
     "geometry".to_string()
+}
+
+fn default_speed_file_ext() -> String {
+    "txt.gz".to_string()
+}
+
+fn default_calibration_dir() -> String {
+    "output/congestion_calibration".to_string()
+}
+
+fn default_models_dir() -> String {
+    "output/congestion_models".to_string()
 }

@@ -7,9 +7,10 @@ use rstar::{RTree, RTreeObject, AABB};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::{ConflationConfig, TomTomNetworkConfig},
+    config::{ConflationConfig, ReferenceNetworkConfig},
     error::CongestionError,
     network::{open_buffered_reader, parse_wkt_linestring, LoadedOpenNetwork, OpenNetworkEdge},
+    taxonomy::TimeBinSpec,
 };
 
 /// Minimum meters per degree of latitude (~110.574 km).
@@ -215,18 +216,19 @@ pub fn point_to_linestring_distance_m(pt: Coord<f64>, ls: &LineString<f64>) -> f
     min_dist
 }
 
-/// A directed TomTom edge indexed in an `rstar::RTree` with its 6 time-of-day speeds (in mph).
+/// A directed reference network edge indexed in an `rstar::RTree` with its observed speeds (in mph)
+/// across all configured `time_bins`.
 #[derive(Debug, Clone)]
-pub struct TomTomEdgeEntry {
-    pub tomtom_edge_id: usize,
+pub struct ReferenceEdgeEntry {
+    pub reference_edge_id: usize,
     pub mean_heading_deg: f64,
-    /// Observed speeds in mph for `[wd-am, wd-af, wd-pm, we-am, we-af, we-pm]`.
-    pub speeds_mph: [Option<f64>; 6],
+    /// Observed speeds in mph aligned with `time_bins`.
+    pub speeds_mph: Vec<Option<f64>>,
     pub geometry: LineString<f64>,
     pub bbox: AABB<[f64; 2]>,
 }
 
-impl RTreeObject for TomTomEdgeEntry {
+impl RTreeObject for ReferenceEdgeEntry {
     type Envelope = AABB<[f64; 2]>;
 
     fn envelope(&self) -> Self::Envelope {
@@ -234,15 +236,14 @@ impl RTreeObject for TomTomEdgeEntry {
     }
 }
 
-/// Result of conflating a single Open Network edge with nearby TomTom edges.
+/// Result of conflating a single Open Network edge with nearby Reference Network edges.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConflatedEdgeSpeeds {
     pub edge_id: usize,
     pub total_overlap_meters: f64,
-    pub matched_tomtom_count: usize,
-    /// Conflated (and optionally outlier-capped) speeds in mph for
-    /// `[wd-am, wd-af, wd-pm, we-am, we-af, we-pm]`.
-    pub speeds_mph: [Option<f64>; 6],
+    pub matched_reference_count: usize,
+    /// Conflated (and optionally outlier-capped) speeds in mph aligned with `time_bins`.
+    pub speeds_mph: Vec<Option<f64>>,
 }
 
 #[derive(Deserialize)]
@@ -257,30 +258,32 @@ struct SpeedProfileCsvRow {
     sunday_trace_id: Option<usize>,
 }
 
-/// Streams the TomTom MultiNet-R dataset, filters to `study_bbox` (expanded by `buffer_distance_meters`),
-/// converts speeds to `mph`, and builds an `rstar::RTree<TomTomEdgeEntry>`.
-pub fn build_tomtom_rtree_in_bbox(
-    tomtom_cfg: &TomTomNetworkConfig,
+/// Streams a Reference Road Network in RouteE Compass format along with its per-time-bin
+/// enumerated speed files, filters to `study_bbox` (expanded by `buffer_distance_meters`),
+/// converts speeds to `mph`, and builds an `rstar::RTree<ReferenceEdgeEntry>`.
+pub fn build_reference_rtree_in_bbox(
+    ref_cfg: &ReferenceNetworkConfig,
+    time_bins: &[TimeBinSpec],
     study_bbox: Rect<f64>,
     buffer_distance_meters: f64,
-) -> Result<RTree<TomTomEdgeEntry>, CongestionError> {
-    let tt_dir = Path::new(&tomtom_cfg.network_dir);
-    let geom_path = tt_dir.join("edges-geometries-enumerated.txt.gz");
+) -> Result<RTree<ReferenceEdgeEntry>, CongestionError> {
+    let ref_dir = Path::new(&ref_cfg.network_dir);
+    let geom_path = ref_dir.join("edges-geometries-enumerated.txt.gz");
     if !geom_path.exists() {
         return Err(CongestionError::Conflation(format!(
-            "TomTom geometries file not found at '{}'",
+            "Reference network geometries file not found at '{}'",
             geom_path.display()
         )));
     }
 
     let search_bbox = expand_bbox_by_meters(study_bbox, buffer_distance_meters + 50.0);
 
-    // Optional: load time-varying profile IDs if `require_time_varying_trace` is enabled
+    // Optional: load time-varying profile IDs if `require_time_varying_speeds` is enabled
     // and `speed-profile.csv.gz` + `edges-speed-profile-id-mapping-enumerated.txt.gz` exist.
-    let profile_map_path = tt_dir.join("edges-speed-profile-id-mapping-enumerated.txt.gz");
-    let speed_profile_path = tt_dir.join("speed-profile.csv.gz");
+    let profile_map_path = ref_dir.join("edges-speed-profile-id-mapping-enumerated.txt.gz");
+    let speed_profile_path = ref_dir.join("speed-profile.csv.gz");
     let valid_profile_ids: Option<HashSet<usize>> =
-        if tomtom_cfg.require_time_varying_trace && speed_profile_path.exists() {
+        if ref_cfg.require_time_varying_speeds && speed_profile_path.exists() {
             let profiles: Box<[SpeedProfileCsvRow]> =
                 read_utils::from_csv(&speed_profile_path, true, None, None).map_err(|e| {
                     CongestionError::Conflation(format!(
@@ -302,7 +305,7 @@ pub fn build_tomtom_rtree_in_bbox(
                 .map(|p| p.speed_profile_id)
                 .collect::<HashSet<_>>();
             log::info!(
-                "Loaded {} time-varying TomTom speed profiles (out of {})",
+                "Loaded {} time-varying speed profiles (out of {})",
                 valid.len(),
                 profiles.len()
             );
@@ -317,34 +320,25 @@ pub fn build_tomtom_rtree_in_bbox(
         None
     };
 
-    let speed_paths = [
-        Path::new(&tomtom_cfg.period_speed_files.wd_am),
-        Path::new(&tomtom_cfg.period_speed_files.wd_af),
-        Path::new(&tomtom_cfg.period_speed_files.wd_pm),
-        Path::new(&tomtom_cfg.period_speed_files.we_am),
-        Path::new(&tomtom_cfg.period_speed_files.we_af),
-        Path::new(&tomtom_cfg.period_speed_files.we_pm),
-    ];
-    for p in &speed_paths {
+    let resolved_bins = ref_cfg.resolve_bin_speed_paths(time_bins)?;
+    let n_bins = resolved_bins.len();
+    for (bin, p) in &resolved_bins {
         if !p.exists() {
             return Err(CongestionError::Conflation(format!(
-                "TomTom period speed file not found at '{}'",
+                "Reference speed file for time bin '{}' not found at '{}'",
+                bin.name,
                 p.display()
             )));
         }
     }
 
     let mut geom_lines = open_buffered_reader(&geom_path)?.lines();
-    let mut speed_readers: [std::io::Lines<Box<dyn BufRead>>; 6] = [
-        open_buffered_reader(speed_paths[0])?.lines(),
-        open_buffered_reader(speed_paths[1])?.lines(),
-        open_buffered_reader(speed_paths[2])?.lines(),
-        open_buffered_reader(speed_paths[3])?.lines(),
-        open_buffered_reader(speed_paths[4])?.lines(),
-        open_buffered_reader(speed_paths[5])?.lines(),
-    ];
+    let mut speed_readers: Vec<std::io::Lines<Box<dyn BufRead>>> = resolved_bins
+        .iter()
+        .map(|(_, p)| open_buffered_reader(p).map(|r| r.lines()))
+        .collect::<Result<Vec<_>, _>>()?;
 
-    let unit = tomtom_cfg.speed_unit;
+    let unit = ref_cfg.speed_unit;
     let mut entries = Vec::new();
     let mut row_idx = 0usize;
 
@@ -355,12 +349,12 @@ pub fn build_tomtom_rtree_in_bbox(
         let cur_idx = row_idx;
         row_idx += 1;
 
-        let mut raw_speeds: [Option<f64>; 6] = [None; 6];
+        let mut raw_speeds: Vec<Option<f64>> = vec![None; n_bins];
         let mut any_speed = false;
         for (p_idx, reader) in speed_readers.iter_mut().enumerate() {
             if let Some(line_res) = reader.next() {
                 let s = line_res.map_err(|source| CongestionError::Io {
-                    path: speed_paths[p_idx].to_path_buf(),
+                    path: resolved_bins[p_idx].1.clone(),
                     source,
                 })?;
                 let trimmed = s.trim();
@@ -381,14 +375,14 @@ pub fn build_tomtom_rtree_in_bbox(
             None => None,
         };
 
-        // Skip immediately if no valid speed in any time period
+        // Skip immediately if no valid speed in any time bin
         if !any_speed {
             continue;
         }
 
-        // If `require_time_varying_trace` is enabled, check either the profile ID table
-        // or verify that speeds are not completely static across time periods.
-        if tomtom_cfg.require_time_varying_trace {
+        // If `require_time_varying_speeds` is enabled, check either the profile ID table
+        // or verify that speeds are not completely static across time bins.
+        if ref_cfg.require_time_varying_speeds {
             if let (Some(ref valid_set), Some(Ok(prof_line))) =
                 (&valid_profile_ids, profile_line_opt)
             {
@@ -401,7 +395,7 @@ pub fn build_tomtom_rtree_in_bbox(
                     continue;
                 }
             } else {
-                // Fallback check when speed-profile.csv.gz is not present: require variation across periods
+                // Fallback check when speed-profile.csv.gz is not present: require variation across bins
                 let present: Vec<f64> = raw_speeds.iter().copied().flatten().collect();
                 if present.len() >= 2 {
                     let first = present[0];
@@ -436,8 +430,8 @@ pub fn build_tomtom_rtree_in_bbox(
         };
 
         let bbox = AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]);
-        entries.push(TomTomEdgeEntry {
-            tomtom_edge_id: cur_idx,
+        entries.push(ReferenceEdgeEntry {
+            reference_edge_id: cur_idx,
             mean_heading_deg,
             speeds_mph: raw_speeds,
             geometry: ls,
@@ -446,7 +440,7 @@ pub fn build_tomtom_rtree_in_bbox(
     }
 
     log::info!(
-        "Scanned {} TomTom edges; indexed {} active edges inside study bbox",
+        "Scanned {} reference network edges; indexed {} active edges inside study bbox",
         row_idx,
         entries.len()
     );
@@ -454,10 +448,11 @@ pub fn build_tomtom_rtree_in_bbox(
     Ok(RTree::bulk_load(entries))
 }
 
-/// Conflates all high-functional Open Network edges against the TomTom `RTree` in parallel (`rayon`).
-pub fn conflate_open_network_with_tomtom(
+/// Conflates all high-functional Open Network edges against the Reference Network `RTree` in parallel (`rayon`).
+pub fn conflate_open_network_with_reference(
     open_net: &LoadedOpenNetwork,
-    tomtom_rtree: &RTree<TomTomEdgeEntry>,
+    reference_rtree: &RTree<ReferenceEdgeEntry>,
+    n_bins: usize,
     conflation_cfg: &ConflationConfig,
 ) -> Vec<Option<ConflatedEdgeSpeeds>> {
     let buffer_m = conflation_cfg.buffer_distance_meters;
@@ -473,7 +468,8 @@ pub fn conflate_open_network_with_tomtom(
             }
             conflate_single_edge(
                 edge,
-                tomtom_rtree,
+                reference_rtree,
+                n_bins,
                 &open_net.max_speed_by_highway,
                 buffer_m,
                 max_heading_diff,
@@ -484,9 +480,11 @@ pub fn conflate_open_network_with_tomtom(
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn conflate_single_edge(
     edge: &OpenNetworkEdge,
-    tomtom_rtree: &RTree<TomTomEdgeEntry>,
+    reference_rtree: &RTree<ReferenceEdgeEntry>,
+    n_bins: usize,
     max_speed_by_highway: &std::collections::HashMap<String, f64>,
     buffer_m: f64,
     max_heading_diff: f64,
@@ -506,12 +504,12 @@ fn conflate_single_edge(
     let projector = LocalMeterProjector::new(center.x, center.y);
     let mut target_m_opt: Option<LineString<f64>> = None;
 
-    let mut weighted_sums = [0.0_f64; 6];
-    let mut weight_totals = [0.0_f64; 6];
+    let mut weighted_sums = vec![0.0_f64; n_bins];
+    let mut weight_totals = vec![0.0_f64; n_bins];
     let mut total_overlap_meters = 0.0;
-    let mut matched_tomtom_count = 0usize;
+    let mut matched_reference_count = 0usize;
 
-    for candidate in tomtom_rtree.locate_in_envelope_intersecting(&query_env) {
+    for candidate in reference_rtree.locate_in_envelope_intersecting(&query_env) {
         // 1. Cheap wrap-around circular heading filter (<= 45 degrees)
         if circular_heading_diff_deg(open_heading, candidate.mean_heading_deg) > max_heading_diff {
             continue;
@@ -526,18 +524,18 @@ fn conflate_single_edge(
             continue;
         }
 
-        matched_tomtom_count += 1;
+        matched_reference_count += 1;
         total_overlap_meters += overlap_m;
 
-        for p_idx in 0..6 {
-            if let Some(spd) = candidate.speeds_mph[p_idx] {
+        for (p_idx, spd_opt) in candidate.speeds_mph.iter().enumerate().take(n_bins) {
+            if let Some(spd) = spd_opt {
                 weighted_sums[p_idx] += overlap_m * spd;
                 weight_totals[p_idx] += overlap_m;
             }
         }
     }
 
-    if matched_tomtom_count == 0 || total_overlap_meters < min_overlap_m {
+    if matched_reference_count == 0 || total_overlap_meters < min_overlap_m {
         return None;
     }
 
@@ -556,8 +554,8 @@ fn conflate_single_edge(
         None
     };
 
-    let mut speeds_mph = [None; 6];
-    for p_idx in 0..6 {
+    let mut speeds_mph = vec![None; n_bins];
+    for p_idx in 0..n_bins {
         if weight_totals[p_idx] > 0.0 {
             let mut avg = weighted_sums[p_idx] / weight_totals[p_idx];
             if let Some(cap) = speed_cap_opt {
@@ -572,7 +570,7 @@ fn conflate_single_edge(
     Some(ConflatedEdgeSpeeds {
         edge_id: edge.edge_id,
         total_overlap_meters,
-        matched_tomtom_count,
+        matched_reference_count,
         speeds_mph,
     })
 }
@@ -654,12 +652,12 @@ mod tests {
         // TomTom edge 2: opposing Westbound carriageway (~270 deg), 3m south, speed = 15 mph (congested opposing direction)
         let tt_west_opposing = LineString::from(vec![(-105.0000, 39.99997), (-105.0020, 39.99997)]);
 
-        let make_entry = |id: usize, ls: LineString<f64>, spd: f64| -> TomTomEdgeEntry {
+        let make_entry = |id: usize, ls: LineString<f64>, spd: f64| -> ReferenceEdgeEntry {
             let rect = ls.bounding_rect().unwrap();
-            TomTomEdgeEntry {
-                tomtom_edge_id: id,
+            ReferenceEdgeEntry {
+                reference_edge_id: id,
                 mean_heading_deg: length_weighted_circular_mean_heading_deg(&ls).unwrap(),
-                speeds_mph: [Some(spd); 6],
+                speeds_mph: vec![Some(spd); 6],
                 bbox: AABB::from_corners(
                     [rect.min().x, rect.min().y],
                     [rect.max().x, rect.max().y],
@@ -680,16 +678,17 @@ mod tests {
         let matched = conflate_single_edge(
             &open_edge,
             &rtree,
+            6,
             &max_speeds,
             cfg.buffer_distance_meters,
             cfg.max_heading_diff_degrees,
             cfg.min_overlap_meters,
             &cfg,
         )
-        .expect("expected Eastbound TomTom edges to match");
+        .expect("expected Eastbound reference edges to match");
 
         // Only the 2 Eastbound segments should match; the Westbound segment (~270 deg) must be rejected
-        assert_eq!(matched.matched_tomtom_count, 2);
+        assert_eq!(matched.matched_reference_count, 2);
         // Equal lengths at 50 mph and 70 mph -> weighted average = 60.0 mph
         let avg_spd = matched.speeds_mph[0].unwrap();
         assert!(
@@ -705,14 +704,14 @@ mod tests {
 
         let geom = LineString::from(vec![(-105.0010, 40.0000), (-105.0000, 40.0000)]);
         let rect = geom.bounding_rect().unwrap();
-        let tt_entry = TomTomEdgeEntry {
-            tomtom_edge_id: 0,
+        let ref_entry = ReferenceEdgeEntry {
+            reference_edge_id: 0,
             mean_heading_deg: length_weighted_circular_mean_heading_deg(&geom).unwrap(),
-            speeds_mph: [Some(95.0); 6], // Extreme outlier speed (95 mph)
+            speeds_mph: vec![Some(95.0); 6], // Extreme outlier speed (95 mph)
             bbox: AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]),
             geometry: geom.clone(),
         };
-        let rtree = RTree::bulk_load(vec![tt_entry]);
+        let rtree = RTree::bulk_load(vec![ref_entry]);
         let max_speeds = HashMap::from([("primary".to_string(), 55.0)]);
         let cfg = ConflationConfig::default();
 
@@ -732,6 +731,7 @@ mod tests {
         let res_with = conflate_single_edge(
             &edge_with_sl,
             &rtree,
+            6,
             &max_speeds,
             cfg.buffer_distance_meters,
             cfg.max_heading_diff_degrees,
@@ -749,6 +749,7 @@ mod tests {
         let res_no = conflate_single_edge(
             &edge_no_sl,
             &rtree,
+            6,
             &max_speeds,
             cfg.buffer_distance_meters,
             cfg.max_heading_diff_degrees,

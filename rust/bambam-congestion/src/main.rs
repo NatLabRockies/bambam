@@ -12,9 +12,9 @@ mod tests {
     use std::{fs, path::Path};
 
     use bambam_congestion::{
-        run_calibration, run_imputation, CalibrationConfig, CalibrationOutputConfig,
-        ConflationConfig, ImputationConfig, ImputationModelConfig, OpenNetworkConfig,
-        PeriodSpeedFilesConfig, SpatialFeaturesConfig, TimePeriod, TomTomNetworkConfig,
+        run_calibration, run_imputation, ConflationConfig, CongestionPipelineConfig,
+        OpenNetworkConfig, PipelineArtifactsConfig, ReferenceNetworkConfig,
+        ReferenceSpeedFilesConfig, SpatialFeaturesConfig, TimeBinSpec,
     };
     use flate2::{write::GzEncoder, Compression};
     use std::io::Write;
@@ -29,15 +29,15 @@ mod tests {
     }
 
     #[test]
-    fn test_end_to_end_calibrate_and_impute() {
+    fn test_end_to_end_unified_congestion_pipeline_config() {
         let tmp_root = Path::new("target/test_tmp_congestion");
         let _ = fs::remove_dir_all(tmp_root);
         let open_drive_dir = tmp_root.join("open_net").join("drive");
-        let tomtom_dir = tmp_root.join("tomtom_net");
+        let ref_dir = tmp_root.join("reference_net");
         let calib_out_dir = tmp_root.join("calib_out");
         let models_dir = tmp_root.join("models");
         fs::create_dir_all(&open_drive_dir).unwrap();
-        fs::create_dir_all(&tomtom_dir).unwrap();
+        fs::create_dir_all(&ref_dir).unwrap();
         fs::create_dir_all(&calib_out_dir).unwrap();
         fs::create_dir_all(&models_dir).unwrap();
 
@@ -85,9 +85,9 @@ mod tests {
             &["35.0", "45.0", "25.0"],
         );
 
-        // 2. Create synthetic TomTom network matching edges 0 and 1 (within 2m north, same Eastbound heading)
+        // 2. Create synthetic Reference network matching edges 0 and 1 (within 2m north, same Eastbound heading)
         write_gz_lines(
-            &tomtom_dir.join("edges-geometries-enumerated.txt.gz"),
+            &ref_dir.join("edges-geometries-enumerated.txt.gz"),
             &[
                 "LINESTRING(-105.0000 40.00001,-104.9980 40.00001)",
                 "LINESTRING(-104.9980 40.00001,-104.9960 40.00001)",
@@ -102,44 +102,48 @@ mod tests {
             ("we-pm", ["50.0", "68.0"]),
         ];
         for (p_str, vals) in &period_speeds_kph {
-            write_gz_lines(
-                &tomtom_dir.join(format!("tomtom-natl-{p_str}.txt.gz")),
-                vals,
-            );
+            write_gz_lines(&ref_dir.join(format!("ref-speeds-{p_str}.txt.gz")), vals);
         }
 
-        // 3. Run Calibration
-        let calib_cfg = CalibrationConfig {
+        // 3. Build a single unified CongestionPipelineConfig (`congestion.toml`) and verify TOML roundtrip
+        let pipeline_cfg = CongestionPipelineConfig {
             open_network: OpenNetworkConfig {
                 network_dir: open_drive_dir.parent().unwrap().to_string_lossy().into_owned(),
                 mode: "drive".to_string(),
                 ..Default::default()
             },
-            tomtom_network: TomTomNetworkConfig {
-                network_dir: tomtom_dir.to_string_lossy().into_owned(),
-                require_time_varying_trace: true,
-                period_speed_files: PeriodSpeedFilesConfig::from_directory(
-                    &tomtom_dir,
-                    "tomtom-natl",
-                ),
-                ..Default::default()
-            },
-            conflation: ConflationConfig::default(),
+            time_bins: TimeBinSpec::default_six_bins(),
             spatial_features: SpatialFeaturesConfig::default(),
-            output: CalibrationOutputConfig {
-                output_dir: calib_out_dir.to_string_lossy().into_owned(),
-                write_parquet: true,
-                write_csv: true,
+            reference_network: Some(ReferenceNetworkConfig {
+                network_dir: ref_dir.to_string_lossy().into_owned(),
+                require_time_varying_speeds: true,
+                speed_files: ReferenceSpeedFilesConfig::from_directory(&ref_dir, "ref-speeds"),
+                ..Default::default()
+            }),
+            conflation: ConflationConfig::default(),
+            artifacts: PipelineArtifactsConfig {
+                calibration_dir: calib_out_dir.to_string_lossy().into_owned(),
+                models_dir: models_dir.to_string_lossy().into_owned(),
+                ..Default::default()
             },
         };
 
+        assert_eq!(
+            pipeline_cfg.time_bin_names(),
+            vec!["wd-am", "wd-af", "wd-pm", "we-am", "we-af", "we-pm"]
+        );
+
+        let toml_path = tmp_root.join("congestion.toml");
+        fs::write(&toml_path, toml::to_string_pretty(&pipeline_cfg).unwrap()).unwrap();
+        let loaded_pipeline = CongestionPipelineConfig::from_file(&toml_path).unwrap();
+
+        // 4. Run Calibration from the unified config
+        let calib_cfg = loaded_pipeline.clone().into_calibration_config().unwrap();
         let calib_summary = run_calibration(&calib_cfg).expect("calibration failed");
         assert_eq!(calib_summary.total_open_edges, 3);
         assert_eq!(calib_summary.high_functional_edges, 2);
         assert_eq!(calib_summary.conflated_edges, 2);
-        // Edge 0 (primary with speed limit) -> 6 time periods in with_speedlimit
         assert_eq!(calib_summary.samples_with_speedlimit, 6);
-        // Edge 1 (motorway_link -> Link masks speed limit to None) -> 6 time periods in without_speedlimit
         assert_eq!(calib_summary.samples_without_speedlimit, 6);
         assert!(calib_out_dir.join("calibration_with_speedlimit.parquet").exists());
         assert!(calib_out_dir
@@ -147,9 +151,9 @@ mod tests {
             .exists());
         assert!(calib_out_dir.join("conflated_edges.parquet").exists());
 
-        // 4. Write toy XGBoost JSON models and run Imputation
-        let model_with_sl_path = models_dir.join("with_sl.json");
-        let model_without_sl_path = models_dir.join("without_sl.json");
+        // 5. Write toy XGBoost JSON models into `artifacts.models_dir` and run Imputation from the SAME unified config
+        let model_with_sl_path = models_dir.join("xgboost_model_with_speedlimit.json");
+        let model_without_sl_path = models_dir.join("xgboost_model_without_speedlimit.json");
         let toy_xgb_json = r#"{
             "learner": {
                 "learner_model_param": {
@@ -174,30 +178,15 @@ mod tests {
         fs::write(&model_with_sl_path, toy_xgb_json).unwrap();
         fs::write(&model_without_sl_path, toy_xgb_json).unwrap();
 
-        let impute_cfg = ImputationConfig {
-            open_network: OpenNetworkConfig {
-                network_dir: open_drive_dir.parent().unwrap().to_string_lossy().into_owned(),
-                mode: "drive".to_string(),
-                ..Default::default()
-            },
-            spatial_features: SpatialFeaturesConfig::default(),
-            models: ImputationModelConfig {
-                model_with_speedlimit_path: model_with_sl_path.to_string_lossy().into_owned(),
-                model_without_speedlimit_path: model_without_sl_path.to_string_lossy().into_owned(),
-            },
-            output_dir: None,
-            write_parquet_summary: true,
-            write_csv_summary: true,
-        };
-
+        let impute_cfg = loaded_pipeline.into_imputation_config();
         let impute_summary = run_imputation(&impute_cfg).expect("imputation failed");
         assert_eq!(impute_summary.total_edges, 3);
         assert_eq!(impute_summary.high_functional_edges, 2);
         assert_eq!(impute_summary.low_functional_edges, 1);
 
-        for period in TimePeriod::ALL {
+        for bin in TimeBinSpec::default_six_bins() {
             assert!(open_drive_dir
-                .join(period.enumerated_speed_filename())
+                .join(bin.enumerated_speed_filename())
                 .exists());
         }
         assert!(open_drive_dir.join("predicted-speeds.parquet").exists());

@@ -1,7 +1,14 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 use bambam_network::{consts::COMPLETE_VERTEX_FILENAME, VertexCompassRecord, VertexCompleteRecord};
-use geo::{BoundingRect, Coord, Euclidean, Length, LineString, Rect};
+use bambam_omf::collection::{
+    Bbox, BuildingsRecord, OvertureMapsCollector, OvertureMapsCollectorConfig, OvertureRecordType,
+    PlacesRecord, RowFilterConfig, TaxonomyModelBuilder,
+};
+use geo::{BoundingRect, Centroid, Coord, Euclidean, Length, LineString, Rect};
 use geozero::{wkt::Wkt as WktReader, ToGeo};
 use osmpbf::{Element, ElementReader};
 use routee_compass_core::util::fs::read_utils;
@@ -77,6 +84,17 @@ pub fn build_poi_and_traffic_rtree(
     // 1. Load MEP opportunity points
     if let Some(ref opp_src) = cfg.opportunities_source {
         match opp_src {
+            OpportunitiesSourceConfig::OvertureMaps {
+                local_source_dir,
+                include_buildings,
+            } => {
+                let mut omf_pts = extract_overture_maps_opportunities(
+                    local_source_dir.as_deref().map(Path::new),
+                    *include_buildings,
+                    search_bbox,
+                )?;
+                points.append(&mut omf_pts);
+            }
             OpportunitiesSourceConfig::OsmPbf { pbf_path } => {
                 // If traffic_controls_source is None or also OsmPbf with the same path,
                 // extract both opportunities and traffic controls in a single PBF pass!
@@ -502,6 +520,215 @@ fn load_csv_feature_points(
             });
         }
     }
+    Ok(out)
+}
+
+/// Collects MEP land-use opportunities (`places` and optionally `buildings`) from Overture Maps
+/// within `search_bbox` (either from S3 or from a local OMF Parquet directory).
+pub fn extract_overture_maps_opportunities(
+    local_source_dir: Option<&Path>,
+    include_buildings: bool,
+    search_bbox: Rect<f64>,
+) -> Result<Vec<SpatialFeaturePoint>, CongestionError> {
+    let omf_bbox = Bbox {
+        xmin: search_bbox.min().x as f32,
+        xmax: search_bbox.max().x as f32,
+        ymin: search_bbox.min().y as f32,
+        ymax: search_bbox.max().y as f32,
+    };
+
+    // Standard 5 MEP opportunity categories for Overture Places
+    let places_mapping: HashMap<String, Vec<String>> = HashMap::from([
+        (
+            "meals".to_string(),
+            vec![
+                "eat_and_drink".to_string(),
+                "restaurant".to_string(),
+                "bar".to_string(),
+                "cafe".to_string(),
+                "fast_food_restaurant".to_string(),
+            ],
+        ),
+        (
+            "medical".to_string(),
+            vec![
+                "health_and_medical".to_string(),
+                "hospital".to_string(),
+                "clinic".to_string(),
+                "pharmacy".to_string(),
+                "doctor".to_string(),
+                "dentist".to_string(),
+            ],
+        ),
+        (
+            "recreation".to_string(),
+            vec![
+                "arts_and_entertainment".to_string(),
+                "attractions_and_activities".to_string(),
+                "active_life".to_string(),
+                "sports_and_recreation_venue".to_string(),
+                "park".to_string(),
+            ],
+        ),
+        (
+            "shop-err".to_string(),
+            vec![
+                "retail".to_string(),
+                "shopping".to_string(),
+                "accommodation".to_string(),
+                "beauty_and_spa".to_string(),
+                "financial_services".to_string(),
+            ],
+        ),
+        (
+            "sch-day-re".to_string(),
+            vec![
+                "education".to_string(),
+                "religious_organization".to_string(),
+                "child_care_and_day_care".to_string(),
+                "public_service_and_government".to_string(),
+            ],
+        ),
+    ]);
+
+    let taxonomy_model = TaxonomyModelBuilder::new(places_mapping.clone(), None)
+        .build()
+        .map_err(|e| {
+            CongestionError::SpatialFeature(format!(
+                "failed building Overture taxonomy model: {e}"
+            ))
+        })?;
+
+    let collector = OvertureMapsCollector::try_from(OvertureMapsCollectorConfig::default())
+        .map_err(|e| {
+            CongestionError::SpatialFeature(format!(
+                "failed initializing OvertureMapsCollector: {e}"
+            ))
+        })?;
+
+    let release = collector.get_latest_release().map_err(|e| {
+        CongestionError::SpatialFeature(format!(
+            "failed resolving latest Overture Maps release: {e}"
+        ))
+    })?;
+
+    let places_filter = RowFilterConfig::Combined {
+        filters: vec![
+            Box::new(RowFilterConfig::from(omf_bbox)),
+            Box::new(RowFilterConfig::from(places_mapping)),
+        ],
+    };
+
+    let raw_places = if let Some(dir) = local_source_dir {
+        let obj_path = object_store::path::Path::from(dir.to_string_lossy().as_ref());
+        collector.collect_from_path(obj_path, &OvertureRecordType::Places, Some(places_filter))
+    } else {
+        collector.collect_from_release(&release, &OvertureRecordType::Places, Some(places_filter))
+    }
+    .map_err(|e| {
+        CongestionError::SpatialFeature(format!("failed collecting Overture Places: {e}"))
+    })?;
+
+    let group_labels = vec![
+        "meals".to_string(),
+        "medical".to_string(),
+        "recreation".to_string(),
+        "shop-err".to_string(),
+        "sch-day-re".to_string(),
+    ];
+
+    let mut out = Vec::with_capacity(raw_places.len());
+    for rec in raw_places {
+        let Ok(place) = PlacesRecord::try_from(rec) else {
+            continue;
+        };
+        let Some(geom) = place.get_geometry() else {
+            continue;
+        };
+        let Some(pt) = geom.centroid() else {
+            continue;
+        };
+        let cats = place.get_categories();
+        let weight = if let Ok(masks) = taxonomy_model.reverse_map(&cats, group_labels.clone()) {
+            let mut active = [false; 5];
+            for row_mask in masks {
+                for (i, &flag) in row_mask.iter().enumerate().take(5) {
+                    active[i] |= flag;
+                }
+            }
+            active.iter().filter(|&&b| b).count().max(1) as f64
+        } else {
+            1.0
+        };
+        out.push(SpatialFeaturePoint {
+            lon: pt.x() as f64,
+            lat: pt.y() as f64,
+            kind: FeatureKind::Opportunity,
+            weight,
+        });
+    }
+
+    if include_buildings {
+        let building_classes = HashSet::from([
+            "medical".to_string(),
+            "hospital".to_string(),
+            "entertainment".to_string(),
+            "civic".to_string(),
+            "commercial".to_string(),
+            "retail".to_string(),
+            "supermarket".to_string(),
+            "education".to_string(),
+            "school".to_string(),
+            "university".to_string(),
+            "college".to_string(),
+            "religion".to_string(),
+            "church".to_string(),
+        ]);
+        let bldg_filter = RowFilterConfig::Combined {
+            filters: vec![
+                Box::new(RowFilterConfig::from(omf_bbox)),
+                Box::new(RowFilterConfig::HasClassIn {
+                    classes: building_classes,
+                }),
+            ],
+        };
+        let raw_bldgs = if let Some(dir) = local_source_dir {
+            let obj_path = object_store::path::Path::from(dir.to_string_lossy().as_ref());
+            collector.collect_from_path(
+                obj_path,
+                &OvertureRecordType::Buildings,
+                Some(bldg_filter),
+            )
+        } else {
+            collector.collect_from_release(
+                &release,
+                &OvertureRecordType::Buildings,
+                Some(bldg_filter),
+            )
+        }
+        .map_err(|e| {
+            CongestionError::SpatialFeature(format!("failed collecting Overture Buildings: {e}"))
+        })?;
+
+        for rec in raw_bldgs {
+            let Ok(bldg) = BuildingsRecord::try_from(rec) else {
+                continue;
+            };
+            let Some(geom) = bldg.get_geometry() else {
+                continue;
+            };
+            let Some(pt) = geom.centroid() else {
+                continue;
+            };
+            out.push(SpatialFeaturePoint {
+                lon: pt.x() as f64,
+                lat: pt.y() as f64,
+                kind: FeatureKind::Opportunity,
+                weight: 1.0,
+            });
+        }
+    }
+
     Ok(out)
 }
 

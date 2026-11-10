@@ -1,0 +1,91 @@
+# Unified BAMBAM Congestion Calibration & Speed Imputation Configuration (`congestion.toml`)
+#
+# Matches `bambam_congestion::CongestionPipelineConfig`.
+# This single file drives all three stages of the pipeline:
+#   1. `bambam-congestion calibrate --config configuration/bambam-congestion/congestion.toml`
+#   2. `uv run python python/nlr/bambam/congestion/train_congestion_models.py --config configuration/bambam-congestion/congestion.toml`
+#   3. `bambam-congestion impute --config configuration/bambam-congestion/congestion.toml`
+
+[open_network]
+network_dir = "output/boulder_network"
+mode = "drive"
+legacy_posted_speed_unit = "kph"
+min_imputed_speed_limit_mph = 15.0
+
+# Explicit list of time-of-day bins (`TimeBinSpec`).
+# Can be inspected programmatically via `bambam-congestion list-time-bins --config ...`
+# or in Python via `bambam_py_api.get_congestion_time_bins("...")`.
+[[time_bins]]
+name = "wd-am"
+day_weekday = 1.0
+hour_am_peak = 1.0
+hour_pm_peak = 0.0
+
+[[time_bins]]
+name = "wd-af"
+day_weekday = 1.0
+hour_am_peak = 0.0
+hour_pm_peak = 0.0
+
+[[time_bins]]
+name = "wd-pm"
+day_weekday = 1.0
+hour_am_peak = 0.0
+hour_pm_peak = 1.0
+
+[[time_bins]]
+name = "we-am"
+day_weekday = 0.0
+hour_am_peak = 1.0
+hour_pm_peak = 0.0
+
+[[time_bins]]
+name = "we-af"
+day_weekday = 0.0
+hour_am_peak = 0.0
+hour_pm_peak = 0.0
+
+[[time_bins]]
+name = "we-pm"
+day_weekday = 0.0
+hour_am_peak = 0.0
+hour_pm_peak = 1.0
+
+[spatial_features]
+density_radius_miles = 0.5
+projection_mode = "geodesic"
+# Opportunities source can be:
+#   - { type = "overture_maps", include_buildings = true }
+#   - { type = "osm_pbf", pbf_path = "colorado-latest.osm.pbf" }
+#   - { type = "csv_points", path = "...", x_column = "x", y_column = "y" }
+# Note: you can freely mix and match (e.g., an OMF network with an OSM PBF or vice versa).
+# Traffic controls default automatically to `<open_network.network_dir>/vertices-complete.csv.gz`.
+opportunities_source = { type = "overture_maps", include_buildings = true }
+
+[reference_network]
+network_dir = "/Users/rfitzger/dev/nrel/routee/routee-compass-tomtom/data/tomtom_national"
+speed_unit = "kph"
+require_time_varying_speeds = true
+
+# Option A: Resolve per-bin speed files using `speeds_dir` + `file_prefix` (or `file_pattern = "tomtom-natl-{bin}.txt.gz"`):
+#   Resolves `/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-{wd-am,wd-af,wd-pm,we-am,we-af,we-pm}.txt.gz`
+speeds_dir = "/Users/rfitzger/data/bam/mep3/in/congestion"
+file_prefix = "tomtom-natl"
+file_extension = "txt.gz"
+
+# Option B: Alternatively, specify explicit filenames per bin in `[reference_network.files]`
+#           or set `reference_speed_file = "..."` inside each `[[time_bins]]` block.
+
+[conflation]
+buffer_distance_meters = 5.0
+max_heading_diff_degrees = 45.0
+min_overlap_meters = 1.0
+cap_speed_outliers = true
+speed_cap_above_posted_mph = 10.0
+speed_cap_above_class_max_mph = 5.0
+
+[artifacts]
+calibration_dir = "output/congestion_calibration_boulder"
+models_dir = "output/congestion_models"
+write_parquet = true
+write_csv = true

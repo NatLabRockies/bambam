@@ -9,9 +9,8 @@ use crate::{
     config::ImputationConfig,
     error::CongestionError,
     features::SpatialFeatureEngine,
-    model::{predict_edge_all_periods, XgboostJsonModel},
+    model::{predict_edge_for_bins, XgboostJsonModel},
     network::LoadedOpenNetwork,
-    taxonomy::TimePeriod,
 };
 
 /// Output row matching `network_with_predicted_speeds.csv` from `predict_speeds_using_models.py`,
@@ -76,9 +75,9 @@ pub fn run_imputation(config: &ImputationConfig) -> Result<ImputationSummary, Co
     let feature_engine = SpatialFeatureEngine::build(&open_net, &config.spatial_features)?;
     let static_features = feature_engine.compute_all_edge_features(&open_net, true);
 
-    let predictions: Vec<[f32; 6]> = static_features
+    let predictions: Vec<Vec<f32>> = static_features
         .par_iter()
-        .map(|feat| predict_edge_all_periods(feat, &model_with_sl, &model_without_sl))
+        .map(|feat| predict_edge_for_bins(feat, &config.time_bins, &model_with_sl, &model_without_sl))
         .collect();
 
     let out_dir = config
@@ -88,9 +87,9 @@ pub fn run_imputation(config: &ImputationConfig) -> Result<ImputationSummary, Co
         .unwrap_or_else(|| open_net.mode_dir.clone());
     bambam_network::fs::create_dirs(&out_dir)?;
 
-    // Write the 6 RouteE Compass enumerated speed files
-    for (p_idx, period) in TimePeriod::ALL.into_iter().enumerate() {
-        let filename = period.enumerated_speed_filename();
+    // Write the RouteE Compass enumerated speed files for all configured `time_bins`
+    for (p_idx, bin) in config.time_bins.iter().enumerate() {
+        let filename = bin.enumerated_speed_filename();
         let desc = format!("write {filename}");
         serialize_into_enumerated_txt(
             predictions.iter().map(|p| p[p_idx]),
@@ -101,25 +100,46 @@ pub fn run_imputation(config: &ImputationConfig) -> Result<ImputationSummary, Co
         )?;
     }
 
+    let find_bin_idx = |name: &str, fallback_idx: usize| -> Option<usize> {
+        config
+            .time_bins
+            .iter()
+            .position(|b| b.name == name)
+            .or_else(|| (fallback_idx < config.time_bins.len()).then_some(fallback_idx))
+    };
+    let idx_wd_am = find_bin_idx("wd-am", 0);
+    let idx_wd_af = find_bin_idx("wd-af", 1);
+    let idx_wd_pm = find_bin_idx("wd-pm", 2);
+    let idx_we_am = find_bin_idx("we-am", 3);
+    let idx_we_af = find_bin_idx("we-af", 4);
+    let idx_we_pm = find_bin_idx("we-pm", 5);
+
     let summary_rows: Vec<PredictedEdgeSpeedsRow> = open_net
         .edges
         .iter()
         .zip(static_features.iter())
         .zip(predictions.iter())
-        .map(|((edge, feat), preds)| PredictedEdgeSpeedsRow {
-            edge_id: edge.edge_id,
-            source_id: edge.source_id.clone(),
-            highway: edge.highway_group.clone(),
-            osm_sl_mph: feat.imputed_speed_limit_mph,
-            wd_am_prd: preds[0],
-            wd_af_prd: preds[1],
-            wd_pm_prd: preds[2],
-            we_am_prd: preds[3],
-            we_af_prd: preds[4],
-            we_pm_prd: preds[5],
-            sl_med_imp: feat.imputed_speed_limit_mph,
-            length_meters: edge.length_meters,
-            drive_mode: true,
+        .map(|((edge, feat), preds)| {
+            let get_p = |opt_i: Option<usize>| -> f32 {
+                opt_i
+                    .and_then(|i| preds.get(i).copied())
+                    .unwrap_or(feat.imputed_speed_limit_mph)
+            };
+            PredictedEdgeSpeedsRow {
+                edge_id: edge.edge_id,
+                source_id: edge.source_id.clone(),
+                highway: edge.highway_group.clone(),
+                osm_sl_mph: feat.imputed_speed_limit_mph,
+                wd_am_prd: get_p(idx_wd_am),
+                wd_af_prd: get_p(idx_wd_af),
+                wd_pm_prd: get_p(idx_wd_pm),
+                we_am_prd: get_p(idx_we_am),
+                we_af_prd: get_p(idx_we_af),
+                we_pm_prd: get_p(idx_we_pm),
+                sl_med_imp: feat.imputed_speed_limit_mph,
+                length_meters: edge.length_meters,
+                drive_mode: true,
+            }
         })
         .collect();
 

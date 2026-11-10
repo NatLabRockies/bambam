@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import time
+import tomllib
 from typing import Sequence
 
 from joblib import dump
@@ -172,16 +173,23 @@ def main() -> None:
         description="Train calibrated XGBoost congestion speed models from bambam-congestion calibrate output"
     )
     parser.add_argument(
+        "-c",
+        "--config",
+        type=Path,
+        default=None,
+        help="Optional path to unified congestion.toml (reads [artifacts].calibration_dir and [artifacts].models_dir)",
+    )
+    parser.add_argument(
         "--calibration-dir",
         type=Path,
-        required=True,
-        help="Directory containing calibration_with_speedlimit.parquet (or .csv) and calibration_without_speedlimit.parquet (or .csv)",
+        default=None,
+        help="Override: directory containing calibration_with_speedlimit.parquet (or .csv) and calibration_without_speedlimit.parquet (or .csv)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        required=True,
-        help="Directory to write trained .json and .joblib models and validation metrics",
+        default=None,
+        help="Override: directory to write trained .json and .joblib models and validation metrics",
     )
     parser.add_argument(
         "--n-iter",
@@ -191,15 +199,31 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    cfg_calib_dir: Path | None = None
+    cfg_models_dir: Path | None = None
+    if args.config is not None:
+        with args.config.open("rb") as f:
+            toml_data = tomllib.load(f)
+        artifacts = toml_data.get("artifacts", {})
+        if "calibration_dir" in artifacts:
+            cfg_calib_dir = Path(artifacts["calibration_dir"])
+        if "models_dir" in artifacts:
+            cfg_models_dir = Path(artifacts["models_dir"])
+
+    calibration_dir = args.calibration_dir or cfg_calib_dir
+    output_dir = args.output_dir or cfg_models_dir
+    if calibration_dir is None or output_dir is None:
+        parser.error("must provide either --config congestion.toml or both --calibration-dir and --output-dir")
+
     with_sl_file = (
-        args.calibration_dir / "calibration_with_speedlimit.parquet"
-        if (args.calibration_dir / "calibration_with_speedlimit.parquet").exists()
-        else args.calibration_dir / "calibration_with_speedlimit.csv"
+        calibration_dir / "calibration_with_speedlimit.parquet"
+        if (calibration_dir / "calibration_with_speedlimit.parquet").exists()
+        else calibration_dir / "calibration_with_speedlimit.csv"
     )
     without_sl_file = (
-        args.calibration_dir / "calibration_without_speedlimit.parquet"
-        if (args.calibration_dir / "calibration_without_speedlimit.parquet").exists()
-        else args.calibration_dir / "calibration_without_speedlimit.csv"
+        calibration_dir / "calibration_without_speedlimit.parquet"
+        if (calibration_dir / "calibration_without_speedlimit.parquet").exists()
+        else calibration_dir / "calibration_without_speedlimit.csv"
     )
 
     if with_sl_file.exists():
@@ -207,7 +231,7 @@ def main() -> None:
         m_with = fit_and_export_model(
             df_with,
             PREDICTORS_WITH_SPEEDLIMIT,
-            args.output_dir,
+            output_dir,
             "xgboost_model_with_speedlimit",
             n_iter=args.n_iter,
         )
@@ -218,7 +242,7 @@ def main() -> None:
         m_without = fit_and_export_model(
             df_without,
             PREDICTORS_WITHOUT_SPEEDLIMIT,
-            args.output_dir,
+            output_dir,
             "xgboost_model_without_speedlimit",
             n_iter=args.n_iter,
         )

@@ -34,6 +34,7 @@ indexmap = { workspace = true }
 itertools = { workspace = true }
 kdam = { workspace = true }
 log = { workspace = true }
+object_store = { workspace = true }
 ordered-float = { workspace = true }
 osmpbf = { workspace = true }
 parquet = { workspace = true }
