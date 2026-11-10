@@ -501,10 +501,12 @@ fn write_bamcensus_csv(path: &Path, rows: &[SavedBamcensusRow]) -> Result<(), Co
         .has_headers(true)
         .from_writer(writer);
     for row in rows {
-        csv_writer.serialize(row).map_err(|e| CongestionError::Csv {
-            path: path.to_path_buf(),
-            message: e.to_string(),
-        })?;
+        csv_writer
+            .serialize(row)
+            .map_err(|e| CongestionError::Csv {
+                path: path.to_path_buf(),
+                message: e.to_string(),
+            })?;
     }
     csv_writer.flush().map_err(|source| CongestionError::Io {
         path: path.to_path_buf(),
@@ -573,8 +575,7 @@ fn resolve_bamcensus_state_geoids(search_bbox: Rect<f64>) -> Result<Vec<Geoid>, 
         tree_nodes.push((geometry, geoid));
     }
 
-    let state_tree =
-        PolygonalRTree::new(tree_nodes).map_err(CongestionError::SpatialFeature)?;
+    let state_tree = PolygonalRTree::new(tree_nodes).map_err(CongestionError::SpatialFeature)?;
     let query_geom = Geometry::Polygon(search_bbox.to_polygon());
     let states: Vec<Geoid> = state_tree
         .intersection(&query_geom)

@@ -1243,4 +1243,3 @@ fn default_acs_year() -> u64 {
 fn default_acs_resolution() -> Option<GeoidType> {
     Some(GeoidType::CensusTract)
 }
-
