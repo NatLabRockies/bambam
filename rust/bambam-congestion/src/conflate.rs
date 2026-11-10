@@ -332,7 +332,7 @@ pub fn build_reference_rtree_in_bbox(
         }
     }
 
-    let mut geom_lines = open_buffered_reader(&geom_path)?.lines();
+    let geom_lines = open_buffered_reader(&geom_path)?.lines();
     let mut speed_readers: Vec<std::io::Lines<Box<dyn BufRead>>> = resolved_bins
         .iter()
         .map(|(_, p)| open_buffered_reader(p).map(|r| r.lines()))
@@ -342,10 +342,7 @@ pub fn build_reference_rtree_in_bbox(
     let mut entries = Vec::new();
     let mut row_idx = 0usize;
 
-    loop {
-        let Some(geom_res) = geom_lines.next() else {
-            break;
-        };
+    for geom_res in geom_lines {
         let cur_idx = row_idx;
         row_idx += 1;
 

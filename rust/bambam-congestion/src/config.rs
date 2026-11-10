@@ -740,10 +740,9 @@ impl ReferenceSpeedFilesConfig {
                 .or_else(|| self.files.get(&underscore_key))
             {
                 let p = PathBuf::from(explicit);
-                let full_path = if p.is_absolute() || base_dir.is_none() {
-                    p
-                } else {
-                    base_dir.unwrap().join(p)
+                let full_path = match base_dir {
+                    Some(dir) if !p.is_absolute() => dir.join(p),
+                    _ => p,
                 };
                 resolved.push((bin.clone(), full_path));
             } else {

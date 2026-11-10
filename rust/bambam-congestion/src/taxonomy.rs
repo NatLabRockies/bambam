@@ -116,10 +116,10 @@ impl TimeBinSpec {
     ) -> Result<PathBuf, String> {
         if let Some(ref explicit) = self.reference_speed_file {
             let p = PathBuf::from(explicit);
-            if p.is_absolute() || speeds_dir.is_none() {
-                return Ok(p);
-            }
-            return Ok(speeds_dir.unwrap().join(p));
+            return Ok(match speeds_dir {
+                Some(dir) if !p.is_absolute() => dir.join(p),
+                _ => p,
+            });
         }
 
         let filename = if let Some(pattern) = file_pattern {

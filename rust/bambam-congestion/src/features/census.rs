@@ -212,7 +212,7 @@ fn build_buffer_quadrature_points(
     let d1_lon = r1 * deg_lon_per_m;
     let d1_lat = r1 * deg_lat_per_m;
     let d2_lon = r2 * deg_lon_per_m;
-    let diag = 0.70710678 * r2;
+    let diag = std::f64::consts::FRAC_1_SQRT_2 * r2;
     let dd_lon = diag * deg_lon_per_m;
     let dd_lat = diag * deg_lat_per_m;
 
