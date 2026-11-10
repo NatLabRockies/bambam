@@ -1,4 +1,8 @@
-use std::{fmt, path::{Path, PathBuf}, str::FromStr};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,7 +28,12 @@ pub struct TimeBinSpec {
 }
 
 impl TimeBinSpec {
-    pub fn new(name: impl Into<String>, day_weekday: f32, hour_am_peak: f32, hour_pm_peak: f32) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        day_weekday: f32,
+        hour_am_peak: f32,
+        hour_pm_peak: f32,
+    ) -> Self {
         Self {
             name: name.into(),
             day_weekday,
