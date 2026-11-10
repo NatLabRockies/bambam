@@ -54,14 +54,28 @@ end = "18:00:00"
 [spatial_features]
 density_radius_miles = 0.5
 projection_mode = "geodesic"
+
 # Opportunities source can be:
 #   - { type = "osm_pbf", pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf" }
 #   - { type = "overture_maps", include_buildings = true }
 #   - { type = "csv_points", path = "...", x_column = "x", y_column = "y" }
 # Note: you can freely mix and match (e.g., an OMF network with an OSM PBF or vice versa).
 # Traffic controls default automatically to `<open_network.network_dir>/vertices-complete.csv.gz`.
-opportunities_source = { type = "osm_pbf", pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf" }
-census_source = { type = "csv_polygons", polygons_csv_path = "/Users/rfitzger/data/bam/mep3/in/tiger-lines/tracts.csv", geoid_column = "geoid", wkt_column = "geometry", population_csv_path = "/Users/rfitzger/data/bam/mep3/in/population/2025-12-09-aceee-poverty-population.csv", population_csv_geoid_column = "geoid", population_csv_value_column = "population", employment_csv_path = "/Users/rfitzger/data/bam/mep3/in/lodes/LODES8_wac_2022_JT00_S000_census_tract.csv.gz", employment_csv_geoid_column = "geoid", employment_csv_value_column = "jobs" }
+[spatial_features.opportunities_source] 
+type = "osm_pbf"
+pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf"
+
+[spatial_features.census_source] 
+type = "csv_polygons"
+polygons_csv_path = "/Users/rfitzger/data/bam/mep3/in/tiger-lines/tracts.csv"
+geoid_column = "geoid"
+wkt_column = "geometry"
+population_csv_path = "/Users/rfitzger/data/bam/mep3/in/population/2025-12-09-aceee-poverty-population.csv"
+population_csv_geoid_column = "geoid"
+population_csv_value_column = "population"
+employment_csv_path = "/Users/rfitzger/data/bam/mep3/in/lodes/LODES8_wac_2022_JT00_S000_census_tract.csv.gz"
+employment_csv_geoid_column = "geoid"
+employment_csv_value_column = "jobs"
 
 [reference_network]
 network_dir = "/Users/rfitzger/dev/nrel/routee/routee-compass-tomtom/data/tomtom_national"
