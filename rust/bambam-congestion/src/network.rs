@@ -318,7 +318,7 @@ fn load_posted_speeds_mph(
         let complete_edges_path = mode_dir.join("edges-complete.csv.gz");
         if complete_edges_path.exists() {
             if let Ok(mask) = read_raw_maxspeed_presence_mask(&complete_edges_path, n_edges) {
-                for (s, has_raw) in speeds.iter_mut().zip(mask.into_iter()) {
+                for (s, has_raw) in speeds.iter_mut().zip(mask) {
                     if !has_raw {
                         *s = None;
                     }
