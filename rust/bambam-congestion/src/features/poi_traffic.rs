@@ -974,10 +974,9 @@ where
                     mask |= 1 << bit;
                 }
             }
-            "historic"
-                if classify_osm_historic(v) => {
-                    mask |= 1 << 4; // recreation
-                }
+            "historic" if classify_osm_historic(v) => {
+                mask |= 1 << 4; // recreation
+            }
             _ => {}
         }
     }
