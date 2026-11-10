@@ -84,3 +84,52 @@ uv run python python/nlr/bambam/congestion/train_congestion_models.py \
 RUST_LOG=info ./rust/target/release/bambam-congestion impute \
     --config configuration/bambam-congestion/congestion.toml
 ```
+
+## Benchmarks
+
+Conflation was tested on the [boulder_co/](/boulder_co/) scenario.
+
+#### `bambam-congestion calibrate` Benchmarks & Conflation Validation
+- **Performance & Memory:**
+  - **Wall-clock time:** `205.9s` (`3.4 min` total: `12s` for spatial feature R*-trees, `25s` to load `33,512,241` time-varying speed profiles, `168s` to stream `124,379,003` TomTom reference edges + `6` gzipped period speed files, `< 0.5s` for parallel `rayon` conflation and Parquet/CSV export).
+  - **Peak Memory (RSS):** `5.27 GB` (`4.99 GB` peak footprint), well below the `16 GB` ceiling.
+- **Match Rate by Road Class (`2,097 / 2,135 = 98.22%` overall):**
+
+| Road Class | Open Network Edges | Conflated Edges | Match Rate (%) | Median `wd-am` (mph) | Median `wd-af` (mph) | Median `wd-pm` (mph) | Median `we-af` (mph) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `motorway` | 16 | 16 | **100.00%** | 41.84 | 45.91 | 44.41 | 47.63 |
+| `primary` | 332 | 329 | **99.10%** | 26.65 | 26.34 | 23.88 | 27.49 |
+| `tertiary` | 1,083 | 1,073 | **99.08%** | 20.82 | 21.06 | 20.62 | 21.28 |
+| `link` | 84 | 82 | **97.62%** | 20.34 | 20.59 | 18.91 | 21.73 |
+| `trunk` | 131 | 127 | **96.95%** | 31.13 | 32.13 | 28.97 | 33.58 |
+| `secondary` | 489 | 470 | **96.11%** | 26.50 | 26.03 | 24.14 | 27.45 |
+
+- **Divided Highway Directional Check (US-36 Motorway):**
+  - **WB/NB into Boulder (`8` edges):** Heavy morning inbound congestion (`wd-am` mean `32.43 mph` vs. `wd-pm` mean `36.87 mph`, $\Delta_{\text{AM}-\text{PM}} = -4.44\text{ mph}$).
+  - **EB/SB towards Denver (`8` edges):** Free-flowing morning outbound (`wd-am` mean `48.62 mph`) vs. slower evening outbound (`wd-pm` mean `42.17 mph`, $\Delta_{\text{AM}-\text{PM}} = +6.45\text{ mph}$).
+  - Confirms the $\le 45^\circ$ geodesic circular heading filter cleanly separates opposing carriageways.
+
+---
+
+#### 3. Step 2.2 — Spatial Feature Distributions
+- **Sources:** `colorado-latest.osm.pbf` (`3,203` opportunity points), `boulder_co/vertices-complete.csv.gz` (`171` traffic control vertices), and `tracts.csv` + `2025-12-09-aceee-poverty-population.csv` + `LODES8_wac_2022_JT00_S000_census_tract.csv.gz` (`39` Census tracts in the Boulder study bbox).
+- **Summary Statistics (`calibration_with_speedlimit.parquet`, `11,592` rows, `0` `NaN`s):**
+
+| Feature | Min | Median | Mean | Max | `% Non-Zero` | `NaN` Count |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `Speed Limit` (mph) | 10.00 | 30.00 | 29.57 | 60.00 | 100.0% | 0 |
+| `Population Density` ($10^3 / \text{mi}^2$) | 0.026 | 1.477 | 2.231 | 12.275 | 100.0% | 0 |
+| `Employment Density` ($10^3 / \text{mi}^2$) | 0.028 | 3.617 | 5.677 | 18.471 | 100.0% | 0 |
+| `Opp Density` ($\text{opps} / \text{mi}^2$) | 6.69 | 184.29 | 247.39 | 665.88 | 100.0% | 0 |
+| `Traffic Signal/Crossing/Stop Density` ($\text{controls} / \text{mi}^2$) | 0.00 | 12.46 | 13.06 | 39.89 | 93.5% | 0 |
+| `Speed` (mph) | 2.53 | 24.24 | 23.80 | 66.44 | 100.0% | 0 |
+
+---
+
+#### 4. Step 2.3 — Model Training & `bambam-congestion impute`
+- **Model Training (`train_congestion_models.py` with `--n-iter 25`):**
+  - `xgboost_model_with_speedlimit`: $\text{RMSE} = 6.17\text{ mph}$, $\text{MAE} = 4.67\text{ mph}$, $\text{SMAPE} = 22.83\%$ (`5.61s`).
+  - `xgboost_model_without_speedlimit`: $\text{RMSE} = 7.48\text{ mph}$, $\text{MAE} = 5.61\text{ mph}$, $\text{SMAPE} = 34.16\%$ (`1.15s`).
+- **Imputation (`bambam-congestion impute`):**
+  - Completed in `12.09s` (`98.6 MB` peak RSS) for all `7,885` edges (`2,135` high-functional via XGBoost + `5,750` low-functional via `sl-med-imp`).
+  - Verified that all 6 `edges-speeds-{wd,we}-{am,af,pm}-mph-enumerated.txt.gz` files have exactly `7,885` rows matching `boulder_co/edges-compass.csv.gz` with zero `NaN`, negative, or zero speeds.

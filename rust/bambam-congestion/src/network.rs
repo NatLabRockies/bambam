@@ -308,10 +308,24 @@ fn load_posted_speeds_mph(
         }
     }
 
-    // 3. Check legacy `edges-posted-speed-enumerated.txt.gz` (e.g. `boulder_co/`, `denver_co/`)
+    // 3. Check legacy `edges-complete.csv.gz` + `edges-posted-speed-enumerated.txt.gz`
+    //    In legacy OSMnx datasets (`boulder_co/`, `denver_co/`), `edges-posted-speed-enumerated.txt.gz`
+    //    had missing speed limits pre-imputed with class averages, whereas `edges-complete.csv.gz`
+    //    preserves the raw `maxspeed` column (empty when missing in OSM).
     let legacy_posted_path = mode_dir.join("edges-posted-speed-enumerated.txt.gz");
     if legacy_posted_path.exists() {
-        return read_optional_speeds(&legacy_posted_path, legacy_unit);
+        let mut speeds = read_optional_speeds(&legacy_posted_path, legacy_unit)?;
+        let complete_edges_path = mode_dir.join("edges-complete.csv.gz");
+        if complete_edges_path.exists() {
+            if let Ok(mask) = read_raw_maxspeed_presence_mask(&complete_edges_path, n_edges) {
+                for (s, has_raw) in speeds.iter_mut().zip(mask.into_iter()) {
+                    if !has_raw {
+                        *s = None;
+                    }
+                }
+            }
+        }
+        return Ok(speeds);
     }
 
     // 4. Fall back to `edges-speeds-mph-enumerated.txt.gz`
@@ -321,6 +335,56 @@ fn load_posted_speeds_mph(
     }
 
     Ok(vec![None; n_edges])
+}
+
+/// Checks `edges-complete.csv.gz` for a `maxspeed` column and returns a boolean mask
+/// indicating which rows have a non-empty raw OSM `maxspeed` tag.
+fn read_raw_maxspeed_presence_mask(
+    complete_edges_path: &Path,
+    expected_len: usize,
+) -> Result<Vec<bool>, CongestionError> {
+    let reader = open_buffered_reader(complete_edges_path)?;
+    let mut csv_reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(reader);
+    let headers = csv_reader
+        .headers()
+        .map_err(|e| CongestionError::Csv {
+            path: complete_edges_path.to_path_buf(),
+            message: e.to_string(),
+        })?
+        .clone();
+    let Some(maxspeed_idx) = headers
+        .iter()
+        .position(|h| h.trim().eq_ignore_ascii_case("maxspeed"))
+    else {
+        return Err(CongestionError::Network(
+            "no maxspeed column in edges-complete.csv.gz".to_string(),
+        ));
+    };
+
+    let mut mask = Vec::with_capacity(expected_len);
+    for rec_res in csv_reader.records() {
+        let rec = rec_res.map_err(|e| CongestionError::Csv {
+            path: complete_edges_path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let has_val = rec.get(maxspeed_idx).map(|s| s.trim()).is_some_and(|s| {
+            !s.is_empty()
+                && !s.eq_ignore_ascii_case("nan")
+                && !s.eq_ignore_ascii_case("none")
+                && s != "-299"
+        });
+        mask.push(has_val);
+    }
+    if mask.len() != expected_len {
+        return Err(CongestionError::Network(format!(
+            "edges-complete.csv.gz row count {} != expected {}",
+            mask.len(),
+            expected_len
+        )));
+    }
+    Ok(mask)
 }
 
 /// Reads an enumerated speed file (`.txt` or `.txt.gz`) and converts valid positive speeds

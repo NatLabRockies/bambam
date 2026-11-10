@@ -330,14 +330,73 @@ fn load_traffic_controls_from_vertices_complete(
     path: &Path,
     search_bbox: Rect<f64>,
 ) -> Result<Vec<SpatialFeaturePoint>, CongestionError> {
-    let vertices: Box<[VertexCompleteRecord]> = read_utils::from_csv(&path, true, None, None)
-        .map_err(|e| {
-            CongestionError::SpatialFeature(format!("failed reading '{}': {e}", path.display()))
-        })?;
+    if let Ok(vertices) = read_utils::from_csv::<VertexCompleteRecord>(&path, true, None, None) {
+        let mut out = Vec::new();
+        for v in vertices.iter() {
+            let lon = v.x as f64;
+            let lat = v.y as f64;
+            if lon < search_bbox.min().x
+                || lon > search_bbox.max().x
+                || lat < search_bbox.min().y
+                || lat > search_bbox.max().y
+            {
+                continue;
+            }
+            let weight = (v.traffic_signals as u8 + v.stop as u8 + v.crossing as u8) as f64;
+            if weight > 0.0 {
+                out.push(SpatialFeaturePoint {
+                    lon,
+                    lat,
+                    kind: FeatureKind::TrafficControl,
+                    weight,
+                });
+            }
+        }
+        return Ok(out);
+    }
+
+    // Legacy `vertices-complete.csv.gz` format (e.g. `boulder_co/`, `denver_co/`)
+    // with `x`, `y`, and `highway` string column (`traffic_signals`, `stop`, `crossing`).
+    let reader = open_buffered_reader(path)?;
+    let mut csv_reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(reader);
+    let headers = csv_reader
+        .headers()
+        .map_err(|e| CongestionError::Csv {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?
+        .clone();
+    let header_map: HashMap<String, usize> = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| (h.trim().to_ascii_lowercase(), i))
+        .collect();
+
+    let (Some(&x_idx), Some(&y_idx)) = (header_map.get("x"), header_map.get("y")) else {
+        return Err(CongestionError::SpatialFeature(format!(
+            "failed reading '{}': missing x/y columns",
+            path.display()
+        )));
+    };
+    let hwy_idx = header_map.get("highway").copied();
+    let ts_idx = header_map.get("traffic_signals").copied();
+    let stop_idx = header_map.get("stop").copied();
+    let cross_idx = header_map.get("crossing").copied();
+
     let mut out = Vec::new();
-    for v in vertices.iter() {
-        let lon = v.x as f64;
-        let lat = v.y as f64;
+    for rec_res in csv_reader.records() {
+        let rec = rec_res.map_err(|e| CongestionError::Csv {
+            path: path.to_path_buf(),
+            message: e.to_string(),
+        })?;
+        let (Some(Ok(lon)), Some(Ok(lat))) = (
+            rec.get(x_idx).map(|s| s.trim().parse::<f64>()),
+            rec.get(y_idx).map(|s| s.trim().parse::<f64>()),
+        ) else {
+            continue;
+        };
         if lon < search_bbox.min().x
             || lon > search_bbox.max().x
             || lat < search_bbox.min().y
@@ -345,7 +404,28 @@ fn load_traffic_controls_from_vertices_complete(
         {
             continue;
         }
-        let weight = (v.traffic_signals as u8 + v.stop as u8 + v.crossing as u8) as f64;
+        let mut weight = 0.0;
+        if let Some(hi) = hwy_idx {
+            if let Some(val) = rec.get(hi) {
+                let s = val.trim().to_ascii_lowercase();
+                if s.contains("traffic_signals") {
+                    weight += 1.0;
+                }
+                if s.contains("crossing") {
+                    weight += 1.0;
+                }
+                if s == "stop" || s.contains("'stop'") || s.contains("\"stop\"") {
+                    weight += 1.0;
+                }
+            }
+        }
+        for b_idx in [ts_idx, stop_idx, cross_idx].into_iter().flatten() {
+            if let Some(val) = rec.get(b_idx) {
+                if val.trim().eq_ignore_ascii_case("true") || val.trim() == "1" {
+                    weight += 1.0;
+                }
+            }
+        }
         if weight > 0.0 {
             out.push(SpatialFeaturePoint {
                 lon,

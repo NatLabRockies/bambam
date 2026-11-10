@@ -112,6 +112,10 @@ pub struct CalibrationSummary {
 ///    and `conflated_edges.{parquet,csv}`.
 pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary, CongestionError> {
     let open_net = LoadedOpenNetwork::load(&config.open_network)?;
+    // Build spatial feature engine first so any invalid paths / data source errors fail fast
+    // before streaming the reference network.
+    let feature_engine = SpatialFeatureEngine::build(&open_net, &config.spatial_features)?;
+
     let reference_rtree = build_reference_rtree_in_bbox(
         &config.reference_network,
         &config.time_bins,
@@ -135,8 +139,6 @@ pub fn run_calibration(config: &CalibrationConfig) -> Result<CalibrationSummary,
     log::info!(
         "Conflated {conflated_count} / {high_func_count} high-functional edges with reference network speeds"
     );
-
-    let feature_engine = SpatialFeatureEngine::build(&open_net, &config.spatial_features)?;
 
     // Only compute spatial densities for edges that actually matched the reference network
     use rayon::prelude::*;
