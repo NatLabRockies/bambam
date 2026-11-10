@@ -28,7 +28,6 @@ csv = { workspace = true }
 env_logger = { workspace = true }
 flate2 = { workspace = true }
 geo = { workspace = true }
-geo-buffer = { workspace = true }
 geo-types = { workspace = true }
 geozero = { workspace = true }
 indexmap = { workspace = true }
