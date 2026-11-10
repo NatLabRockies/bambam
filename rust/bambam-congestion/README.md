@@ -85,7 +85,17 @@ RUST_LOG=info ./rust/target/release/bambam-congestion impute \
     --config configuration/bambam-congestion/congestion.toml
 ```
 
-## Benchmarks
+## Validation
+
+Validation runs executed by Gemini Argon, 2026-11-10:
+  - [Conflation](#conflation)
+    - **What was tested:** End-to-end calibration (`bambam-congestion calibrate`), `0.5-mile` spatial feature extraction (`Opp Density`, `Traffic Control Density`, `Population/Employment Density`), XGBoost model training (`train_congestion_models.py`), and Rust speed imputation (`bambam-congestion impute`) on the `boulder_co` road network (`7,885` edges) against the national TomTom MultiNet-R reference dataset (`124.4M` edges, `33.5M` time-varying profiles). Also verified numerical parity between Python `xgboost.XGBRegressor` and Rust `XgboostJsonModel` in `python/tests/test_congestion_pipeline.py`.
+    - **What was found:** Conflated `98.22%` (`2,097 / 2,135`) of high-functional edges in `205.9s` (`5.27 GB` peak RSS), confirmed directional speed separation on divided highways (`US-36` morning inbound slowdown vs. evening outbound slowdown) with zero opposing-carriageway false matches, verified `0` `NaN`s across all spatial features and imputed speed tables, and confirmed `< 1e-5 mph` numerical parity between Python and Rust XGBoost evaluators.
+  - [Smoke Test](#routee-compassbambamrunner-routing-smoke-test)
+    - **What was tested:** Statistical and domain validation (`validate_congestion_results.py`) covering out-of-sample accuracy (`80/20` panel split by link ID), functional-class monotonicity and peak-dip invariants across all `6` time bins, and live RouteE Compass (`BambamRunner`) Dijkstra drive-mode isochrone searches (`2`, `4`, and `6` minute horizons across `3` Boulder origins) comparing peak (`wd-am`, `wd-pm`) vs. off-peak (`we-af`) imputed speed tables.
+    - **What was found:** Out-of-sample combined test accuracy achieved `RMSE = 6.30 mph` (`MAE = 4.76 mph`, `SMAPE = 23.83%`); all `18` functional-class hierarchy (`Motorway > Trunk > Primary > Secondary > Tertiary > Residential`) and peak-dip (`wd-pm < we-af`, `wd-am < we-am`) assertions passed; and RouteE Compass peak-hour (`wd-pm`) drive isochrones contracted by `13.4%–34.6%` in area (and `38–429` fewer reachable destinations) relative to off-peak (`we-af`).
+
+### Conflation
 
 Conflation was tested on the [boulder_co/](/boulder_co/) scenario.
 
@@ -133,3 +143,61 @@ Conflation was tested on the [boulder_co/](/boulder_co/) scenario.
 - **Imputation (`bambam-congestion impute`):**
   - Completed in `12.09s` (`98.6 MB` peak RSS) for all `7,885` edges (`2,135` high-functional via XGBoost + `5,750` low-functional via `sl-med-imp`).
   - Verified that all 6 `edges-speeds-{wd,we}-{am,af,pm}-mph-enumerated.txt.gz` files have exactly `7,885` rows matching `boulder_co/edges-compass.csv.gz` with zero `NaN`, negative, or zero speeds.
+
+### RouteE Compass/BamBamRunner Routing Smoke Test
+
+Created `validate_congestion_results.py` and generated `validation_report.md`:
+
+#### 1. Out-of-Sample Accuracy (80/20 Panel Split by Link ID)
+- **Overall (`n = 2,376` held-out edge $\times$ period observations):**
+
+| Model Group | Test Samples | Mean Observed (mph) | Mean Predicted (mph) | RMSE (mph) | MAE (mph) | SMAPE (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `with_speedlimit` | 2,166 | 23.36 | 22.62 | **6.17** | **4.68** | **22.83%** |
+| `without_speedlimit` | 210 | 18.89 | 19.06 | **7.48** | **5.61** | **34.16%** |
+| **Combined All Test** | **2,376** | **22.97** | **22.30** | **6.30** | **4.76** | **23.83%** |
+
+- **By `CongestionRoadClass`:**
+
+| Road Class | Test Samples | Mean Observed (mph) | Mean Predicted (mph) | RMSE (mph) | MAE (mph) | SMAPE (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `Motorway` | 24 | 53.71 | 43.26 | 12.19 | 10.50 | 23.37% |
+| `Trunk` | 120 | 30.50 | 28.97 | 8.11 | 6.28 | 23.62% |
+| `Primary` | 354 | 26.48 | 25.31 | 7.51 | 5.84 | 25.11% |
+| `Secondary` | 522 | 25.28 | 24.03 | 6.95 | 5.58 | 26.61% |
+| `Tertiary` | 1,230 | 19.89 | 20.00 | 4.97 | 3.71 | 20.97% |
+| `Link` | 126 | 20.53 | 18.81 | 7.52 | 6.02 | 36.96% |
+
+- **By `TimeBinSpec`:**
+
+| Time Bin | Test Samples | Mean Observed (mph) | Mean Predicted (mph) | RMSE (mph) | MAE (mph) | SMAPE (%) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| `wd-am` | 396 | 22.42 | 21.87 | 6.23 | 4.69 | 23.83% |
+| `wd-af` | 396 | 22.65 | 21.88 | 6.32 | 4.79 | 24.14% |
+| `wd-pm` | 396 | 21.58 | 20.91 | 6.48 | 4.97 | 26.25% |
+| `we-am` | 396 | 24.18 | 23.48 | 6.11 | 4.59 | 21.95% |
+| `we-af` | 396 | 23.57 | 22.99 | 6.28 | 4.75 | 23.25% |
+| `we-pm` | 396 | 23.41 | 22.69 | 6.33 | 4.75 | 23.58% |
+
+---
+
+#### 2. Monotonicity & Peak-Dip Check (Median Imputed Speeds in `mph` Across All `7,885` Edges)
+All 18 programmatic assertions (`Motorway > Trunk > Primary > Secondary > Tertiary > Residential` across every time bin, and `wd-pm < we-af` / `wd-am < we-am` across all high-functional road classes) **passed**:
+
+| Road Class | Edges | `sl-med-imp` (mph) | `wd-am` (mph) | `wd-af` (mph) | `wd-pm` (mph) | `we-am` (mph) | `we-af` (mph) | `we-pm` (mph) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `Motorway` | 16 | 45.0 | **35.99** | 36.70 | **35.39** | 40.48 | 40.53 | 39.82 |
+| `Trunk` | 131 | 40.0 | **30.63** | 31.40 | **28.20** | 33.39 | 32.55 | 31.95 |
+| `Primary` | 332 | 35.0 | **26.15** | 25.65 | **23.54** | 28.57 | 27.31 | 26.59 |
+| `Secondary` | 489 | 35.0 | **25.36** | 25.13 | **22.76** | 27.13 | 26.57 | 26.06 |
+| `Tertiary` | 1,083 | 25.0 | **20.40** | 20.58 | **20.11** | 21.29 | 21.07 | 20.93 |
+| `Link` | 84 | 40.0 | **20.17** | 20.10 | **18.81** | 22.20 | 21.90 | 21.44 |
+| `Residential` | 5,380 | 20.0 | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 |
+| `Other` | 370 | 20.0 | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 | 20.00 |
+
+---
+
+#### 3. RouteE Compass (`BambamRunner`) Routing Smoke Test
+Executed Dijkstra drive-mode searches across 3 Boulder origins (`center`, `southwest_core`, `northeast_core`) at `2`, `4`, and `6` minute time bins using `edges-speeds-wd-am-mph-enumerated.txt.gz`, `edges-speeds-wd-pm-mph-enumerated.txt.gz`, and `edges-speeds-we-af-mph-enumerated.txt.gz`:
+- Across all origins and time thresholds, peak-hour `wd-pm` isochrone area contracts by **`13.4%` to `34.6%`** (and reachable network vertices drop by **`38` to `429` destinations**) relative to off-peak `we-af`.
+- Morning peak `wd-am` isochrone area also contracts across every origin and threshold relative to `we-af`.
