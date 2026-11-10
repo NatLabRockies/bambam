@@ -1,10 +1,6 @@
 # `bambam-congestion`
 
-High-performance Rust engine for **Congestion Calibration** (conflating OpenStreetMap / Overture Maps road networks with TomTom MultiNet-R speeds) and **Operating Speed Imputation** across the 6 BAMBAM / MEP time-of-day periods (`wd-am`, `wd-af`, `wd-pm`, `we-am`, `we-af`, `we-pm`).
-
-## TomTom Data
-
-This software will impute speeds into an OSM/OMF network dataset, trained from real speed data collected by TomTom. The TomTom network data itself is not licensed for open-source and additionally requires a processing step via an internal-NLR software package that produces RouteE Compass datasets. While this means that this code cannot be run outside of NLR, 1) it is provided here for review, 2) we may eventually publish speed datasets that result from this ML pipeline, as that does not conflict with our license.
+High-performance Rust engine for **Congestion Calibration** (conflating OpenStreetMap / Overture Maps road networks with a reference road network graph dataset containing real-world speed data) and **Operating Speed Imputation** across the 6 BAMBAM / MEP time-of-day periods (`wd-am`, `wd-af`, `wd-pm`, `we-am`, `we-af`, `we-pm`).
 
 ---
 
@@ -13,7 +9,7 @@ This software will impute speeds into an OSM/OMF network dataset, trained from r
 1. **Import Open Network (`bambam_util import-network` / `bambam-osm` / `bambam-omf`):**
    Produces `<network_dir>/drive/` containing `edges-compass.csv.gz`, `edges-geometries-enumerated.txt.gz`, `edges-classes-enumerated.txt.gz`, `edges-posted-speeds-mph-enumerated.txt.gz`, and `vertices-complete.csv.gz`.
 2. **Calibrate (`bambam-congestion calibrate` or `bambam_util congestion-calibrate`):**
-   Streams the TomTom MultiNet-R Compass dataset alongside its 6 enumerated period speed files (`tomtom-natl-{wd,we}-{am,af,pm}.txt.gz`), conflates high-functional class edges (`Motorway`, `Trunk`, `Link`, `Primary`, `Secondary`, `Tertiary`) within a `5m` corridor and $\le 45^\circ$ circular heading difference, computes `0.5-mile` spatial densities (`Opp Density`, `Traffic Signal/Crossing/Traffic Stop Density`, `Population Density`, `Employment Density`), and writes:
+   Streams a reference road network graph dataset (in RouteE Compass format) alongside its enumerated time-of-day speed files (`<prefix>-{wd,we}-{am,af,pm}.txt.gz`), conflates high-functional class edges (`Motorway`, `Trunk`, `Link`, `Primary`, `Secondary`, `Tertiary`) within a `5m` corridor and $\le 45^\circ$ circular heading difference, computes `0.5-mile` spatial densities (`Opp Density`, `Traffic Signal/Crossing/Traffic Stop Density`, `Population Density`, `Employment Density`), and writes:
    - `calibration_with_speedlimit.{parquet,csv}` (16 predictors + `Speed`)
    - `calibration_without_speedlimit.{parquet,csv}` (15 predictors + `Speed`)
    - `conflated_edges.{parquet,csv}` (wide per-edge summary)
@@ -89,7 +85,7 @@ RUST_LOG=info ./rust/target/release/bambam-congestion impute \
 
 Validation runs executed by Gemini Argon, 2026-11-10:
   - [Conflation](#conflation)
-    - **What was tested:** End-to-end calibration (`bambam-congestion calibrate`), `0.5-mile` spatial feature extraction (`Opp Density`, `Traffic Control Density`, `Population/Employment Density`), XGBoost model training (`train_congestion_models.py`), and Rust speed imputation (`bambam-congestion impute`) on the `boulder_co` road network (`7,885` edges) against the national TomTom MultiNet-R reference dataset (`124.4M` edges, `33.5M` time-varying profiles). Also verified numerical parity between Python `xgboost.XGBRegressor` and Rust `XgboostJsonModel` in `python/tests/test_congestion_pipeline.py`.
+    - **What was tested:** End-to-end calibration (`bambam-congestion calibrate`), `0.5-mile` spatial feature extraction (`Opp Density`, `Traffic Control Density`, `Population/Employment Density`), XGBoost model training (`train_congestion_models.py`), and Rust speed imputation (`bambam-congestion impute`) on the `boulder_co` road network (`7,885` edges) against a national reference road network graph dataset with real-world speed data (`124.4M` edges, `33.5M` time-varying profiles). Also verified numerical parity between Python `xgboost.XGBRegressor` and Rust `XgboostJsonModel` in `python/tests/test_congestion_pipeline.py`.
     - **What was found:** Conflated `98.22%` (`2,097 / 2,135`) of high-functional edges in `205.9s` (`5.27 GB` peak RSS), confirmed directional speed separation on divided highways (`US-36` morning inbound slowdown vs. evening outbound slowdown) with zero opposing-carriageway false matches, verified `0` `NaN`s across all spatial features and imputed speed tables, and confirmed `< 1e-5 mph` numerical parity between Python and Rust XGBoost evaluators.
   - [Smoke Test](#routee-compassbambamrunner-routing-smoke-test)
     - **What was tested:** Statistical and domain validation (`validate_congestion_results.py`) covering out-of-sample accuracy (`80/20` panel split by link ID), functional-class monotonicity and peak-dip invariants across all `6` time bins, and live RouteE Compass (`BambamRunner`) Dijkstra drive-mode isochrone searches (`2`, `4`, and `6` minute horizons across `3` Boulder origins) comparing peak (`wd-am`, `wd-pm`) vs. off-peak (`we-af`) imputed speed tables.
@@ -101,7 +97,7 @@ Conflation was tested on the [boulder_co/](/boulder_co/) scenario.
 
 #### `bambam-congestion calibrate` Benchmarks & Conflation Validation
 - **Performance & Memory:**
-  - **Wall-clock time:** `205.9s` (`3.4 min` total: `12s` for spatial feature R*-trees, `25s` to load `33,512,241` time-varying speed profiles, `168s` to stream `124,379,003` TomTom reference edges + `6` gzipped period speed files, `< 0.5s` for parallel `rayon` conflation and Parquet/CSV export).
+  - **Wall-clock time:** `205.9s` (`3.4 min` total: `12s` for spatial feature R*-trees, `25s` to load `33,512,241` time-varying speed profiles, `168s` to stream `124,379,003` reference network edges + `6` gzipped period speed files, `< 0.5s` for parallel `rayon` conflation and Parquet/CSV export).
   - **Peak Memory (RSS):** `5.27 GB` (`4.99 GB` peak footprint), well below the `16 GB` ceiling.
 - **Match Rate by Road Class (`2,097 / 2,135 = 98.22%` overall):**
 
