@@ -12,6 +12,7 @@ keywords = ["nlr", "access-model", "accessibility", "multimodal", "transit"]
 categories = ["command-line-utilities", "science", "science::geo"]
 
 [dependencies]
+bambam-congestion = { workspace = true }
 bambam-core = { workspace = true }
 bambam-gbfs = { workspace = true } 
 bambam-gtfs = { workspace = true } 

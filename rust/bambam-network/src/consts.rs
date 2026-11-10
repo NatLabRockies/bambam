@@ -16,6 +16,7 @@ pub const COMPASS_EDGES_FILENAME: &str = "edges-compass.csv.gz";
 pub const EDGE_MAPPING_FILENAME: &str = "edges-mapping.csv.gz";
 pub const GEOMETRIES_FILENAME: &str = "edges-geometries-enumerated.txt.gz";
 pub const SPEEDS_FILENAME: &str = "edges-speeds-mph-enumerated.txt.gz";
+pub const POSTED_SPEEDS_FILENAME: &str = "edges-posted-speeds-mph-enumerated.txt.gz";
 pub const CLASSES_FILENAME: &str = "edges-classes-enumerated.txt.gz";
 pub const SPEED_MAPPING_FILENAME: &str = "edges-classes-speed-mapping.csv.gz";
 pub const BEARINGS_FILENAME: &str = "edges-bearings-enumerated.txt.gz";

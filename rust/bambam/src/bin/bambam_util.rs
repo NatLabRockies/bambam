@@ -4,6 +4,7 @@ use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
+use bambam_congestion::{CalibrateCliArgs, ImputeCliArgs};
 use bambam_modal_metrics::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
 use bambam_modal_metrics::common::modal_metrics::ModalMetric;
 use bambam_osm::model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable};
@@ -241,6 +242,16 @@ pub enum App {
         #[arg(long)]
         infrastructure_match_distance_meters: Option<f64>,
     },
+    #[command(
+        name = "congestion-calibrate",
+        about = "Conflate an Open Network (OSM/OMF) with TomTom MultiNet-R speeds and export calibration training tables"
+    )]
+    CongestionCalibrate(CalibrateCliArgs),
+    #[command(
+        name = "congestion-impute",
+        about = "Impute operating speeds across all 6 time periods for a BAMBAM / RouteE Compass road network"
+    )]
+    CongestionImpute(ImputeCliArgs),
 }
 
 impl App {
@@ -544,6 +555,18 @@ impl App {
                     infrastructure_match_distance_meters: *infrastructure_match_distance_meters,
                 };
                 req.run()
+            }
+            App::CongestionCalibrate(args) => {
+                let cfg = args.resolve_config().map_err(|e| e.to_string())?;
+                bambam_congestion::run_calibration(&cfg)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            }
+            App::CongestionImpute(args) => {
+                let cfg = args.resolve_config().map_err(|e| e.to_string())?;
+                bambam_congestion::run_imputation(&cfg)
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
             }
         }
     }

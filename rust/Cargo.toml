@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "bambam",
+    "bambam-congestion",
     "bambam-core",
     "bambam-gbfs",
     "bambam-gtfs",
@@ -21,6 +22,7 @@ version = "0.3.3"
 
 arrow = { version = "58.0.0" }
 bambam = { version = "0.3.3", path = "bambam" }
+bambam-congestion = { version = "0.3.3", path = "bambam-congestion" }
 bambam-core = { version = "0.3.3", path = "bambam-core" }
 bambam-gbfs = { version = "0.3.3", path = "bambam-gbfs" } 
 bambam-gtfs = { version = "0.3.3", path = "bambam-gtfs" } 
