@@ -1,11 +1,25 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Read,
+    path::Path,
+};
 
+use bamcensus::app::{acs_tiger, lodes_tiger};
+use bamcensus_acs::model::{AcsApiQueryParams, AcsGeoidQuery};
+use bamcensus_core::model::identifier::{Geoid, HasGeoidString, StateCode};
+use bamcensus_lehd::model::LodesDataset;
+use flate2::read::GzDecoder;
 use geo::{Area, BoundingRect, Contains, Coord, Geometry, MultiPolygon, Point, Polygon, Rect};
-use geozero::{wkt::Wkt as WktReader, ToGeo};
+use geozero::{geojson::GeoJsonString, wkt::Wkt as WktReader, ToGeo};
+use itertools::Itertools;
+use routee_compass_core::util::geo::PolygonalRTree;
 use rstar::{RTree, RTreeObject, AABB};
 
 use crate::{
-    config::{CensusSourceConfig, ProjectionMode},
+    config::{
+        BamcensusLodesConfig, BamcensusPopulationConfig, CensusSourceConfig, CensusStudyRegion,
+        ProjectionMode,
+    },
     conflate::{expand_bbox_by_meters, LocalMeterProjector},
     error::CongestionError,
     features::poi_traffic::lonlat_to_epsg3857,
@@ -52,6 +66,15 @@ pub fn build_census_rtree(
     let search_bbox = expand_bbox_by_meters(study_bbox, radius_m * 2.0 + 1000.0);
 
     let entries = match cfg {
+        CensusSourceConfig::Bamcensus {
+            population_source,
+            employment_source,
+        } => load_census_bamcensus(
+            population_source,
+            employment_source,
+            search_bbox,
+            projection_mode,
+        )?,
         CensusSourceConfig::Shapefile {
             path,
             pop_density_field,
@@ -236,6 +259,254 @@ fn build_buffer_quadrature_points(
     ]
 }
 
+/// Downloads US Census ACS population counts, LEHD LODES employment counts, and TIGER/Line
+/// polygons via `bamcensus` (`acs_tiger::run_batch` and `lodes_tiger::run`), filters to polygons
+/// intersecting `search_bbox`, and converts counts into `pop_density_1000_per_sq_mi` and
+/// `emp_density_1000_per_sq_mi` (`count / area_km2 * 2.59 / 1000.0`).
+///
+/// Requires the user's Census API key in `CENSUS_API_KEY` (or `CENSUS_API_TOKEN`) in the environment
+/// (or set on `population_source.api_token`).
+fn load_census_bamcensus(
+    population_source: &BamcensusPopulationConfig,
+    employment_source: &BamcensusLodesConfig,
+    search_bbox: Rect<f64>,
+    projection_mode: ProjectionMode,
+) -> Result<Vec<CensusPolygonEntry>, CongestionError> {
+    let api_token = population_source.resolve_api_token()?;
+    let state_geoids = resolve_bamcensus_state_geoids(search_bbox)?;
+    if state_geoids.is_empty() {
+        return Err(CongestionError::SpatialFeature(format!(
+            "no US states intersect the study bounding box {search_bbox:?}"
+        )));
+    }
+
+    let lodes_geoids = match &employment_source.study_region {
+        Some(CensusStudyRegion::National) => StateCode::ALL
+            .iter()
+            .map(|s| Geoid::try_from(s.to_fips_string().as_str()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CongestionError::SpatialFeature)?,
+        Some(CensusStudyRegion::Census { geoids }) => geoids
+            .iter()
+            .map(|s| Geoid::try_from(s.as_str()))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CongestionError::SpatialFeature)?,
+        None => state_geoids.clone(),
+    };
+
+    let acs_categories = population_source
+        .acs_categories
+        .clone()
+        .unwrap_or_else(|| vec!["B01001_001E".to_string()]);
+
+    let acs_queries = state_geoids
+        .iter()
+        .map(|state_geoid| {
+            let geoid_query =
+                AcsGeoidQuery::new(Some(state_geoid.clone()), population_source.acs_resolution)
+                    .map_err(CongestionError::SpatialFeature)?;
+            Ok(AcsApiQueryParams::new(
+                None,
+                population_source.acs_year,
+                population_source.acs_type,
+                acs_categories.clone(),
+                geoid_query,
+                Some(api_token.clone()),
+            ))
+        })
+        .collect::<Result<Vec<_>, CongestionError>>()?;
+
+    let lodes_dataset = LodesDataset::WAC {
+        edition: employment_source.edition,
+        job_type: employment_source.job_type,
+        segment: employment_source.segment,
+        year: employment_source.year,
+    };
+    let wac_segments = employment_source.resolved_wac_segments();
+    let lodes_granularity = employment_source
+        .data_granularity
+        .or(population_source.acs_resolution);
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| {
+            CongestionError::SpatialFeature(format!(
+                "failure creating async tokio runtime for bamcensus: {e}"
+            ))
+        })?;
+
+    let (acs_res, lodes_res) = runtime.block_on(async {
+        let acs = acs_tiger::run_batch(&acs_queries).await.map_err(|e| {
+            CongestionError::SpatialFeature(format!("failure downloading ACS data: {e}"))
+        })?;
+        let lodes = lodes_tiger::run(
+            &lodes_geoids,
+            &lodes_granularity,
+            &wac_segments,
+            &lodes_dataset,
+        )
+        .await
+        .map_err(|e| {
+            CongestionError::SpatialFeature(format!("failure downloading LODES data: {e}"))
+        })?;
+        Ok::<_, CongestionError>((acs, lodes))
+    })?;
+
+    if !acs_res.join_errors.is_empty() || !acs_res.tiger_errors.is_empty() {
+        return Err(CongestionError::SpatialFeature(format!(
+            "failures downloading ACS data.\nTIGER ERRORS (top 5):\n  {}\nJOIN ERRORS (top 5):\n  {}",
+            acs_res.tiger_errors.iter().take(5).join("\n  "),
+            acs_res.join_errors.iter().take(5).join("\n  ")
+        )));
+    }
+    if !lodes_res.join_errors.is_empty() || !lodes_res.tiger_errors.is_empty() {
+        return Err(CongestionError::SpatialFeature(format!(
+            "failures downloading LODES data.\nTIGER ERRORS (top 5):\n  {}\nJOIN ERRORS (top 5):\n  {}",
+            lodes_res.tiger_errors.iter().take(5).join("\n  "),
+            lodes_res.join_errors.iter().take(5).join("\n  ")
+        )));
+    }
+
+    // Aggregate population counts and geometries by normalized GEOID
+    let mut geom_by_geoid: HashMap<String, MultiPolygon<f64>> = HashMap::new();
+    let mut pop_by_geoid: HashMap<String, f64> = HashMap::new();
+    let mut emp_by_geoid: HashMap<String, f64> = HashMap::new();
+
+    for row in acs_res.join_dataset {
+        let geoid = normalize_geoid(&row.geoid.geoid_string());
+        let val = row
+            .acs_value
+            .as_f64_safe()
+            .map_err(CongestionError::SpatialFeature)?;
+        if val.is_finite() {
+            *pop_by_geoid.entry(geoid.clone()).or_insert(0.0) += val;
+        }
+        if !geom_by_geoid.contains_key(&geoid) {
+            if let Some(mp) = geometry_to_multipolygon(row.geometry) {
+                geom_by_geoid.insert(geoid, mp);
+            }
+        }
+    }
+
+    for row in lodes_res.join_dataset {
+        let geoid = normalize_geoid(&row.geoid.geoid_string());
+        let val = row.value.value;
+        if val.is_finite() {
+            *emp_by_geoid.entry(geoid.clone()).or_insert(0.0) += val;
+        }
+        if !geom_by_geoid.contains_key(&geoid) {
+            if let Some(mp) = geometry_to_multipolygon(row.geometry) {
+                geom_by_geoid.insert(geoid, mp);
+            }
+        }
+    }
+
+    let mut out = Vec::new();
+    for (geoid, mp) in geom_by_geoid {
+        let Some(rect) = mp.bounding_rect() else {
+            continue;
+        };
+        if rect.max().x < search_bbox.min().x
+            || rect.min().x > search_bbox.max().x
+            || rect.max().y < search_bbox.min().y
+            || rect.min().y > search_bbox.max().y
+        {
+            continue;
+        }
+        let area_km2 = compute_multipolygon_area_km2(&mp, rect.center(), projection_mode);
+        if area_km2 <= 1e-9 {
+            continue;
+        }
+        let pop_count = pop_by_geoid.get(&geoid).copied().unwrap_or(0.0);
+        let emp_count = emp_by_geoid.get(&geoid).copied().unwrap_or(0.0);
+        let pop_den_km2 = pop_count / area_km2;
+        let emp_den_km2 = emp_count / area_km2;
+
+        let bbox = AABB::from_corners([rect.min().x, rect.min().y], [rect.max().x, rect.max().y]);
+        out.push(CensusPolygonEntry {
+            geoid,
+            pop_density_1000_per_sq_mi: (pop_den_km2 * KM2_TO_THOUSAND_PER_SQ_MI) as f32,
+            emp_density_1000_per_sq_mi: (emp_den_km2 * KM2_TO_THOUSAND_PER_SQ_MI) as f32,
+            geometry: mp,
+            bbox,
+        });
+    }
+
+    Ok(out)
+}
+
+/// Converts a [`geo::Geometry`] into a [`MultiPolygon`] if it is a `Polygon` or `MultiPolygon`.
+fn geometry_to_multipolygon(geom: Geometry<f64>) -> Option<MultiPolygon<f64>> {
+    match geom {
+        Geometry::Polygon(p) => Some(MultiPolygon(vec![p])),
+        Geometry::MultiPolygon(mp) => Some(mp),
+        _ => None,
+    }
+}
+
+/// Loads the embedded TIGER/Line US states polygonal R*-tree and returns the state [`Geoid`]s
+/// intersecting `search_bbox`.
+fn resolve_bamcensus_state_geoids(search_bbox: Rect<f64>) -> Result<Vec<Geoid>, CongestionError> {
+    let state_file = include_bytes!(
+        "../../../bambam/src/model/input_plugin/population/tl_2023_us_state_in_tiger_lines.geojson.gz"
+    );
+    let mut decoder = GzDecoder::new(&state_file[..]);
+    let mut buf = String::new();
+    decoder.read_to_string(&mut buf).map_err(|e| {
+        CongestionError::SpatialFeature(format!(
+            "failure reading tl_2023_us_state_in_tiger_lines.geojson.gz into memory: {e}"
+        ))
+    })?;
+    let json: serde_json::Value = serde_json::from_str(&buf).map_err(|e| {
+        CongestionError::SpatialFeature(format!(
+            "failure reading tl_2023_us_state_in_tiger_lines.geojson.gz as GeoJSON: {e}"
+        ))
+    })?;
+    let features = json["features"].as_array().ok_or_else(|| {
+        CongestionError::SpatialFeature(
+            "state reference file tl_2023_us_state_in_tiger_lines.geojson.gz expected to be a FeatureCollection"
+                .to_string(),
+        )
+    })?;
+
+    let mut tree_nodes = Vec::with_capacity(features.len());
+    for feature in features {
+        let geoid_str = feature["properties"]["GEOID"].as_str().ok_or_else(|| {
+            CongestionError::SpatialFeature("no GEOID in state feature".to_string())
+        })?;
+        let geoid: Geoid = geoid_str.try_into().map_err(|e| {
+            CongestionError::SpatialFeature(format!("failure decoding state GEOID: {e}"))
+        })?;
+        let geometry_json = serde_json::to_string(&feature["geometry"]).map_err(|e| {
+            CongestionError::SpatialFeature(format!(
+                "failure serializing geometry for state GEOID {geoid}: {e}"
+            ))
+        })?;
+        let geometry: Geometry = GeoJsonString(geometry_json).to_geo().map_err(|e| {
+            CongestionError::SpatialFeature(format!(
+                "failure decoding GeoJSON geometry for state GEOID {geoid}: {e}"
+            ))
+        })?;
+        tree_nodes.push((geometry, geoid));
+    }
+
+    let state_tree =
+        PolygonalRTree::new(tree_nodes).map_err(CongestionError::SpatialFeature)?;
+    let query_geom = Geometry::Polygon(search_bbox.to_polygon());
+    let states: Vec<Geoid> = state_tree
+        .intersection(&query_geom)
+        .map_err(CongestionError::SpatialFeature)?
+        .map(|node| node.data.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    Ok(states)
+}
+
+/// Reads a prepared Census shapefile containing population density (`pop_field`, per $\text{km}^2$)
+/// and employment density (`emp_field`, per $\text{km}^2$) attributes, filters polygons to those
+/// intersecting `search_bbox`, and converts densities to `1,000 per sq mile`.
 fn load_census_shapefile(
     path: &Path,
     pop_field: &str,
@@ -283,6 +554,7 @@ fn load_census_shapefile(
     Ok(out)
 }
 
+/// Extracts a numeric (`f64`) attribute value from a dBase shapefile record by field name.
 fn extract_dbf_numeric(record: &shapefile::dbase::Record, field_name: &str) -> Option<f64> {
     match record.get(field_name)? {
         shapefile::dbase::FieldValue::Numeric(Some(v)) => Some(*v),
@@ -294,6 +566,9 @@ fn extract_dbf_numeric(record: &shapefile::dbase::Record, field_name: &str) -> O
     }
 }
 
+/// Loads Census WKT polygons from a CSV file (such as `tiger-lines/tracts.csv`), joins inline or
+/// external population and employment count tables by normalized GEOID, computes polygon area in
+/// $\text{km}^2$ under `projection_mode`, and converts counts into `1,000 persons/jobs per sq mile`.
 #[allow(clippy::too_many_arguments)]
 fn load_census_csv_polygons(
     polygons_csv_path: &Path,
@@ -427,6 +702,9 @@ fn load_census_csv_polygons(
     Ok(out)
 }
 
+/// Computes the surface area of a [`MultiPolygon`] in $\text{km}^2$ using either a local
+/// geodesic meter tangent-plane projection (`ProjectionMode::Geodesic`) or planar Web Mercator
+/// (`ProjectionMode::LegacyEpsg3857`).
 fn compute_multipolygon_area_km2(
     mp: &MultiPolygon<f64>,
     center: Coord<f64>,
@@ -471,6 +749,8 @@ fn compute_multipolygon_area_km2(
     area_m2 * 1e-6
 }
 
+/// Reads a CSV (or `.csv.gz`) file and builds a lookup map from normalized Census GEOID
+/// (`geoid_col`) to summed numeric count (`val_col`).
 fn load_geoid_value_lookup(
     path: &Path,
     geoid_col: &str,
@@ -629,5 +909,59 @@ mod tests {
         let (pop_zero, emp_zero) = compute_edge_census_densities(&water_edge, &rtree, 0.5);
         assert_eq!(pop_zero, 0.0);
         assert_eq!(emp_zero, 0.0);
+    }
+
+    #[test]
+    fn test_bamcensus_state_geoids_and_config_deserialization() {
+        // Verify that a Boulder bounding box resolves Colorado (FIPS 08) from the embedded TIGER state tree
+        let boulder_bbox = Rect::new(
+            Coord {
+                x: -105.30,
+                y: 39.98,
+            },
+            Coord {
+                x: -105.20,
+                y: 40.05,
+            },
+        );
+        let states = resolve_bamcensus_state_geoids(boulder_bbox).unwrap();
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].geoid_string(), "08");
+
+        // Verify TOML deserialization of CensusSourceConfig::Bamcensus matching bambam.toml conventions
+        let toml_str = r#"
+type = "bamcensus"
+
+[population_source]
+type = "acs"
+acs_type = "five_year"
+acs_year = 2022
+acs_resolution = "census_tract"
+acs_categories = ["B01001_001E"]
+
+[employment_source]
+type = "lodes"
+study_region = { type = "census", geoids = ["08013"] }
+data_granularity = "census_tract"
+edition = "LODES8"
+job_type = "JT00"
+segment = "S000"
+year = 2022
+"#;
+        let cfg: CensusSourceConfig = toml::from_str(toml_str).unwrap();
+        match cfg {
+            CensusSourceConfig::Bamcensus {
+                population_source,
+                employment_source,
+            } => {
+                assert_eq!(population_source.acs_year, 2022);
+                assert_eq!(employment_source.year, 2022);
+                assert_eq!(
+                    employment_source.resolved_wac_segments(),
+                    vec![bamcensus_lehd::model::WacSegment::C000]
+                );
+            }
+            other => panic!("expected Bamcensus variant, got {other:?}"),
+        }
     }
 }

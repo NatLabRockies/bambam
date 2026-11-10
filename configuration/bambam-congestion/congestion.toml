@@ -65,6 +65,28 @@ projection_mode = "geodesic"
 type = "osm_pbf"
 pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf"
 
+# Census source can be:
+#   - `type = "bamcensus"` (downloads TIGER/Line polygons + ACS population + LEHD LODES employment;
+#      requires `CENSUS_API_KEY` or `CENSUS_API_TOKEN` in the environment)
+#   - `type = "csv_polygons"` (local WKT CSV polygons joined with population/employment CSVs)
+#   - `type = "shapefile"` (local shapefile with `pop-den` and `emp-den` fields)
+# Example `bamcensus` configuration (matching `bambam.toml` population_source & lodes opportunity_source):
+# [spatial_features.census_source]
+# type = "bamcensus"
+# [spatial_features.census_source.population_source]
+# type = "acs"
+# acs_type = "five_year"
+# acs_year = 2022
+# acs_resolution = "census_tract"
+# acs_categories = ["B01001_001E"]
+# [spatial_features.census_source.employment_source]
+# type = "lodes"
+# study_region = { type = "census", geoids = ["08013"] }
+# data_granularity = "census_tract"
+# edition = "LODES8"
+# job_type = "JT00"
+# segment = "S000"
+# year = 2022
 [spatial_features.census_source] 
 type = "csv_polygons"
 polygons_csv_path = "/Users/rfitzger/data/bam/mep3/in/tiger-lines/tracts.csv"
