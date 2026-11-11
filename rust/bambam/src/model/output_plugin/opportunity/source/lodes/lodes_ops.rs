@@ -4,7 +4,7 @@ use crate::model::output_plugin::opportunity::{
 use bamcensus::app::lodes_tiger;
 use bamcensus_core::model::identifier::{Geoid, GeoidType};
 use bamcensus_lehd::model::{
-    LodesDataset, LodesEdition, LodesJobType, WacSegment, WorkplaceSegment,
+    FallbackPolicy, LodesDataset, LodesEdition, LodesJobType, WacSegment, WorkplaceSegment,
 };
 use geo::{Geometry, MapCoords};
 use itertools::Itertools;
@@ -25,13 +25,14 @@ pub fn collect_lodes_opportunities(
     data_granularity: &Option<GeoidType>,
     activity_types: &[String],
     activity_mapping: &HashMap<WacSegment, Vec<String>>,
+    fallback: &FallbackPolicy,
 ) -> Result<OpportunityDataset, String> {
     // download LODES data paired with TIGER/Lines geometries
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|e| format!("failure creating async rust tokio runtime: {e}"))?;
-    let future = lodes_tiger::run(geoids, data_granularity, segments, dataset);
+    let future = lodes_tiger::run(geoids, data_granularity, segments, dataset, *fallback);
     let res = runtime
         .block_on(future)
         .map_err(|e| format!("failure downloading LODES data: {e}"))?;

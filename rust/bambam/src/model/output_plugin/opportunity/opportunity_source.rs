@@ -11,7 +11,7 @@ use bambam_omf::collection::{Bbox, OvertureMapsCollectorConfig, ReleaseVersion};
 use bamcensus::app::lodes_tiger;
 use bamcensus_core::model::identifier::GeoidType;
 use bamcensus_lehd::model::{
-    LodesDataset, LodesEdition, LodesJobType, WacSegment, WorkplaceSegment,
+    FallbackPolicy, LodesDataset, LodesEdition, LodesJobType, WacSegment, WorkplaceSegment,
 };
 use geo::Geometry;
 use itertools::Itertools;
@@ -35,6 +35,8 @@ pub enum OpportunitySource {
         job_type: LodesJobType,
         segment: WorkplaceSegment,
         year: u64,
+        #[serde(default)]
+        fallback: FallbackPolicy,
     },
     /// collects opportunities from <https://docs.overturemaps.org/guides/places/>.
     #[serde(rename = "overture")]
@@ -99,6 +101,7 @@ impl OpportunitySource {
                 job_type,
                 segment,
                 year,
+                fallback,
             } => {
                 //
                 let geoids = study_region.get_geoids()?;
@@ -116,6 +119,7 @@ impl OpportunitySource {
                     data_granularity,
                     activity_types,
                     activity_mapping,
+                    fallback,
                 )
             }
         }
