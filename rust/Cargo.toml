@@ -32,10 +32,10 @@ bambam-network = { version = "0.3.3", path = "bambam-network" }
 bambam-omf = { version = "0.3.3", path = "bambam-omf" }
 bambam-osm = { version = "0.3.3", path = "bambam-osm" }
 bambam-transit = { version = "0.3.3", path = "bambam-transit" }
-bamcensus = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "7b08bd6622dd1ff8efe7a712ca84a0748cb10110" }
-bamcensus-acs = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "7b08bd6622dd1ff8efe7a712ca84a0748cb10110" }
-bamcensus-core = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "7b08bd6622dd1ff8efe7a712ca84a0748cb10110" }
-bamcensus-lehd = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "7b08bd6622dd1ff8efe7a712ca84a0748cb10110" }
+bamcensus = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "930b71145afc83c87d85c9e4d8b07739f3492c0e" }
+bamcensus-acs = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "930b71145afc83c87d85c9e4d8b07739f3492c0e" }
+bamcensus-core = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "930b71145afc83c87d85c9e4d8b07739f3492c0e" }
+bamcensus-lehd = { version = "0.1.0", git = "https://github.com/NatLabRockies/bamcensus", rev = "930b71145afc83c87d85c9e4d8b07739f3492c0e" }
 chrono = { version = "0.4.42", features = ["serde"] }
 chrono-tz = "0.10.4"
 clap = { version = "4.5.52", features = ["derive", "env"] }
