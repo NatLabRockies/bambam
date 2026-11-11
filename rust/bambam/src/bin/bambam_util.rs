@@ -731,7 +731,7 @@ mod tests {
         COMPLETE_VERTEX_FILENAME,
     };
     use geo::LineString;
-    use std::{fs, str::FromStr};
+    use std::{fs, path::Path, str::FromStr};
     use tempfile::tempdir;
 
     #[test]
@@ -773,7 +773,7 @@ mod tests {
         serialize_into_csv(
             vertices.iter(),
             COMPLETE_VERTEX_FILENAME,
-            tmp_dir,
+            tmp_dir.path(),
             true,
             "write vertices",
         )
@@ -856,7 +856,7 @@ mod tests {
         let wci_out = walk_dir.join("wci.csv").to_string_lossy().into_owned();
         let wci_app = App::ModalMetricSet {
             modal_metric: ModalMetric::WalkingComfortIndex,
-            network_dir: Some(tmp_dir.to_string_lossy().into_owned()),
+            network_dir: Some(tmp_dir.path().to_string_lossy().into_owned()),
             mode: None,
             edges_file: None,
             vertices_file: None,
@@ -876,7 +876,7 @@ mod tests {
         let lts_out = bike_dir.join("lts.csv").to_string_lossy().into_owned();
         let lts_app = App::ModalMetricSet {
             modal_metric: ModalMetric::LevelOfTrafficStress,
-            network_dir: Some(tmp_dir.to_string_lossy().into_owned()),
+            network_dir: Some(tmp_dir.path().to_string_lossy().into_owned()),
             mode: None,
             edges_file: None,
             vertices_file: None,
