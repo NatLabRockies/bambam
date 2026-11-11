@@ -1,6 +1,8 @@
 use std::{
+    collections::HashMap,
     fs::File,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use csv::QuoteStyle;
@@ -8,14 +10,19 @@ use flate2::{write::GzEncoder, Compression};
 use geo::{Convert, LineString};
 use geozero::ToWkt;
 use kdam::tqdm;
+use ordered_float::OrderedFloat;
 use routee_compass_core::model::network::{EdgeConfig, Vertex};
 use serde::Serialize;
 
 use crate::{
     consts::*,
+    edge_complete_record::EdgeCompleteRecord,
     error::NetworkImportError,
     serialize_ops::VectorizedEdgeList,
-    vertex_serializable::{VertexCompassRecord, VertexCompleteRecord, VertexMappingRecord},
+    taxonomy::{SegmentClass, SegmentFullType, SegmentSubtype},
+    vertex_compass_record::VertexCompassRecord,
+    vertex_complete_record::VertexCompleteRecord,
+    vertex_mapping_record::VertexMappingRecord,
 };
 
 /// Copies the shared default `bambam.toml` configuration file from `bambam-network`
@@ -253,6 +260,64 @@ where
             &mode_dir,
             overwrite,
             "write edge ID mappings",
+        )?;
+
+        let mut split_heading_counts: HashMap<(&str, OrderedFloat<f64>, OrderedFloat<f64>), usize> =
+            HashMap::new();
+        for mapping in &edge_list.edge_mappings {
+            *split_heading_counts
+                .entry((
+                    mapping.source_id.as_str(),
+                    OrderedFloat(mapping.start_lr),
+                    OrderedFloat(mapping.end_lr),
+                ))
+                .or_insert(0) += 1;
+        }
+
+        let complete_edges: Vec<EdgeCompleteRecord> = (0..edge_list.edges.0.len())
+            .map(|idx| {
+                let edge = &edge_list.edges.0[idx];
+                let mapping = &edge_list.edge_mappings[idx];
+                let class_str = class_to_str(&edge_list.classes[idx]);
+                let class = SegmentFullType::from_str(&class_str).unwrap_or(SegmentFullType(
+                    SegmentSubtype::Road,
+                    SegmentClass::Custom(class_str),
+                    None,
+                ));
+                let heading_count = split_heading_counts
+                    .get(&(
+                        mapping.source_id.as_str(),
+                        OrderedFloat(mapping.start_lr),
+                        OrderedFloat(mapping.end_lr),
+                    ))
+                    .copied()
+                    .unwrap_or(1);
+
+                EdgeCompleteRecord {
+                    edge_id: edge.edge_id.0,
+                    source_id: mapping.source_id.clone(),
+                    start_lr: mapping.start_lr,
+                    end_lr: mapping.end_lr,
+                    heading: mapping.heading.clone(),
+                    src_vertex_id: edge.src_vertex_id.0,
+                    dst_vertex_id: edge.dst_vertex_id.0,
+                    distance: edge.distance.get::<uom::si::length::meter>(),
+                    class,
+                    posted_speed_mph: edge_list.posted_speeds[idx],
+                    speed_mph: edge_list.speeds[idx],
+                    bearing: edge_list.bearings[idx],
+                    oneway: heading_count < 2,
+                    linestring: edge_list.geometries[idx].clone(),
+                }
+            })
+            .collect();
+
+        serialize_into_csv(
+            complete_edges.iter(),
+            COMPLETE_EDGES_FILENAME,
+            &mode_dir,
+            overwrite,
+            "write complete edges",
         )?;
 
         serialize_into_enumerated_txt(

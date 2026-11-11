@@ -91,6 +91,7 @@ serde_json = { version = "1.0" }
 serde_with = { version = "3.0", features = ["chrono_0_4"] }
 shapefile = { version = "0.7.0", features = ["geo-types"] }
 skiplist = "0.5.1"
+tempfile = "3.27.0"
 thiserror = "2.0.17"
 tokio = "1.52.3"
 toml = { version = "0.9.8" }

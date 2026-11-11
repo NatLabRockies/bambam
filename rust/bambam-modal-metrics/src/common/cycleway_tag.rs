@@ -1,9 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 /// The CyclewayTag is a type that characterizes the
 /// level of safety of a cycleway.
 ///
 /// You can generate a new cycleway tag by passing in
 /// the edge's cycleway attribute.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CyclewayTag {
     DedicatedWithBuffer,
     DedicatedNoBuffer,

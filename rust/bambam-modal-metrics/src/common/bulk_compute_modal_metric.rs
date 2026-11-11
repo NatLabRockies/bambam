@@ -4,6 +4,7 @@ use crate::network_traits::{
     edge_for_modal_metric::EdgeForModalMetric, spatial_edge::SpatialEdge,
     vertex_for_modal_metric::VertexForModalMetric,
 };
+use flate2::{write::GzEncoder, Compression};
 use kdam::{Bar, BarBuilder, BarExt};
 use rayon::prelude::*;
 use routee_compass_core::util::fs::read_utils;
@@ -16,12 +17,35 @@ use std::{
     io::{BufWriter, Write},
 };
 
-/// Bulk compute a specific modal metric for all ways in an OSM network by taking in a vertices-complete.csv
-/// and edges-complete.csv.
+/// Bulk compute a specific modal metric for all edges in a network by taking in a
+/// `vertices-complete.csv[.gz]` and `edges-complete.csv[.gz]`.
 pub fn bulk_compute_modal_metric<E, V>(
     metric: ModalMetric,
     edges_file: &str,
     vertices_file: &str,
+    output_file: &str,
+) -> Result<(), Box<dyn Error>>
+where
+    E: SpatialEdge + EdgeForModalMetric + DeserializeOwned + Clone + Send + Sync,
+    V: VertexForModalMetric + DeserializeOwned + Send + Sync,
+{
+    bulk_compute_modal_metric_with_context::<E, V>(
+        metric,
+        edges_file,
+        vertices_file,
+        &[],
+        output_file,
+    )
+}
+
+/// Bulk compute a specific modal metric for all edges in `edges_file`, optionally populating
+/// the spatial R-tree with additional `context_edges_files` (such as adjacent `drive` or `bike`
+/// mode edge lists in a multi-modal OMF/OSM network directory).
+pub fn bulk_compute_modal_metric_with_context<E, V>(
+    metric: ModalMetric,
+    edges_file: &str,
+    vertices_file: &str,
+    context_edges_files: &[String],
     output_file: &str,
 ) -> Result<(), Box<dyn Error>>
 where
@@ -34,13 +58,22 @@ where
     );
     log::info!("Reading:\n\t- vertex set @ {vertices_file}\n\t- edge set @ {edges_file}\n");
 
-    // load vertices and edges.
+    // load vertices and target edges.
     let vertices: Box<[V]> = read_utils::from_csv(&vertices_file, true, None, None)?;
     let edge_rtree_entries = load_edge_rtree_entries::<E, V>(edges_file, &vertices)?;
+
+    let mut rtree_entries = edge_rtree_entries.clone();
+    for ctx_file in context_edges_files {
+        if ctx_file != edges_file {
+            log::info!("Reading context edge set for R-tree @ {ctx_file}");
+            let ctx_entries = load_edge_rtree_entries::<E, V>(ctx_file, &vertices)?;
+            rtree_entries.extend(ctx_entries);
+        }
+    }
     log::info!("Edges and vertices read successfully.\n");
 
-    // build an RTree with the edge entries.
-    let rtree = RTree::bulk_load(edge_rtree_entries.clone());
+    // build an RTree with target + context edge entries.
+    let rtree = RTree::bulk_load(rtree_entries);
 
     let bar: Arc<Mutex<Bar>> = Arc::new(Mutex::new(
         BarBuilder::default()
@@ -52,7 +85,7 @@ where
             .build()?,
     ));
 
-    // compute the modal metric for each edge in parallel via par_iter
+    // compute the modal metric for each target edge in parallel via par_iter
     let values: Vec<ModalMetricValue> = edge_rtree_entries
         .par_iter()
         .map(|edge_entry| {
@@ -70,9 +103,13 @@ where
 
     eprintln!();
 
-    // write to file
+    // write to file (supports both plain .csv and compressed .csv.gz)
     let file = File::create(output_file)?;
-    let mut writer = BufWriter::new(file);
+    let mut writer: Box<dyn Write> = if output_file.ends_with(".gz") {
+        Box::new(BufWriter::new(GzEncoder::new(file, Compression::default())))
+    } else {
+        Box::new(BufWriter::new(file))
+    };
 
     metric.write_csv_header(&mut writer)?;
     for value in &values {

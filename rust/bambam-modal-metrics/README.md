@@ -6,7 +6,7 @@ Extensible traits for road network data that can facilitate modal metric computa
 
 The logic for computing modal metrics such as the Walking Comfort Index (WCI) or the Level of Traffic Stress (LTS)
 
-This library is wired into `bambam` through the set of commands defined in `bamam_util`. You can run the `bambam_util modal_metric` command from the `bambam` crate to compute modal metrics such as WCI and LTS for a given road network. As of now, `bambam-modal-metrics` only supports OpenStreetMaps way/node data as input, but extension to OvertureMaps is planned.
+This library is wired into `bambam` through the set of commands defined in `bambam_util`. You can run the `bambam_util modal_metric` command from the `bambam` crate to compute modal metrics such as WCI and LTS for both Overture Maps (`bambam-omf` / `bambam-network` `EdgeCompleteRecord` and `VertexCompleteRecord`) and OpenStreetMap (`OsmWayDataSerializable` and `OsmNodeDataSerializable`) road networks.
 
 ## What is a modal metric?
 

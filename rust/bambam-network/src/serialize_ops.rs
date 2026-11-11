@@ -10,16 +10,17 @@ use routee_compass_core::model::network::{Edge, EdgeId, EdgeList, EdgeListId, Ve
 
 use crate::{
     consts,
+    edge_mapping_record::EdgeMappingRecord,
     error::NetworkImportError,
     island_detection::IslandDetectionAlgorithm,
     model::{ImportConnector, ImportInfrastructure, ImportSegment, SegmentHeading},
     segment_split::SegmentSplit,
     taxonomy::{FilterableSegment, NetworkEdgeListConfiguration, SegmentAccessRestrictionWhen},
-    vertex_serializable::{
-        attach_infrastructure_to_vertices, EdgeMappingRecord, VertexCompleteRecord,
-        VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
-        INFRASTRUCTURE_ID_DELIMITER,
+    vertex_complete_record::{
+        attach_infrastructure_to_vertices, VertexCompleteRecord,
+        DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS, INFRASTRUCTURE_ID_DELIMITER,
     },
+    vertex_mapping_record::VertexMappingRecord,
 };
 
 /// Generic vectorized edge list for a single travel mode.

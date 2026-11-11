@@ -6,8 +6,8 @@ mod vertex_serializable;
 pub mod segment_ops;
 pub use bambam_network::{
     attach_infrastructure_to_vertices, consts, consts::*, island_detection, serialize_ops,
-    ConnectorInSegment, EdgeMappingRecord, SegmentSplit, VertexCompassRecord, VertexCompleteRecord,
-    VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+    ConnectorInSegment, EdgeCompleteRecord, EdgeMappingRecord, SegmentSplit, VertexCompassRecord,
+    VertexCompleteRecord, VertexMappingRecord, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
 };
 pub use omf_graph::OmfGraphVectorized;
 pub use summary::{

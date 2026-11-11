@@ -5,8 +5,11 @@ use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
 use bambam_congestion::{CalibrateCliArgs, ImputeCliArgs};
-use bambam_modal_metrics::common::bulk_compute_modal_metric::bulk_compute_modal_metric;
+use bambam_modal_metrics::common::bulk_compute_modal_metric::bulk_compute_modal_metric_with_context;
 use bambam_modal_metrics::common::modal_metrics::ModalMetric;
+use bambam_network::{
+    EdgeCompleteRecord, VertexCompleteRecord, COMPLETE_EDGES_FILENAME, COMPLETE_VERTEX_FILENAME,
+};
 use bambam_osm::model::osm::graph::{OsmNodeDataSerializable, OsmWayDataSerializable};
 use clap::{Parser, Subcommand};
 #[derive(Parser)]
@@ -34,19 +37,31 @@ use std::io::Write;
 pub enum App {
     #[command(
         name = "modal_metric",
-        about = "calculate the modal metric of each way in the OSM network, write to file"
+        about = "calculate the modal metric (WCI or LTS) of each edge in an OMF or OSM network, write to file"
     )]
     ModalMetricSet {
         /// modal metric type to compute, either "WCI" or "LTS"
         #[arg(long)]
         modal_metric: ModalMetric,
-        /// input csv file with edges data
+        /// optional network directory produced by bambam-omf or bambam-osm (resolves vertices-complete.csv.gz and <mode>/edges-complete.csv.gz)
         #[arg(long)]
-        edges_file: String,
-        /// input csv file with vertices data
+        network_dir: Option<String>,
+        /// optional target mode subdirectory when --network-dir is used (defaults to "walk" for WCI, "bike" for LTS)
         #[arg(long)]
-        vertices_file: String,
-        /// file to write modal metric values to
+        mode: Option<String>,
+        /// input csv / csv.gz file with edges data (required when --network-dir is not set)
+        #[arg(long)]
+        edges_file: Option<String>,
+        /// input csv / csv.gz file with vertices data (required when --network-dir is not set)
+        #[arg(long)]
+        vertices_file: Option<String>,
+        /// optional comma-separated list of additional edges-complete.csv[.gz] files to load into the spatial R-tree for neighbor queries
+        #[arg(long)]
+        context_edges_files: Option<String>,
+        /// optional schema source override: "omf" (EdgeCompleteRecord/VertexCompleteRecord) or "osm" (legacy OsmWayDataSerializable/OsmNodeDataSerializable). Auto-detected from CSV header if omitted.
+        #[arg(long)]
+        source: Option<String>,
+        /// file to write modal metric values to (.csv or .csv.gz)
         #[arg(long)]
         output_file: String,
     },
@@ -256,28 +271,123 @@ pub enum App {
 
 impl App {
     pub fn run(&self) -> Result<(), String> {
-        env_logger::init();
+        let _ = env_logger::try_init();
         match self {
             Self::ModalMetricSet {
                 modal_metric,
-                output_file,
+                network_dir,
+                mode,
                 edges_file,
                 vertices_file,
-            } =>
-            // TODO: eventually support other types of graph data beyond OSM for modal metric computation.
-            // Generic traits are available (see bambam-modal-metrics crate).
-            //
-            // Currently, only OSM graph data is supported for modal metric computation.
-            // Once OMF graph data support is implemented, we can add an option to the CLI
-            // to specify the type of graph data to use.
-            {
-                bulk_compute_modal_metric::<OsmWayDataSerializable, OsmNodeDataSerializable>(
-                    *modal_metric,
-                    edges_file,
-                    vertices_file,
-                    output_file,
-                )
-                .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}"))
+                context_edges_files,
+                source,
+                output_file,
+            } => {
+                let default_mode = match modal_metric {
+                    ModalMetric::WalkingComfortIndex => "walk",
+                    ModalMetric::LevelOfTrafficStress => "bike",
+                };
+                let target_mode = mode.as_deref().unwrap_or(default_mode);
+
+                let (resolved_edges_file, resolved_vertices_file, mut resolved_context_files) =
+                    if let Some(net_dir) = network_dir {
+                        let root = std::path::Path::new(net_dir);
+                        let e_file = edges_file.clone().unwrap_or_else(|| {
+                            root.join(target_mode)
+                                .join(COMPLETE_EDGES_FILENAME)
+                                .to_string_lossy()
+                                .into_owned()
+                        });
+                        let v_file = vertices_file.clone().unwrap_or_else(|| {
+                            root.join(COMPLETE_VERTEX_FILENAME)
+                                .to_string_lossy()
+                                .into_owned()
+                        });
+                        let mut ctx = Vec::new();
+                        for sibling_mode in ["walk", "bike", "drive"] {
+                            let candidate = root.join(sibling_mode).join(COMPLETE_EDGES_FILENAME);
+                            let candidate_str = candidate.to_string_lossy().into_owned();
+                            if candidate.exists() && candidate_str != e_file {
+                                ctx.push(candidate_str);
+                            }
+                        }
+                        (e_file, v_file, ctx)
+                    } else {
+                        let e_file = edges_file.clone().ok_or_else(|| {
+                            "must provide either --network-dir or both --edges-file and --vertices-file"
+                                .to_string()
+                        })?;
+                        let v_file = vertices_file.clone().ok_or_else(|| {
+                            "must provide either --network-dir or both --edges-file and --vertices-file"
+                                .to_string()
+                        })?;
+                        let mut ctx = Vec::new();
+                        // If edges_file is inside a mode subdirectory (<root>/<mode>/edges-complete.csv.gz),
+                        // automatically include any sibling mode edges-complete.csv.gz files as R-tree context.
+                        if let Some(root) = std::path::Path::new(&e_file)
+                            .parent()
+                            .and_then(|p| p.parent())
+                        {
+                            for sibling_mode in ["walk", "bike", "drive"] {
+                                let candidate =
+                                    root.join(sibling_mode).join(COMPLETE_EDGES_FILENAME);
+                                let candidate_str = candidate.to_string_lossy().into_owned();
+                                if candidate.exists() && candidate_str != e_file {
+                                    ctx.push(candidate_str);
+                                }
+                            }
+                        }
+                        (e_file, v_file, ctx)
+                    };
+
+                if let Some(explicit_ctx) = context_edges_files {
+                    resolved_context_files = explicit_ctx
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                }
+
+                let use_complete_records = match source
+                    .as_deref()
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .as_deref()
+                {
+                    Some("omf" | "overture" | "overture_maps" | "compass" | "network") => true,
+                    Some("osm" | "openstreetmap" | "legacy_osm") => false,
+                    Some(other) => {
+                        return Err(format!(
+                            "unsupported --source '{other}'; expected 'omf' or 'osm'"
+                        ))
+                    }
+                    None => is_edge_complete_record_csv(&resolved_edges_file)?,
+                };
+
+                if use_complete_records {
+                    bulk_compute_modal_metric_with_context::<
+                        EdgeCompleteRecord,
+                        VertexCompleteRecord,
+                    >(
+                        *modal_metric,
+                        &resolved_edges_file,
+                        &resolved_vertices_file,
+                        &resolved_context_files,
+                        output_file,
+                    )
+                    .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}"))
+                } else {
+                    bulk_compute_modal_metric_with_context::<
+                        OsmWayDataSerializable,
+                        OsmNodeDataSerializable,
+                    >(
+                        *modal_metric,
+                        &resolved_edges_file,
+                        &resolved_vertices_file,
+                        &resolved_context_files,
+                        output_file,
+                    )
+                    .map_err(|e| format!("failed to run bulk compute modal metric: {e:?}"))
+                }
             }
             Self::PreProcessGrid {
                 acs_type,
@@ -572,10 +682,244 @@ impl App {
     }
 }
 
+/// Inspects the header row of `edges_file` (`.csv` or `.csv.gz`) to determine whether it
+/// follows the `EdgeCompleteRecord` schema (`edge_id,source_id,...`) or the legacy
+/// `OsmWayDataSerializable` schema (`osmid,...`).
+fn is_edge_complete_record_csv(edges_file: &str) -> Result<bool, String> {
+    use flate2::read::GzDecoder;
+    use std::io::{BufReader, Read};
+
+    let file = File::open(edges_file)
+        .map_err(|e| format!("failed to open edges file '{edges_file}': {e}"))?;
+    let reader: Box<dyn Read> = if edges_file.ends_with(".gz") {
+        Box::new(GzDecoder::new(BufReader::new(file)))
+    } else {
+        Box::new(BufReader::new(file))
+    };
+
+    let mut csv_reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .trim(csv::Trim::Headers)
+        .from_reader(reader);
+    let headers = csv_reader
+        .headers()
+        .map_err(|e| format!("failed reading header from '{edges_file}': {e}"))?;
+
+    let cols: Vec<String> = headers
+        .iter()
+        .map(|c| c.trim_start_matches('\u{feff}').trim().to_ascii_lowercase())
+        .collect();
+    Ok(
+        cols.iter().any(|c| c == "source_id")
+            || cols.first().map(String::as_str) == Some("edge_id"),
+    )
+}
+
 fn main() {
     let args = CliArgs::parse();
     match args.app.run() {
         Ok(_) => log::info!("bambam_util finished."),
         Err(e) => log::error!("{e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bambam_network::{
+        fs::serialize_into_csv, SegmentFullType, SegmentHeading, COMPLETE_EDGES_FILENAME,
+        COMPLETE_VERTEX_FILENAME,
+    };
+    use geo::LineString;
+    use std::{fs, path::Path, str::FromStr};
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_modal_metric_cli_with_omf_network_dir() {
+        let tmp_dir = tempdir().unwrap();
+        let tmp_path = tmp_dir.path();
+
+        let walk_dir = tmp_path.join("walk");
+        let bike_dir = tmp_path.join("bike");
+        let drive_dir = tmp_path.join("drive");
+        fs::create_dir_all(&walk_dir).unwrap();
+        fs::create_dir_all(&bike_dir).unwrap();
+        fs::create_dir_all(&drive_dir).unwrap();
+
+        let vertices = vec![
+            VertexCompleteRecord {
+                vertex_id: 0,
+                connector_id: "conn-0".to_string(),
+                x: -105.170735,
+                y: 39.773087,
+                traffic_signals: true,
+                stop: false,
+                give_way: false,
+                crossing: true,
+                infrastructure_ids: None,
+            },
+            VertexCompleteRecord {
+                vertex_id: 1,
+                connector_id: "conn-1".to_string(),
+                x: -105.170445,
+                y: 39.773137,
+                traffic_signals: false,
+                stop: false,
+                give_way: false,
+                crossing: false,
+                infrastructure_ids: None,
+            },
+        ];
+        serialize_into_csv(
+            vertices.iter(),
+            COMPLETE_VERTEX_FILENAME,
+            tmp_dir.path(),
+            true,
+            "write vertices",
+        )
+        .unwrap();
+
+        let walk_edge = EdgeCompleteRecord {
+            edge_id: 0,
+            source_id: "seg-walk-0".to_string(),
+            start_lr: 0.0,
+            end_lr: 1.0,
+            heading: SegmentHeading::Forward,
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            distance: 100.0,
+            class: SegmentFullType::from_str("road-residential").unwrap(),
+            posted_speed_mph: None,
+            speed_mph: 25.0,
+            bearing: 90.0,
+            oneway: false,
+            linestring: LineString::from(vec![(-105.170735, 39.773087), (-105.170445, 39.773137)]),
+        };
+        let bike_edge = EdgeCompleteRecord {
+            edge_id: 0,
+            source_id: "seg-bike-0".to_string(),
+            start_lr: 0.0,
+            end_lr: 1.0,
+            heading: SegmentHeading::Forward,
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            distance: 100.0,
+            class: SegmentFullType::from_str("road-cycleway").unwrap(),
+            posted_speed_mph: None,
+            speed_mph: 15.0,
+            bearing: 90.0,
+            oneway: false,
+            linestring: LineString::from(vec![(-105.170612, 39.773116), (-105.170499, 39.773017)]),
+        };
+        let drive_edge = EdgeCompleteRecord {
+            edge_id: 0,
+            source_id: "seg-drive-0".to_string(),
+            start_lr: 0.0,
+            end_lr: 1.0,
+            heading: SegmentHeading::Forward,
+            src_vertex_id: 0,
+            dst_vertex_id: 1,
+            distance: 100.0,
+            class: SegmentFullType::from_str("road-secondary").unwrap(),
+            posted_speed_mph: Some(25.0),
+            speed_mph: 25.0,
+            bearing: 90.0,
+            oneway: false,
+            linestring: LineString::from(vec![(-105.170735, 39.773090), (-105.170445, 39.773140)]),
+        };
+
+        serialize_into_csv(
+            [walk_edge].iter(),
+            COMPLETE_EDGES_FILENAME,
+            &walk_dir,
+            true,
+            "write walk edges",
+        )
+        .unwrap();
+        serialize_into_csv(
+            [bike_edge].iter(),
+            COMPLETE_EDGES_FILENAME,
+            &bike_dir,
+            true,
+            "write bike edges",
+        )
+        .unwrap();
+        serialize_into_csv(
+            [drive_edge].iter(),
+            COMPLETE_EDGES_FILENAME,
+            &drive_dir,
+            true,
+            "write drive edges",
+        )
+        .unwrap();
+
+        let wci_out = walk_dir.join("wci.csv").to_string_lossy().into_owned();
+        let wci_app = App::ModalMetricSet {
+            modal_metric: ModalMetric::WalkingComfortIndex,
+            network_dir: Some(tmp_dir.path().to_string_lossy().into_owned()),
+            mode: None,
+            edges_file: None,
+            vertices_file: None,
+            context_edges_files: None,
+            source: None,
+            output_file: wci_out.clone(),
+        };
+        wci_app.run().unwrap();
+        let wci_lines: Vec<String> = fs::read_to_string(&wci_out)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect();
+        assert_eq!(wci_lines.len(), 2);
+        assert_eq!(wci_lines[1], "3,-2,2,1,2");
+
+        let lts_out = bike_dir.join("lts.csv").to_string_lossy().into_owned();
+        let lts_app = App::ModalMetricSet {
+            modal_metric: ModalMetric::LevelOfTrafficStress,
+            network_dir: Some(tmp_dir.path().to_string_lossy().into_owned()),
+            mode: None,
+            edges_file: None,
+            vertices_file: None,
+            context_edges_files: None,
+            source: None,
+            output_file: lts_out.clone(),
+        };
+        lts_app.run().unwrap();
+        let lts_lines: Vec<String> = fs::read_to_string(&lts_out)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect();
+        assert_eq!(lts_lines.len(), 2);
+        assert_eq!(lts_lines[1], "1");
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_is_edge_complete_record_csv_header_parsing() {
+        let tmp_dir = Path::new("target/test_tmp_bambam_util_header_detect");
+        let _ = fs::remove_dir_all(tmp_dir);
+        fs::create_dir_all(tmp_dir).unwrap();
+
+        // Quoted field with embedded comma + BOM + whitespace/casing on source_id
+        let quoted_bom_csv = tmp_dir.join("quoted_bom.csv");
+        fs::write(
+            &quoted_bom_csv,
+            "\u{feff}\"col,with,comma\",\" Source_Id \",distance\n1,seg-0,10.0\n",
+        )
+        .unwrap();
+        assert!(is_edge_complete_record_csv(quoted_bom_csv.to_str().unwrap()).unwrap());
+
+        // Quoted comma containing "source_id" inside another column name must not false-positive
+        let legacy_quoted_csv = tmp_dir.join("legacy_quoted.csv");
+        fs::write(
+            &legacy_quoted_csv,
+            "osmid,\"notes,source_id,extra\",highway\n100,abc,residential\n",
+        )
+        .unwrap();
+        assert!(!is_edge_complete_record_csv(legacy_quoted_csv.to_str().unwrap()).unwrap());
+
+        let _ = fs::remove_dir_all(tmp_dir);
     }
 }

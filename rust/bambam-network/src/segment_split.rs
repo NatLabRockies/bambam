@@ -5,9 +5,9 @@ use routee_compass_core::model::network::{Edge, EdgeId, EdgeListId, Vertex, Vert
 
 use crate::{
     consts,
+    edge_mapping_record::EdgeMappingRecord,
     error::NetworkImportError,
     model::{ConnectorInSegment, ImportSegment, SegmentHeading},
-    vertex_serializable::EdgeMappingRecord,
 };
 
 /// splits at the connectors (vertices) ignoring linear-referenced split points

@@ -1,9 +1,10 @@
+use bambam_modal_metrics::network_traits::vertex_for_modal_metric::VertexForModalMetric;
 use geo::{Distance, Haversine, Point};
 use routee_compass_core::model::network::Vertex;
 use rstar::{RTree, RTreeObject, AABB};
 use serde::{Deserialize, Serialize};
 
-use crate::model::{ImportInfrastructure, SegmentHeading};
+use crate::model::ImportInfrastructure;
 
 /// Default maximum Haversine distance (in meters) to snap an infrastructure
 /// feature to its nearest connector vertex.
@@ -11,24 +12,6 @@ pub const DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS: f64 = 15.0;
 
 /// Delimiter used when joining multiple matched infrastructure IDs on a single vertex.
 pub const INFRASTRUCTURE_ID_DELIMITER: &str = ";";
-
-/// RouteE Compass vertex coordinate record (`vertices-compass.csv.gz`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VertexCompassRecord {
-    pub vertex_id: usize,
-    pub x: f32,
-    pub y: f32,
-}
-
-impl From<Vertex> for VertexCompassRecord {
-    fn from(value: Vertex) -> Self {
-        Self {
-            vertex_id: value.vertex_id.0,
-            x: value.x(),
-            y: value.y(),
-        }
-    }
-}
 
 /// Complete vertex record including source connector ID and spatially attached
 /// infrastructure attributes (`vertices-complete.csv.gz`).
@@ -45,23 +28,14 @@ pub struct VertexCompleteRecord {
     pub infrastructure_ids: Option<String>,
 }
 
-/// Standardized mapping between a RouteE Compass `vertex_id` and its source Connector/Node ID
-/// (`vertices-mapping.csv.gz`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct VertexMappingRecord {
-    pub vertex_id: usize,
-    pub source_id: String,
-}
+impl VertexForModalMetric for VertexCompleteRecord {
+    fn has_traffic_signals(&self) -> bool {
+        self.traffic_signals
+    }
 
-/// Standardized mapping between a RouteE Compass `edge_id` and its source Segment/Way ID,
-/// linear reference bounds, and travel heading (`<mode>/edges-mapping.csv.gz`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct EdgeMappingRecord {
-    pub edge_id: usize,
-    pub source_id: String,
-    pub start_lr: f64,
-    pub end_lr: f64,
-    pub heading: SegmentHeading,
+    fn has_stop_sign(&self) -> bool {
+        self.stop
+    }
 }
 
 #[derive(Clone, Debug)]

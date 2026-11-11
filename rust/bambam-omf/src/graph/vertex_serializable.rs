@@ -1,9 +1,9 @@
-pub use bambam_network::vertex_serializable::*;
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::collection::InfrastructureRecord;
+    use bambam_network::{
+        attach_infrastructure_to_vertices, DEFAULT_INFRASTRUCTURE_MATCH_DISTANCE_METERS,
+    };
     use geo::{Geometry, Point};
     use routee_compass_core::model::network::Vertex;
 
