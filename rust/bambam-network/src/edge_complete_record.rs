@@ -143,7 +143,9 @@ where
     S: Serializer,
 {
     let row_f64: LineString<f64> = row.convert();
-    let wkt = geo::Geometry::from(row_f64).to_wkt().unwrap_or_default();
+    let wkt = geo::Geometry::from(row_f64).to_wkt().map_err(|e| {
+        serde::ser::Error::custom(format!("failure serializing LineString to WKT: {e}"))
+    })?;
     s.serialize_str(&wkt)
 }
 
