@@ -608,7 +608,9 @@ mod tests {
             census_csv: Some("us_network/census_tracts_bamcensus.csv.gz".to_string()),
             save_bamcensus_csv: None,
         };
-        let cfg = args.resolve_config().expect("should resolve calibrate config");
+        let cfg = args
+            .resolve_config()
+            .expect("should resolve calibrate config");
         assert_eq!(cfg.open_network.network_dir, "us_network");
         assert_eq!(cfg.open_network.mode, "drive");
         assert_eq!(cfg.reference_network.network_dir, "/path/to/tomtom");
