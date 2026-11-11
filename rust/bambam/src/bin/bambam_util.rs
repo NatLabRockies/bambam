@@ -709,7 +709,10 @@ fn is_edge_complete_record_csv(edges_file: &str) -> Result<bool, String> {
         .iter()
         .map(|c| c.trim_start_matches('\u{feff}').trim().to_ascii_lowercase())
         .collect();
-    Ok(cols.iter().any(|c| c == "source_id") || cols.first().map(String::as_str) == Some("edge_id"))
+    Ok(
+        cols.iter().any(|c| c == "source_id")
+            || cols.first().map(String::as_str) == Some("edge_id"),
+    )
 }
 
 fn main() {
