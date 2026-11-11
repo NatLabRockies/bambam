@@ -5,7 +5,9 @@ use std::{
 
 use bamcensus_acs::model::AcsType;
 use bamcensus_core::model::identifier::GeoidType;
-use bamcensus_lehd::model::{LodesEdition, LodesJobType, WacSegment, WorkplaceSegment};
+use bamcensus_lehd::model::{
+    FallbackPolicy, LodesEdition, LodesJobType, WacSegment, WorkplaceSegment,
+};
 use clap::{Args, Parser, Subcommand};
 use config::{Config, File};
 use routee_compass_core::model::unit::SpeedUnit;
@@ -1073,6 +1075,37 @@ pub struct BamcensusLodesConfig {
     #[serde(default)]
     #[schemars(with = "Option<HashMap<String, Vec<String>>>")]
     pub activity_mapping: Option<HashMap<WacSegment, Vec<String>>>,
+
+    #[serde(default)]
+    pub fallback: FallbackPolicyConfig,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct FallbackPolicyConfig(pub FallbackPolicy);
+
+impl JsonSchema for FallbackPolicyConfig {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        FallbackPolicySchema::schema_name()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        FallbackPolicySchema::json_schema(generator)
+    }
+}
+
+/// Schema mirror for [`FallbackPolicy`] (`bamcensus_lehd::model::FallbackPolicy`).
+#[derive(JsonSchema)]
+#[schemars(rename = "FallbackPolicyConfig")]
+#[allow(dead_code)]
+enum FallbackPolicySchema {
+    /// Do not retry; fail immediately if the requested state/year is unavailable
+    FailAlways,
+    /// If the requested year fails, try N years earlier
+    TryPreviousYears(u64),
+    /// If the requested year fails, try N years later
+    TryNextYears(u64),
+    /// If the requested year fails, try up to N years earlier or M years later
+    BiDirectional { past: u64, future: u64 },
 }
 
 impl Default for BamcensusLodesConfig {
@@ -1087,6 +1120,7 @@ impl Default for BamcensusLodesConfig {
             year: default_acs_year(),
             wac_segments: None,
             activity_mapping: None,
+            fallback: FallbackPolicyConfig::default(),
         }
     }
 }
