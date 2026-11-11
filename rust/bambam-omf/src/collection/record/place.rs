@@ -12,7 +12,14 @@ use crate::collection::OvertureMapsCollectionError;
 pub struct PlacesRecord {
     #[serde(with = "geometry_wkb_codec")]
     geometry: Option<Geometry<f32>>,
+    #[serde(default)]
     categories: Option<OvertureMapsPlacesCategories>,
+    #[serde(default)]
+    basic_category: Option<String>,
+    #[serde(default)]
+    taxonomy: Option<OvertureMapsPlacesTaxonomy>,
+    #[serde(default)]
+    operating_status: Option<String>,
     id: Option<String>,
     bbox: OvertureMapsBbox,
     version: i32,
@@ -42,14 +49,10 @@ impl TryFrom<OvertureRecord> for PlacesRecord {
 
 impl fmt::Display for PlacesRecord {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let categories = self
-            .categories
-            .as_ref()
-            .map(|vec| format!("{vec:?}"))
-            .unwrap_or("None".to_string());
+        let categories = self.get_categories();
         write!(
             f,
-            "Geometry: {:#?}, Categories: {}",
+            "Geometry: {:#?}, Categories: {:?}",
             self.geometry, categories
         )
     }
@@ -57,10 +60,19 @@ impl fmt::Display for PlacesRecord {
 
 impl PlacesRecord {
     pub fn get_categories(&self) -> Vec<String> {
-        match &self.categories {
-            Some(categories) => categories.linearize(),
-            None => vec![],
+        let mut result = Vec::new();
+        if let Some(categories) = &self.categories {
+            result.extend(categories.linearize());
         }
+        if let Some(taxonomy) = &self.taxonomy {
+            result.extend(taxonomy.linearize());
+        }
+        if let Some(basic) = &self.basic_category {
+            if !result.contains(basic) {
+                result.push(basic.clone());
+            }
+        }
+        result
     }
 
     pub fn get_geometry(&self) -> Option<Geometry<f32>> {
@@ -76,7 +88,6 @@ struct OvertureMapsPlacesCategories {
 
 impl OvertureMapsPlacesCategories {
     fn linearize(&self) -> Vec<String> {
-        // TODO This could be more idiomatic
         let mut result = vec![];
         if let Some(primary) = &self.primary {
             result.push(primary.clone());
@@ -90,6 +101,37 @@ impl OvertureMapsPlacesCategories {
             });
         }
 
+        result
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct OvertureMapsPlacesTaxonomy {
+    primary: Option<String>,
+    hierarchy: Option<Vec<Option<String>>>,
+    alternates: Option<Vec<Option<String>>>,
+}
+
+impl OvertureMapsPlacesTaxonomy {
+    fn linearize(&self) -> Vec<String> {
+        let mut result = vec![];
+        if let Some(primary) = &self.primary {
+            result.push(primary.clone());
+        }
+        if let Some(hierarchy) = &self.hierarchy {
+            for item in hierarchy.iter().flatten() {
+                if !result.contains(item) {
+                    result.push(item.clone());
+                }
+            }
+        }
+        if let Some(alternates) = &self.alternates {
+            for item in alternates.iter().flatten() {
+                if !result.contains(item) {
+                    result.push(item.clone());
+                }
+            }
+        }
         result
     }
 }
@@ -112,7 +154,7 @@ struct OvertureMapsPlacesBrandNameRule {
     variant: Option<String>,
     language: Option<String>,
     value: Option<String>,
-    between: Option<Vec<String>>,
+    between: Option<Vec<Option<f64>>>,
     side: Option<String>,
 }
 

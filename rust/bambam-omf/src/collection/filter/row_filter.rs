@@ -77,7 +77,11 @@ impl RowFilter {
         match self {
             R::HasClass | R::HasClassIn { .. } => vec![String::from("class")],
             R::Bbox { .. } => vec![String::from("bbox")],
-            R::TaxonomyModel { .. } => vec![String::from("categories")],
+            R::TaxonomyModel { .. } => vec![
+                String::from("categories"),
+                String::from("taxonomy"),
+                String::from("basic_category"),
+            ],
             R::Combined { .. } => vec![],
         }
     }
