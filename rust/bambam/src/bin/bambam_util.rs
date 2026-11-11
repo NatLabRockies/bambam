@@ -731,15 +731,17 @@ mod tests {
         COMPLETE_VERTEX_FILENAME,
     };
     use geo::LineString;
-    use std::{fs, path::Path, str::FromStr};
+    use std::{fs, str::FromStr};
+    use tempfile::tempdir;
 
     #[test]
     fn test_modal_metric_cli_with_omf_network_dir() {
-        let tmp_dir = Path::new("target/test_tmp_bambam_util_modal_metric");
-        let _ = fs::remove_dir_all(tmp_dir);
-        let walk_dir = tmp_dir.join("walk");
-        let bike_dir = tmp_dir.join("bike");
-        let drive_dir = tmp_dir.join("drive");
+        let tmp_dir = tempdir().unwrap();
+        let tmp_path = tmp_dir.path();
+
+        let walk_dir = tmp_path.join("walk");
+        let bike_dir = tmp_path.join("bike");
+        let drive_dir = tmp_path.join("drive");
         fs::create_dir_all(&walk_dir).unwrap();
         fs::create_dir_all(&bike_dir).unwrap();
         fs::create_dir_all(&drive_dir).unwrap();
