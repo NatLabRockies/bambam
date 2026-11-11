@@ -417,7 +417,7 @@ mod tests {
             .join("bambam-osm")
             .join("src")
             .join("test");
-        let pbf_path = osm_test_dir.join("liechtenstein-250101.osm.pbf");
+        let pbf_path = osm_test_dir.join("liechtenstein-latest.osm.pbf");
         let wkt_path = osm_test_dir.join("schaan_liechtenstein.txt");
 
         let osm_out_dir = tmp_dir.join("osm_out");
