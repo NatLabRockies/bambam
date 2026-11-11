@@ -188,20 +188,23 @@ pub fn process_bundle(
     c: Arc<ProcessBundlesConfig>,
 ) -> Result<Option<GtfsBundle>, ScheduleError> {
     log::debug!("process_bundle called for {bundle_file}");
-    // read the GTFS archive. pre-process by removing Trips that contain stops
-    // which do not map to the road network vertices within the matching distance threshold.
-    let gtfs = Arc::new(read_gtfs(
-        bundle_file,
-        c.spatial_index.clone(),
-        &c.missing_stop_location_policy,
-    )?);
+    let mut gtfs = Gtfs::from_path(bundle_file)?;
 
-    // if user provided an extent, use it to filter GTFS archives
+    // if user provided an extent, use it to filter GTFS archives before map-matching stops
     if let Some(extent) = c.extent.as_ref() {
         if !archive_intersects_extent(&gtfs, extent)? {
             return Ok(None);
         }
     }
+
+    // pre-process by removing Trips that contain stops which do not map to the road network
+    // vertices within the matching distance threshold.
+    apply_missing_stop_location_policy(
+        &mut gtfs,
+        c.spatial_index.clone(),
+        &c.missing_stop_location_policy,
+    )?;
+    let gtfs = Arc::new(gtfs);
 
     // Pre-compute lat,lon location of all stops
     // with `get_stop_location` which returns the lat,lon
@@ -320,9 +323,20 @@ pub fn read_gtfs(
     missing_stop_matching_policy: &MissingStopLocationPolicy,
 ) -> Result<Gtfs, ScheduleError> {
     let mut gtfs = Gtfs::from_path(gtfs_file)?;
+    apply_missing_stop_location_policy(&mut gtfs, spatial_index, missing_stop_matching_policy)?;
+    Ok(gtfs)
+}
+
+/// Applies the missing stop matching policy to an already-loaded [`Gtfs`] feed, removing any
+/// disconnected Trips that include Stops which cannot be map matched.
+fn apply_missing_stop_location_policy(
+    gtfs: &mut Gtfs,
+    spatial_index: Arc<SpatialIndex>,
+    missing_stop_matching_policy: &MissingStopLocationPolicy,
+) -> Result<(), ScheduleError> {
     let mut disconnected_stops = HashSet::new();
     for stop in gtfs.stops.values() {
-        let remove_stop = match get_stop_location(stop.clone(), &gtfs) {
+        let remove_stop = match get_stop_location(stop.clone(), gtfs) {
             None => true,
             Some(point) => match_closest_graph_id(&point, spatial_index.clone()).is_err(),
         };
@@ -360,7 +374,7 @@ pub fn read_gtfs(
             disconnected_trips.len(),
         )
     }
-    Ok(gtfs)
+    Ok(())
 }
 
 /// writes the provided bundle to files.
