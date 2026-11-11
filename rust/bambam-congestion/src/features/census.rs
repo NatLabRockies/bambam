@@ -351,6 +351,7 @@ pub fn load_census_bamcensus(
             &lodes_granularity,
             &wac_segments,
             &lodes_dataset,
+            employment_source.fallback.0,
         )
         .await
         .map_err(|e| {

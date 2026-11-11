@@ -8,5 +8,5 @@ set -e
 
 echo "downloading test osm.pbf dataset"
 cd rust/bambam-osm/src/test/
-curl -O https://download.geofabrik.de/europe/liechtenstein-250101.osm.pbf
+curl -fLO https://download.geofabrik.de/europe/liechtenstein-latest.osm.pbf
 cd ../../../../
