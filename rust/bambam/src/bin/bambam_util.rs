@@ -687,27 +687,29 @@ impl App {
 /// `OsmWayDataSerializable` schema (`osmid,...`).
 fn is_edge_complete_record_csv(edges_file: &str) -> Result<bool, String> {
     use flate2::read::GzDecoder;
-    use std::io::{BufRead, BufReader};
+    use std::io::{BufReader, Read};
 
     let file = File::open(edges_file)
         .map_err(|e| format!("failed to open edges file '{edges_file}': {e}"))?;
-    let mut reader: Box<dyn BufRead> = if edges_file.ends_with(".gz") {
-        Box::new(BufReader::new(GzDecoder::new(file)))
+    let reader: Box<dyn Read> = if edges_file.ends_with(".gz") {
+        Box::new(GzDecoder::new(BufReader::new(file)))
     } else {
         Box::new(BufReader::new(file))
     };
 
-    let mut header_line = String::new();
-    reader
-        .read_line(&mut header_line)
+    let mut csv_reader = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .trim(csv::Trim::Headers)
+        .from_reader(reader);
+    let headers = csv_reader
+        .headers()
         .map_err(|e| format!("failed reading header from '{edges_file}': {e}"))?;
 
-    let cols: Vec<&str> = header_line
-        .trim()
-        .split(',')
-        .map(|c| c.trim().trim_matches('"'))
+    let cols: Vec<String> = headers
+        .iter()
+        .map(|c| c.trim_start_matches('\u{feff}').trim().to_ascii_lowercase())
         .collect();
-    Ok(cols.contains(&"source_id") || cols.first().copied() == Some("edge_id"))
+    Ok(cols.iter().any(|c| c == "source_id") || cols.first().map(String::as_str) == Some("edge_id"))
 }
 
 fn main() {
@@ -885,6 +887,33 @@ mod tests {
             .collect();
         assert_eq!(lts_lines.len(), 2);
         assert_eq!(lts_lines[1], "1");
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_is_edge_complete_record_csv_header_parsing() {
+        let tmp_dir = Path::new("target/test_tmp_bambam_util_header_detect");
+        let _ = fs::remove_dir_all(tmp_dir);
+        fs::create_dir_all(tmp_dir).unwrap();
+
+        // Quoted field with embedded comma + BOM + whitespace/casing on source_id
+        let quoted_bom_csv = tmp_dir.join("quoted_bom.csv");
+        fs::write(
+            &quoted_bom_csv,
+            "\u{feff}\"col,with,comma\",\" Source_Id \",distance\n1,seg-0,10.0\n",
+        )
+        .unwrap();
+        assert!(is_edge_complete_record_csv(quoted_bom_csv.to_str().unwrap()).unwrap());
+
+        // Quoted comma containing "source_id" inside another column name must not false-positive
+        let legacy_quoted_csv = tmp_dir.join("legacy_quoted.csv");
+        fs::write(
+            &legacy_quoted_csv,
+            "osmid,\"notes,source_id,extra\",highway\n100,abc,residential\n",
+        )
+        .unwrap();
+        assert!(!is_edge_complete_record_csv(legacy_quoted_csv.to_str().unwrap()).unwrap());
 
         let _ = fs::remove_dir_all(tmp_dir);
     }
