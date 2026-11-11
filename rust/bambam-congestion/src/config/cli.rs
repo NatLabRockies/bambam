@@ -184,6 +184,16 @@ pub struct CalibrateCliArgs {
     #[arg(long)]
     pub osm_pbf_path: Option<String>,
 
+    /// Optional local Overture Maps Parquet directory (`raw/` or directory containing `places`/`buildings` Parquet files)
+    /// when `opportunities_source.type = "overture_maps"`.
+    #[arg(long)]
+    pub omf_local_source_dir: Option<String>,
+
+    /// Optional CSV (or `.csv.gz`) path of Census polygons (`geoid,population,jobs,geometry`,
+    /// such as the file produced by `bambam-congestion export-census`) for computing population and employment densities.
+    #[arg(long)]
+    pub census_csv: Option<String>,
+
     /// Optional CSV (or `.csv.gz`) path to save the downloaded `bamcensus` dataset
     /// (`geoid,population,jobs,geometry`) when using `CensusSourceConfig::Bamcensus`.
     #[arg(long)]
@@ -268,6 +278,38 @@ impl CalibrateCliArgs {
                 pbf_path: pbf_path.clone(),
             });
         }
+        if let Some(ref omf_dir) = self.omf_local_source_dir {
+            match cfg.spatial_features.opportunities_source {
+                Some(OpportunitiesSourceConfig::OvertureMaps {
+                    ref mut local_source_dir,
+                    ..
+                }) => {
+                    *local_source_dir = Some(omf_dir.clone());
+                }
+                _ => {
+                    cfg.spatial_features.opportunities_source =
+                        Some(OpportunitiesSourceConfig::OvertureMaps {
+                            local_source_dir: Some(omf_dir.clone()),
+                            include_buildings: true,
+                        });
+                }
+            }
+        }
+        if let Some(ref census_csv_path) = self.census_csv {
+            cfg.spatial_features.census_source = Some(CensusSourceConfig::CsvPolygons {
+                polygons_csv_path: census_csv_path.clone(),
+                geoid_column: "geoid".to_string(),
+                wkt_column: "geometry".to_string(),
+                population_column: Some("population".to_string()),
+                employment_column: Some("jobs".to_string()),
+                population_csv_path: None,
+                population_csv_geoid_column: None,
+                population_csv_value_column: None,
+                employment_csv_path: None,
+                employment_csv_geoid_column: None,
+                employment_csv_value_column: None,
+            });
+        }
         if let Some(ref save_path) = self.save_bamcensus_csv {
             match cfg.spatial_features.census_source {
                 Some(CensusSourceConfig::Bamcensus {
@@ -284,6 +326,22 @@ impl CalibrateCliArgs {
                     });
                 }
             }
+        }
+
+        if cfg.open_network.network_dir.trim().is_empty() {
+            return Err(CongestionError::Configuration(
+                "missing open network directory: provide --open-network-dir or set [open_network].network_dir in config".to_string(),
+            ));
+        }
+        if cfg.reference_network.network_dir.trim().is_empty() {
+            return Err(CongestionError::Configuration(
+                "missing reference network directory: provide --reference-network-dir or set [reference_network].network_dir in config".to_string(),
+            ));
+        }
+        if cfg.output.output_dir.trim().is_empty() {
+            return Err(CongestionError::Configuration(
+                "missing calibration output directory: provide --output-dir or set [artifacts].calibration_dir in config".to_string(),
+            ));
         }
 
         Ok(cfg)
@@ -308,6 +366,10 @@ pub struct ImputeCliArgs {
     #[arg(long)]
     pub mode: Option<String>,
 
+    /// Override: directory containing `xgboost_model_with_speedlimit.json` and `xgboost_model_without_speedlimit.json`.
+    #[arg(long)]
+    pub models_dir: Option<String>,
+
     /// Override: path to the calibrated `with_speedlimit` XGBoost `.json` model file.
     #[arg(long)]
     pub model_with_speedlimit: Option<String>,
@@ -323,6 +385,16 @@ pub struct ImputeCliArgs {
     /// Optional `.osm.pbf` path for extracting MEP land-use opportunities and traffic controls.
     #[arg(long)]
     pub osm_pbf_path: Option<String>,
+
+    /// Optional local Overture Maps Parquet directory (`raw/` or directory containing `places`/`buildings` Parquet files)
+    /// when `opportunities_source.type = "overture_maps"`.
+    #[arg(long)]
+    pub omf_local_source_dir: Option<String>,
+
+    /// Optional CSV (or `.csv.gz`) path of Census polygons (`geoid,population,jobs,geometry`,
+    /// such as the file produced by `bambam-congestion export-census`) for computing population and employment densities.
+    #[arg(long)]
+    pub census_csv: Option<String>,
 
     /// Optional CSV (or `.csv.gz`) path to save the downloaded `bamcensus` dataset
     /// (`geoid,population,jobs,geometry`) when using `CensusSourceConfig::Bamcensus`.
@@ -345,16 +417,38 @@ impl ImputeCliArgs {
                     "must provide either --config or --open-network-dir".to_string(),
                 )
             })?;
-            let model_with_sl = self.model_with_speedlimit.clone().ok_or_else(|| {
-                CongestionError::Configuration(
-                    "must provide either --config or --model-with-speedlimit".to_string(),
-                )
-            })?;
-            let model_without_sl = self.model_without_speedlimit.clone().ok_or_else(|| {
-                CongestionError::Configuration(
-                    "must provide either --config or --model-without-speedlimit".to_string(),
-                )
-            })?;
+            let default_with_sl = self.models_dir.as_ref().map(|d| {
+                Path::new(d)
+                    .join("xgboost_model_with_speedlimit.json")
+                    .to_string_lossy()
+                    .into_owned()
+            });
+            let default_without_sl = self.models_dir.as_ref().map(|d| {
+                Path::new(d)
+                    .join("xgboost_model_without_speedlimit.json")
+                    .to_string_lossy()
+                    .into_owned()
+            });
+            let model_with_sl = self
+                .model_with_speedlimit
+                .clone()
+                .or(default_with_sl)
+                .ok_or_else(|| {
+                    CongestionError::Configuration(
+                        "must provide --config, --models-dir, or --model-with-speedlimit"
+                            .to_string(),
+                    )
+                })?;
+            let model_without_sl = self
+                .model_without_speedlimit
+                .clone()
+                .or(default_without_sl)
+                .ok_or_else(|| {
+                    CongestionError::Configuration(
+                        "must provide --config, --models-dir, or --model-without-speedlimit"
+                            .to_string(),
+                    )
+                })?;
             ImputationConfig {
                 open_network: OpenNetworkConfig {
                     network_dir: open_dir,
@@ -379,6 +473,17 @@ impl ImputeCliArgs {
         if let Some(ref mode) = self.mode {
             cfg.open_network.mode = mode.clone();
         }
+        if let Some(ref models_dir) = self.models_dir {
+            let base = Path::new(models_dir);
+            cfg.models.model_with_speedlimit_path = base
+                .join("xgboost_model_with_speedlimit.json")
+                .to_string_lossy()
+                .into_owned();
+            cfg.models.model_without_speedlimit_path = base
+                .join("xgboost_model_without_speedlimit.json")
+                .to_string_lossy()
+                .into_owned();
+        }
         if let Some(ref m_with) = self.model_with_speedlimit {
             cfg.models.model_with_speedlimit_path = m_with.clone();
         }
@@ -391,6 +496,38 @@ impl ImputeCliArgs {
         if let Some(ref pbf_path) = self.osm_pbf_path {
             cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::OsmPbf {
                 pbf_path: pbf_path.clone(),
+            });
+        }
+        if let Some(ref omf_dir) = self.omf_local_source_dir {
+            match cfg.spatial_features.opportunities_source {
+                Some(OpportunitiesSourceConfig::OvertureMaps {
+                    ref mut local_source_dir,
+                    ..
+                }) => {
+                    *local_source_dir = Some(omf_dir.clone());
+                }
+                _ => {
+                    cfg.spatial_features.opportunities_source =
+                        Some(OpportunitiesSourceConfig::OvertureMaps {
+                            local_source_dir: Some(omf_dir.clone()),
+                            include_buildings: true,
+                        });
+                }
+            }
+        }
+        if let Some(ref census_csv_path) = self.census_csv {
+            cfg.spatial_features.census_source = Some(CensusSourceConfig::CsvPolygons {
+                polygons_csv_path: census_csv_path.clone(),
+                geoid_column: "geoid".to_string(),
+                wkt_column: "geometry".to_string(),
+                population_column: Some("population".to_string()),
+                employment_column: Some("jobs".to_string()),
+                population_csv_path: None,
+                population_csv_geoid_column: None,
+                population_csv_value_column: None,
+                employment_csv_path: None,
+                employment_csv_geoid_column: None,
+                employment_csv_value_column: None,
             });
         }
         if let Some(ref save_path) = self.save_bamcensus_csv {
@@ -411,6 +548,128 @@ impl ImputeCliArgs {
             }
         }
 
+        if cfg.open_network.network_dir.trim().is_empty() {
+            return Err(CongestionError::Configuration(
+                "missing open network directory: provide --open-network-dir or set [open_network].network_dir in config".to_string(),
+            ));
+        }
+
         Ok(cfg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn repo_congestion_toml() -> String {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("configuration/bambam-congestion/congestion.toml")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[test]
+    fn test_calibrate_cli_resolves_pathless_congestion_toml() {
+        let toml_path = repo_congestion_toml();
+
+        // Missing required paths when only pathless congestion.toml is given should fail cleanly
+        let missing_args = CalibrateCliArgs {
+            config: Some(toml_path.clone()),
+            open_network_dir: None,
+            mode: None,
+            reference_network_dir: None,
+            reference_speeds_dir: None,
+            reference_file_prefix: None,
+            output_dir: None,
+            osm_pbf_path: None,
+            omf_local_source_dir: None,
+            census_csv: None,
+            save_bamcensus_csv: None,
+        };
+        assert!(missing_args.resolve_config().is_err());
+
+        // Passing paths via CLI overrides populates CalibrationConfig cleanly
+        let args = CalibrateCliArgs {
+            config: Some(toml_path),
+            open_network_dir: Some("us_network".to_string()),
+            mode: Some("drive".to_string()),
+            reference_network_dir: Some("/path/to/tomtom".to_string()),
+            reference_speeds_dir: Some("/path/to/speeds".to_string()),
+            reference_file_prefix: None,
+            output_dir: Some("output/calib_us".to_string()),
+            osm_pbf_path: None,
+            omf_local_source_dir: None,
+            census_csv: Some("us_network/census_tracts_bamcensus.csv.gz".to_string()),
+            save_bamcensus_csv: None,
+        };
+        let cfg = args.resolve_config().expect("should resolve calibrate config");
+        assert_eq!(cfg.open_network.network_dir, "us_network");
+        assert_eq!(cfg.open_network.mode, "drive");
+        assert_eq!(cfg.reference_network.network_dir, "/path/to/tomtom");
+        assert_eq!(
+            cfg.reference_network.speed_files.speeds_dir.as_deref(),
+            Some("/path/to/speeds")
+        );
+        assert_eq!(
+            cfg.reference_network.speed_files.file_prefix.as_deref(),
+            Some("tomtom-natl")
+        );
+        assert_eq!(cfg.output.output_dir, "output/calib_us");
+        match cfg.spatial_features.census_source {
+            Some(CensusSourceConfig::CsvPolygons {
+                ref polygons_csv_path,
+                ref geoid_column,
+                ref wkt_column,
+                ref population_column,
+                ref employment_column,
+                ..
+            }) => {
+                assert_eq!(
+                    polygons_csv_path,
+                    "us_network/census_tracts_bamcensus.csv.gz"
+                );
+                assert_eq!(geoid_column, "geoid");
+                assert_eq!(wkt_column, "geometry");
+                assert_eq!(population_column.as_deref(), Some("population"));
+                assert_eq!(employment_column.as_deref(), Some("jobs"));
+            }
+            other => panic!("expected CsvPolygons census_source, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_impute_cli_resolves_pathless_congestion_toml_and_models_dir() {
+        let toml_path = repo_congestion_toml();
+
+        let args = ImputeCliArgs {
+            config: Some(toml_path),
+            open_network_dir: Some("us_network".to_string()),
+            mode: Some("drive".to_string()),
+            models_dir: Some("my_models_dir".to_string()),
+            model_with_speedlimit: None,
+            model_without_speedlimit: None,
+            output_dir: Some("us_network/drive".to_string()),
+            osm_pbf_path: None,
+            omf_local_source_dir: None,
+            census_csv: Some("us_network/census_tracts_bamcensus.csv.gz".to_string()),
+            save_bamcensus_csv: None,
+        };
+        let cfg = args.resolve_config().expect("should resolve impute config");
+        assert_eq!(cfg.open_network.network_dir, "us_network");
+        assert_eq!(cfg.output_dir.as_deref(), Some("us_network/drive"));
+        assert_eq!(
+            cfg.models.model_with_speedlimit_path,
+            "my_models_dir/xgboost_model_with_speedlimit.json"
+        );
+        assert_eq!(
+            cfg.models.model_without_speedlimit_path,
+            "my_models_dir/xgboost_model_without_speedlimit.json"
+        );
     }
 }

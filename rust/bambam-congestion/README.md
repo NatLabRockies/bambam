@@ -64,21 +64,33 @@ RUST_LOG=info ./rust/target/release/bambam_util import-network \
     --config configuration/bambam-congestion/congestion.toml
 
 # 2. Conflate the Open Network with the Reference Network speeds and compute 0.5-mile spatial features
-#    Produces calibration_with_speedlimit.parquet and calibration_without_speedlimit.parquet in [artifacts].calibration_dir
+#    Produces calibration_with_speedlimit.parquet and calibration_without_speedlimit.parquet
 RUST_LOG=info ./rust/target/release/bambam-congestion calibrate \
-    --config configuration/bambam-congestion/congestion.toml
+    --config configuration/bambam-congestion/congestion.toml \
+    --open-network-dir boulder_co \
+    --mode drive \
+    --census-csv boulder_co/census_tracts_bamcensus.csv.gz \
+    --reference-network-dir /path/to/tomtom_national \
+    --reference-speeds-dir /path/to/tomtom_speeds \
+    --output-dir output/congestion_calibration_boulder
 
 # 3. Train the calibrated XGBoost models (`with_speedlimit` and `without_speedlimit`)
-#    Reads [artifacts].calibration_dir and exports portable .json models to [artifacts].models_dir
+#    Exports portable .json models to --output-dir
 uv run python python/nlr/bambam/congestion/train_congestion_models.py \
-    --config configuration/bambam-congestion/congestion.toml \
+    --calibration-dir output/congestion_calibration_boulder \
+    --output-dir output/congestion_models \
     --n-iter 25
 
 # 4. Impute operating speeds across all configured time bins
-#    Reads models from [artifacts].models_dir and writes edges-speeds-{bin}-mph-enumerated.txt.gz
+#    Reads models from --models-dir and writes edges-speeds-{bin}-mph-enumerated.txt.gz
 #    and predicted-speeds.parquet into output/boulder_network/drive/
 RUST_LOG=info ./rust/target/release/bambam-congestion impute \
-    --config configuration/bambam-congestion/congestion.toml
+    --config configuration/bambam-congestion/congestion.toml \
+    --open-network-dir boulder_co \
+    --mode drive \
+    --census-csv boulder_co/census_tracts_bamcensus.csv.gz \
+    --models-dir output/congestion_models \
+    --output-dir output/congestion_imputation_boulder
 ```
 
 ## Validation
