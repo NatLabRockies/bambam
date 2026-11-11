@@ -18,6 +18,7 @@ CONGESTION_CONFIG="${CONGESTION_CONFIG:-configuration/bambam-congestion/congesti
 EXTENT_FILE="${EXTENT_FILE:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-}"
 GTFS_MANIFEST="${GTFS_MANIFEST:-}"
+GTFS_SUBDIVISION="${GTFS_SUBDIVISION:-}"
 REF_NETWORK_DIR="${REF_NETWORK_DIR:-}"
 REF_SPEEDS_DIR="${REF_SPEEDS_DIR:-}"
 
@@ -33,6 +34,7 @@ Required arguments:
 
 Optional arguments:
   -s, --ref-speeds-dir <DIR>      Directory with reference time-bin speed files (defaults to --ref-network-dir)
+  -d, --subdivision-name <NAME>   Optional state/subdivision filter for GTFS download (e.g., "Colorado")
   -n, --network-config <FILE>     Network import config (default: ${NETWORK_CONFIG})
   -c, --congestion-config <FILE>  Congestion pipeline config (default: ${CONGESTION_CONFIG})
   -h, --help                      Show this help message
@@ -51,6 +53,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -m|--gtfs-manifest|--transit-manifest)
             GTFS_MANIFEST="$2"
+            shift 2
+            ;;
+        -d|--subdivision-name|--gtfs-subdivision)
+            GTFS_SUBDIVISION="$2"
             shift 2
             ;;
         -r|--ref-network-dir|--reference-network-dir)
@@ -116,13 +122,18 @@ RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-omf" network \
 
 # download GTFS dataset
 mkdir -p "${GTFS_RAW_DIR}"
+DOWNLOAD_ARGS=(
+    --manifest-file "${GTFS_MANIFEST}"
+    --country-code US
+    --data-type gtfs
+    --parallelism 16
+)
+if [[ -n "${GTFS_SUBDIVISION}" ]]; then
+    DOWNLOAD_ARGS+=(--subdivision-name "${GTFS_SUBDIVISION}")
+fi
 (
     cd "${GTFS_RAW_DIR}" && \
-    RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-transit" download \
-        --manifest-file "${GTFS_MANIFEST}" \
-        --country-code US \
-        --data-type gtfs \
-        --parallelism 16
+    RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-transit" download "${DOWNLOAD_ARGS[@]}"
 )
 
 # import GTFS archives into vectorized routing table
@@ -138,7 +149,8 @@ RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-transit" import \
     --end-time 09:00:00 \
     --date-mapping-policy nearest-date-time-range \
     --date-mapping-date-tolerance 730 \
-    --date-mapping-match-weekday true
+    --date-mapping-match-weekday true \
+    --missing-stop-location-policy drop
 
 # inject transit mode into config file
 RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" gtfs-config \
