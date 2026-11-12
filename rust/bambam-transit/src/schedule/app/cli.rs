@@ -68,6 +68,9 @@ pub enum GtfsOperation {
         /// country code to filter from list, defaults to US-based transit options
         #[arg(long, default_value_t = String::from("US"))]
         country_code: String,
+        /// optional subdivision / state name (`location.subdivision_name`) to filter from list (e.g. "Colorado")
+        #[arg(long)]
+        subdivision_name: Option<String>,
         /// data type to filter from list
         #[arg(long, default_value_t = String::from("gtfs"))]
         data_type: String,
@@ -104,7 +107,7 @@ pub enum GtfsOperation {
         #[arg(long, default_value_t = 325.)]
         vertex_match_tolerance: f64,
 
-        #[arg(long, value_enum, default_value_t=MissingStopLocationPolicy::Fail)]
+        #[arg(long, value_enum, default_value_t=MissingStopLocationPolicy::Drop)]
         missing_stop_location_policy: MissingStopLocationPolicy,
 
         #[arg(long, value_enum, default_value_t=DistanceCalculationPolicy::Haversine)]
@@ -152,8 +155,9 @@ impl GtfsOperation {
                 data_type,
                 country_code,
             } => {
-                let rows = manifest_into_rows(manifest_file, Some(country_code), Some(data_type))
-                    .expect("failed reading manifest");
+                let rows =
+                    manifest_into_rows(manifest_file, Some(country_code), None, Some(data_type))
+                        .expect("failed reading manifest");
                 summarize(&rows)
             }
             GtfsOperation::Shapes {
@@ -161,8 +165,9 @@ impl GtfsOperation {
                 country_code,
                 data_type,
             } => {
-                let rows = manifest_into_rows(manifest_file, Some(country_code), Some(data_type))
-                    .expect("failed reading manifest");
+                let rows =
+                    manifest_into_rows(manifest_file, Some(country_code), None, Some(data_type))
+                        .expect("failed reading manifest");
                 shapes(&rows)
             }
             GtfsOperation::Download {
@@ -170,9 +175,15 @@ impl GtfsOperation {
                 parallelism,
                 data_type,
                 country_code,
+                subdivision_name,
             } => {
-                let rows = manifest_into_rows(manifest_file, Some(country_code), Some(data_type))
-                    .expect("failed reading manifest");
+                let rows = manifest_into_rows(
+                    manifest_file,
+                    Some(country_code),
+                    subdivision_name.as_deref(),
+                    Some(data_type),
+                )
+                .expect("failed reading manifest");
                 download(&rows, *parallelism)
             }
             GtfsOperation::Import {
@@ -287,10 +298,12 @@ fn load_vertices_and_create_spatial_index(
 /// # Arguments
 ///
 /// * `country_code` - optional country to filter by
+/// * `subdivision_name` - optional state/subdivision (`location.subdivision_name`) to filter by
 /// * `data_type` - optional data type to filter by
 fn manifest_into_rows(
     manifest_file: &str,
     country_code: Option<&str>,
+    subdivision_name: Option<&str>,
     data_type: Option<&str>,
 ) -> Result<Vec<GtfsProvider>, ScheduleError> {
     let path_buf = PathBuf::from(manifest_file);
@@ -308,11 +321,15 @@ fn manifest_into_rows(
         .collect::<Result<Vec<GtfsProvider>, ScheduleError>>()?;
     let us_rows: Vec<GtfsProvider> = rows
         .into_iter()
-        .filter(|r| match (country_code, data_type) {
-            (None, None) => true,
-            (None, Some(dt)) => r.data_type.as_str() == dt,
-            (Some(cc), None) => r.country_code.as_str() == cc,
-            (Some(cc), Some(dt)) => r.country_code.as_str() == cc && r.data_type.as_str() == dt,
+        .filter(|r| {
+            let matches_country = country_code.is_none_or(|cc| r.country_code.as_str() == cc);
+            let matches_subdivision = subdivision_name.is_none_or(|sub| {
+                r.state_code
+                    .as_deref()
+                    .is_some_and(|sc| sc.eq_ignore_ascii_case(sub))
+            });
+            let matches_type = data_type.is_none_or(|dt| r.data_type.as_str() == dt);
+            matches_country && matches_subdivision && matches_type
         })
         .collect_vec();
 
@@ -513,4 +530,32 @@ fn read_extent_file(extent_file: Option<&String>) -> Result<Option<Geometry>, Sc
         ))),
     }?;
     Ok(Some(extent))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_manifest_into_rows_filters_by_subdivision_name() {
+        let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("bambam-gtfs/fixtures/2026-11-10-mobilitydatabase-feeds_v2.csv");
+        let manifest_str = manifest_path.to_str().unwrap();
+
+        let all_us = manifest_into_rows(manifest_str, Some("US"), None, Some("gtfs"))
+            .expect("should read manifest");
+        let colorado_only =
+            manifest_into_rows(manifest_str, Some("US"), Some("Colorado"), Some("gtfs"))
+                .expect("should read manifest filtered by Colorado");
+
+        assert!(!colorado_only.is_empty());
+        assert!(colorado_only.len() < all_us.len());
+        assert!(colorado_only.iter().all(|r| {
+            r.state_code
+                .as_deref()
+                .is_some_and(|sc| sc.eq_ignore_ascii_case("Colorado"))
+        }));
+    }
 }

@@ -1,13 +1,13 @@
 # Unified BAMBAM Congestion Calibration & Speed Imputation Configuration (`congestion.toml`)
 #
 # Matches `bambam_congestion::CongestionPipelineConfig`.
-# This single file drives all three stages of the pipeline:
-#   1. `bambam-congestion calibrate --config configuration/bambam-congestion/congestion.toml`
-#   2. `uv run python python/nlr/bambam/congestion/train_congestion_models.py --config configuration/bambam-congestion/congestion.toml`
-#   3. `bambam-congestion impute --config configuration/bambam-congestion/congestion.toml`
+# Defines shared model, time-bin, spatial feature, and conflation parameters across the pipeline.
+# Dataset and filesystem paths are passed via CLI flags in workflow scripts:
+#   1. `bambam-congestion calibrate --config configuration/bambam-congestion/congestion.toml --open-network-dir ...`
+#   2. `uv run python python/nlr/bambam/congestion/train_congestion_models.py --calibration-dir ... --output-dir ...`
+#   3. `bambam-congestion impute --config configuration/bambam-congestion/congestion.toml --open-network-dir ...`
 
 [open_network]
-network_dir = "boulder_co"
 mode = "drive"
 legacy_posted_speed_unit = "kph"
 min_imputed_speed_limit_mph = 15.0
@@ -55,61 +55,19 @@ end = "18:00:00"
 density_radius_miles = 0.5
 projection_mode = "geodesic"
 
-# Opportunities source can be:
-#   - { type = "osm_pbf", pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf" }
-#   - { type = "overture_maps", include_buildings = true }
-#   - { type = "csv_points", path = "...", x_column = "x", y_column = "y" }
-# Note: you can freely mix and match (e.g., an OMF network with an OSM PBF or vice versa).
+# Opportunities source defaults to Overture Maps (`places` + `buildings`) over the network's bounding box.
+# Can be overridden on the CLI via `--osm-pbf-path <path>` or `--omf-local-source-dir <dir>`.
+# Census polygons can be supplied on the CLI via `--census-csv <path>` (exported by `bambam-congestion export-census`).
 # Traffic controls default automatically to `<open_network.network_dir>/vertices-complete.csv.gz`.
-[spatial_features.opportunities_source] 
-type = "osm_pbf"
-pbf_path = "/Users/rfitzger/data/bam/mep3/in/osm/colorado-latest.osm.pbf"
-
-# Census source can be:
-#   - `type = "csv_polygons"` (local WKT CSV polygons with inline or external population/employment columns,
-#      such as the committed `boulder_co/census_tracts_bamcensus.csv.gz` fixture exported by `bambam-congestion export-census`)
-#   - `type = "bamcensus"` (downloads TIGER/Line polygons + ACS population + LEHD LODES employment;
-#      requires `CENSUS_API_KEY` or `CENSUS_API_TOKEN` in the environment)
-#   - `type = "shapefile"` (local shapefile with `pop-den` and `emp-den` fields)
-[spatial_features.census_source]
-type = "csv_polygons"
-polygons_csv_path = "boulder_co/census_tracts_bamcensus.csv.gz"
-geoid_column = "geoid"
-wkt_column = "geometry"
-population_column = "population"
-employment_column = "jobs"
-
-# Online `bamcensus` alternative (can also re-generate the fixture via `bambam-congestion export-census` or `--save-bamcensus-csv`):
-# [spatial_features.census_source]
-# type = "bamcensus"
-# [spatial_features.census_source.population_source]
-# type = "acs"
-# acs_type = "five_year"
-# acs_year = 2022
-# acs_resolution = "census_tract"
-# acs_categories = ["B01001_001E"]
-# [spatial_features.census_source.employment_source]
-# type = "lodes"
-# study_region = { type = "census", geoids = ["08013"] }
-# data_granularity = "census_tract"
-# edition = "LODES8"
-# job_type = "JT00"
-# segment = "S000"
-# year = 2022
+[spatial_features.opportunities_source]
+type = "overture_maps"
+include_buildings = true
 
 [reference_network]
-network_dir = "/Users/rfitzger/dev/nrel/routee/routee-compass-tomtom/data/tomtom_national"
 speed_unit = "kph"
 require_time_varying_speeds = true
-
-# Option A: Resolve per-bin speed files using `speeds_dir` + `file_prefix` (or `file_pattern = "tomtom-natl-{bin}.txt.gz"`):
-#   Resolves `/Users/rfitzger/data/bam/mep3/in/congestion/tomtom-natl-{wd-am,wd-af,wd-pm,we-am,we-af,we-pm}.txt.gz`
-speeds_dir = "/Users/rfitzger/data/bam/mep3/in/congestion"
 file_prefix = "tomtom-natl"
 file_extension = "txt.gz"
-
-# Option B: Alternatively, specify explicit filenames per bin in `[reference_network.files]`
-#           or set `reference_speed_file = "..."` inside each `[[time_bins]]` block.
 
 [conflation]
 buffer_distance_meters = 5.0
@@ -120,8 +78,6 @@ speed_cap_above_posted_mph = 10.0
 speed_cap_above_class_max_mph = 5.0
 
 [artifacts]
-calibration_dir = "output/congestion_calibration_boulder"
-models_dir = "output/congestion_models"
-imputation_output_dir = "output/congestion_imputation_boulder"
 write_parquet = true
 write_csv = true
+

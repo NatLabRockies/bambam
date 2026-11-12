@@ -21,7 +21,7 @@ use super::{
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CongestionPipelineConfig {
     /// Target Open Network (OSM or Overture Maps) in RouteE Compass format.
-    #[serde(alias = "network")]
+    #[serde(default, alias = "network")]
     pub open_network: OpenNetworkConfig,
 
     /// Explicit list of time-of-day bins (`[[time_bins]]`) with their names and indicator flags.
@@ -87,11 +87,7 @@ impl CongestionPipelineConfig {
 
     /// Converts this unified pipeline config into a [`CalibrationConfig`].
     pub fn into_calibration_config(self) -> Result<CalibrationConfig, CongestionError> {
-        let reference_network = self.reference_network.ok_or_else(|| {
-            CongestionError::Configuration(
-                "`[reference_network]` is required in config when running `calibrate`".to_string(),
-            )
-        })?;
+        let reference_network = self.reference_network.unwrap_or_default();
         Ok(CalibrationConfig {
             open_network: self.open_network,
             time_bins: self.time_bins,

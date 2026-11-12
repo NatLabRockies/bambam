@@ -14,6 +14,8 @@ use crate::{error::CongestionError, taxonomy::TimeBinSpec};
 pub struct ReferenceNetworkConfig {
     /// Directory containing `edges-geometries-enumerated.txt.gz` (and optionally
     /// `edges-speed-profile-id-mapping-enumerated.txt.gz` and `speed-profile.csv.gz`).
+    /// Can be omitted in `congestion.toml` when supplied via `--reference-network-dir`.
+    #[serde(default)]
     pub network_dir: String,
     /// Speed unit of the values in the reference speed files (defaults to `SpeedUnit::KPH`).
     #[serde(default = "default_kph_unit")]

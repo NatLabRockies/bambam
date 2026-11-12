@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct OpenNetworkConfig {
     /// Root directory of the imported network (or flat Compass directory).
+    /// Can be omitted in `congestion.toml` when supplied via `--open-network-dir`.
+    #[serde(default)]
     pub network_dir: String,
     /// Mode subdirectory (e.g. `"drive"`). If `<network_dir>/<mode>` does not exist,
     /// `<network_dir>` itself is inspected for flat Compass files.
