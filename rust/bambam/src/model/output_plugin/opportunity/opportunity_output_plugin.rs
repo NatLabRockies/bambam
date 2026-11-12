@@ -103,9 +103,12 @@ impl TryFrom<&OpportunityPluginConfig> for OpportunityOutputPlugin {
 
     fn try_from(value: &OpportunityPluginConfig) -> Result<Self, Self::Error> {
         let model = value.model.build()?;
-        let totals = model.opportunity_totals().map_err(|e| {
-            OutputPluginError::BuildFailed(format!("failed to collect opportunity totals: {e}"))
-        })?;
+        let totals = match &value.opportunity_totals {
+            Some(conf_totals) => conf_totals.clone(),
+            None => model.opportunity_totals().map_err(|e| {
+                OutputPluginError::BuildFailed(format!("failed to collect opportunity totals: {e}"))
+            })?,
+        };
         for (act, total) in totals.iter() {
             if total == &0.0 {
                 return Err(OutputPluginError::BuildFailed(format!(
