@@ -154,9 +154,8 @@ RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-transit" import \
 
 # inject transit mode into config file
 RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" gtfs-config \
-    --directory "${TRANSIT_DIR}" \
-    --base-config "${OUTPUT_DIR}/bambam.toml" \
-    --inject-filepath transit
+    --directory "${TRANSIT_DIR}"/transit \
+    --base-config "${OUTPUT_DIR}/bambam.toml"
 
 # collect census geometries, population, employment for congestion imputation
 # requires CENSUS_API_KEY
