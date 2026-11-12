@@ -199,4 +199,6 @@ RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" modal_metric \
     --network-dir "${OUTPUT_DIR}" \
     --output-file "${OUTPUT_DIR}/bike/lts.csv.gz"
 
+echo "missing: injecting WCI/LTS logic into config; injecting transit-mode constraints; setting drive-mode speeds file."
+echo ""
 echo "finished."
