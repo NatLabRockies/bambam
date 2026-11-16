@@ -1,5 +1,6 @@
 use crate::model::output_plugin::opportunity::{
-    source::OverturePlacesMappingConfig, OpportunityDataset,
+    opportunity_model_config::read_config_value, source::OverturePlacesMappingConfig,
+    OpportunityDataset, OpportunityModelConfig,
 };
 
 use super::{
@@ -7,6 +8,7 @@ use super::{
     source::overture_opportunity_collection_model::OvertureOpportunityCollectionModel,
     study_region::StudyRegion,
 };
+use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
 use bambam_omf::collection::{Bbox, OvertureMapsCollectorConfig, ReleaseVersion};
 use bamcensus::app::lodes_tiger;
 use bamcensus_core::model::identifier::GeoidType;
@@ -16,7 +18,7 @@ use bamcensus_lehd::model::{
 use geo::Geometry;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 /// an API data source for opportunities.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -123,5 +125,133 @@ impl OpportunitySource {
                 )
             }
         }
+    }
+
+    /// Derives the sorted, deduplicated list of activity column names defined in this
+    /// [`OpportunitySource`]'s activity mapping configuration.
+    pub fn default_activity_column_names(&self) -> Result<Vec<String>, String> {
+        match self {
+            OpportunitySource::UsCensusLehdLodes {
+                activity_mapping, ..
+            } => Ok(activity_mapping
+                .values()
+                .flatten()
+                .cloned()
+                .unique()
+                .sorted()
+                .collect_vec()),
+            OpportunitySource::OvertureMapsPlaces {
+                places_activity_mapping,
+                buildings_activity_mapping,
+                ..
+            } => {
+                let places_mapping = places_activity_mapping.build()?;
+                let names = places_mapping
+                    .into_keys()
+                    .chain(
+                        buildings_activity_mapping
+                            .iter()
+                            .flat_map(|m| m.keys().cloned()),
+                    )
+                    .unique()
+                    .sorted()
+                    .collect_vec();
+                Ok(names)
+            }
+        }
+    }
+
+    /// Loads an [`OpportunitySource`] (along with optional `activity_column_names` and
+    /// `table_orientation` if the file wraps it in an [`OpportunityModelConfig::ApiSource`])
+    /// from a TOML or JSON file.
+    pub fn from_config_path(
+        path: &Path,
+    ) -> Result<(Self, Option<Vec<String>>, Option<OpportunityOrientation>), String> {
+        let value = read_config_value(path)?;
+        Self::from_config_value(&value)
+    }
+
+    /// Extracts an [`OpportunitySource`] (plus optional `activity_column_names` and
+    /// `table_orientation` if present) from a parsed [`serde_json::Value`].
+    pub fn from_config_value(
+        value: &serde_json::Value,
+    ) -> Result<(Self, Option<Vec<String>>, Option<OpportunityOrientation>), String> {
+        // 1. Check if the value can be parsed as an OpportunityModelConfig (e.g. ApiSource or Combined)
+        if let Ok(model_config) = OpportunityModelConfig::try_from(value) {
+            return Self::from_model_config(model_config);
+        }
+
+        // 2. Check if there is an `opportunity_source` key at the root
+        if let Some(source_val) = value.get("opportunity_source") {
+            let source: OpportunitySource =
+                serde_json::from_value(source_val.clone()).map_err(|e| {
+                    format!("failed to deserialize OpportunitySource from 'opportunity_source': {e}")
+                })?;
+            let activity_cols: Option<Vec<String>> = value
+                .get("activity_column_names")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()
+                .map_err(|e| format!("failed to parse 'activity_column_names': {e}"))?;
+            let orientation: Option<OpportunityOrientation> = value
+                .get("table_orientation")
+                .map(|v| serde_json::from_value(v.clone()))
+                .transpose()
+                .map_err(|e| format!("failed to parse 'table_orientation': {e}"))?;
+            return Ok((source, activity_cols, orientation));
+        }
+
+        // 3. Otherwise deserialize directly as a free-standing OpportunitySource
+        let source: OpportunitySource = serde_json::from_value(value.clone())
+            .map_err(|e| format!("failed to deserialize OpportunitySource: {e}"))?;
+        Ok((source, None, None))
+    }
+
+    fn from_model_config(
+        model_config: OpportunityModelConfig,
+    ) -> Result<(Self, Option<Vec<String>>, Option<OpportunityOrientation>), String> {
+        match model_config {
+            OpportunityModelConfig::ApiSource {
+                opportunity_source,
+                activity_column_names,
+                table_orientation,
+                ..
+            } => Ok((
+                opportunity_source,
+                Some(activity_column_names),
+                Some(table_orientation),
+            )),
+            OpportunityModelConfig::Combined { mut models } => {
+                if models.len() == 1 {
+                    Self::from_model_config(*models.remove(0))
+                } else {
+                    Err(format!(
+                        "expected a single OpportunitySource or ApiSource, but found a Combined model with {} inner models",
+                        models.len()
+                    ))
+                }
+            }
+            OpportunityModelConfig::FileSource { .. } => Err(
+                "expected an OpportunitySource or ApiSource config, but found a FileSource config"
+                    .to_string(),
+            ),
+        }
+    }
+}
+
+impl TryFrom<&Path> for OpportunitySource {
+    type Error = String;
+
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        let (source, _, _) = Self::from_config_path(path)?;
+        Ok(source)
+    }
+}
+
+impl TryFrom<&serde_json::Value> for OpportunitySource {
+    type Error = String;
+
+    fn try_from(value: &serde_json::Value) -> Result<Self, Self::Error> {
+        let (source, _, _) = Self::from_config_value(value)?;
+        Ok(source)
     }
 }

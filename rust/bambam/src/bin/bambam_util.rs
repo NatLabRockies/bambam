@@ -1,11 +1,13 @@
 use bambam::app::gtfs_flex_config::CliGtfsFlexConfigApp;
 use bambam::app::network_import::{GeographicExtent, NetworkDataSource, NetworkImportRequest};
+use bambam::app::opp_import::{self, OpportunityImportOutputs};
 use bambam::app::opp_totals::{self, TotalsNamespace};
 use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
 };
 use bambam_congestion::{CalibrateCliArgs, ImputeCliArgs};
+use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
 use bambam_modal_metrics::common::bulk_compute_modal_metric::bulk_compute_modal_metric_with_context;
 use bambam_modal_metrics::common::modal_metrics::ModalMetric;
 use bambam_network::{
@@ -285,6 +287,40 @@ pub enum App {
         /// Optional file path to write output (.toml or .json). Prints to stdout if omitted.
         #[arg(short, long)]
         output_file: Option<String>,
+    },
+    #[command(
+        name = "import-opportunities",
+        visible_alias = "opportunity-import",
+        about = "Import opportunities from an OpportunitySource, proportion across vertices, and write geometry/vertex CSVs and a FileSource TOML fragment"
+    )]
+    ImportOpportunities {
+        /// Path to TOML or JSON file containing a serialized OpportunitySource or OpportunityModelConfig::ApiSource
+        #[arg(short, long)]
+        source_config: String,
+        /// Path to vertices-compass.csv[.gz] for graph vertex matching and proportioning
+        #[arg(short, long)]
+        vertices_file: String,
+        /// Optional output directory for default filenames (opportunities-geometries.csv.gz, opportunities.csv.gz, opportunity.toml)
+        #[arg(short, long)]
+        output_directory: Option<String>,
+        /// Optional path to write the opportunity counts by geometry CSV (.csv or .csv.gz)
+        #[arg(long)]
+        geometries_output_file: Option<String>,
+        /// Optional path to write the vertex-vectorized opportunity counts CSV (.csv or .csv.gz)
+        #[arg(long)]
+        opportunities_output_file: Option<String>,
+        /// Optional path to write the OpportunityModelConfig::FileSource TOML/JSON fragment (prints to stdout if neither --config-output-file nor --output-directory is provided)
+        #[arg(long)]
+        config_output_file: Option<String>,
+        /// Optional comma-separated list of activity column names (inferred from OpportunitySource or ApiSource if omitted)
+        #[arg(long)]
+        activity_column_names: Option<String>,
+        /// Optional table orientation (destination_vertex_oriented, origin_vertex_oriented, edge_oriented)
+        #[arg(long)]
+        table_orientation: Option<OpportunityOrientation>,
+        /// Output TOML/JSON fragment namespacing: "standalone" or "output-plugins" ([plugin.output_plugins.model])
+        #[arg(short, long, value_enum, default_value_t = TotalsNamespace::Standalone)]
+        namespace: TotalsNamespace,
     },
 }
 
@@ -708,6 +744,39 @@ impl App {
                 *namespace,
                 output_file.as_deref(),
             ),
+            App::ImportOpportunities {
+                source_config,
+                vertices_file,
+                output_directory,
+                geometries_output_file,
+                opportunities_output_file,
+                config_output_file,
+                activity_column_names,
+                table_orientation,
+                namespace,
+            } => {
+                let outputs = OpportunityImportOutputs::resolve(
+                    output_directory.as_deref(),
+                    geometries_output_file.as_deref(),
+                    opportunities_output_file.as_deref(),
+                    config_output_file.as_deref(),
+                )?;
+                let parsed_activities = activity_column_names.as_ref().map(|cols| {
+                    cols.split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                });
+                opp_import::run(
+                    source_config,
+                    vertices_file,
+                    parsed_activities,
+                    *table_orientation,
+                    *namespace,
+                    &outputs,
+                )
+                .map(|_| ())
+            }
         }
     }
 }
