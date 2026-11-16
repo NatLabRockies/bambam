@@ -14,7 +14,7 @@ use rstar::primitives::GeomWithData;
 use rstar::RTree;
 use serde::de;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs::File, io::BufReader};
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 
 /// Configuration object for building an [`OpportunityModel`] called by it's
 /// [`routee_compass::plugin::output::OutputPluginBuilder`]. See [`OpportunityModel`]
@@ -40,6 +40,7 @@ pub enum OpportunityModelConfig {
     /// - `table_orientation`: Variant of [`OpportunityTableOrientation`] describing how to attach opportunities to graph elements
     #[serde(rename = "api")]
     ApiSource {
+        #[serde(default)]
         vertex_input_file: String,
         opportunity_source: OpportunitySource,
         activity_column_names: Vec<String>,
@@ -52,6 +53,24 @@ pub enum OpportunityModelConfig {
 }
 
 impl OpportunityModelConfig {
+    /// Overrides `vertex_input_file` on any [`OpportunityModelConfig::ApiSource`] variants
+    /// (including nested ones inside [`OpportunityModelConfig::Combined`]).
+    pub fn set_vertices_file(&mut self, vertices_file: &str) {
+        match self {
+            OpportunityModelConfig::FileSource { .. } => {}
+            OpportunityModelConfig::ApiSource {
+                vertex_input_file, ..
+            } => {
+                *vertex_input_file = vertices_file.to_string();
+            }
+            OpportunityModelConfig::Combined { models } => {
+                for model in models.iter_mut() {
+                    model.set_vertices_file(vertices_file);
+                }
+            }
+        }
+    }
+
     /// Builds config into an [`OpportunityModel`]. Currently all  
     pub fn build(&self) -> Result<OpportunityModel, OutputPluginError> {
         match self {
@@ -258,6 +277,109 @@ impl OpportunityModelConfig {
                 Ok(OpportunityModel::Combined { models })
             }
         }
+    }
+}
+
+impl TryFrom<&Path> for OpportunityModelConfig {
+    type Error = String;
+
+    /// Loads an [`OpportunityModelConfig`] from a TOML or JSON file.
+    ///
+    /// Supports:
+    /// - A full BAMBAM config or snippet with `plugin.output_plugins` or `output_plugins` containing an `opportunity` plugin
+    /// - A free-standing [`super::OpportunityPluginConfig`] containing a `model` key
+    /// - A free-standing [`OpportunityModelConfig`] directly at the root
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            format!(
+                "failed to read opportunity model config from '{}': {e}",
+                path.display()
+            )
+        })?;
+        let is_json = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("json"))
+            .unwrap_or(false);
+        let value: serde_json::Value = if is_json {
+            serde_json::from_str(&content).map_err(|e| {
+                format!("failed to parse JSON config from '{}': {e}", path.display())
+            })?
+        } else {
+            toml::from_str(&content).map_err(|e| {
+                format!("failed to parse TOML config from '{}': {e}", path.display())
+            })?
+        };
+        Self::try_from(&value)
+    }
+}
+
+impl TryFrom<&serde_json::Value> for OpportunityModelConfig {
+    type Error = String;
+
+    /// Extracts an [`OpportunityModelConfig`] from a parsed configuration [`serde_json::Value`].
+    fn try_from(value: &serde_json::Value) -> Result<Self, Self::Error> {
+        // 1. Check `plugin.output_plugins` or top-level `output_plugins`
+        let output_plugins_opt = value
+            .get("plugin")
+            .and_then(|p| p.get("output_plugins"))
+            .or_else(|| value.get("output_plugins"));
+
+        if let Some(output_plugins) = output_plugins_opt {
+            let plugins = match output_plugins {
+                serde_json::Value::Array(arr) => arr.iter().collect_vec(),
+                obj @ serde_json::Value::Object(_) => vec![obj],
+                _ => {
+                    return Err(
+                        "'output_plugins' must be an array or table in configuration".to_string(),
+                    )
+                }
+            };
+            for plugin in plugins {
+                let is_opp = plugin
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .map(|t| t == "opportunity")
+                    .unwrap_or(false);
+                if is_opp || plugin.get("model").is_some() {
+                    if let Some(model_val) = plugin.get("model") {
+                        return serde_json::from_value(model_val.clone()).map_err(|e| {
+                            format!(
+                                "failed to deserialize OpportunityModelConfig from output_plugins.model: {e}"
+                            )
+                        });
+                    }
+                }
+            }
+            return Err(
+                "no 'opportunity' plugin with a 'model' section found in 'output_plugins'"
+                    .to_string(),
+            );
+        }
+
+        // 2. Check `[plugin.output_plugins.model]` table snippet without `[[plugin.output_plugins]]` array
+        if let Some(model_val) = value
+            .get("plugin")
+            .and_then(|p| p.get("output_plugins"))
+            .and_then(|op| op.get("model"))
+        {
+            return serde_json::from_value(model_val.clone()).map_err(|e| {
+                format!(
+                    "failed to deserialize OpportunityModelConfig from plugin.output_plugins.model: {e}"
+                )
+            });
+        }
+
+        // 3. Check free-standing OpportunityPluginConfig (`model` key at root)
+        if let Some(model_val) = value.get("model") {
+            return serde_json::from_value(model_val.clone()).map_err(|e| {
+                format!("failed to deserialize OpportunityModelConfig from root 'model': {e}")
+            });
+        }
+
+        // 4. Otherwise deserialize directly as a free-standing OpportunityModelConfig
+        serde_json::from_value(value.clone())
+            .map_err(|e| format!("failed to deserialize OpportunityModelConfig: {e}"))
     }
 }
 
