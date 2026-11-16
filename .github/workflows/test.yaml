@@ -38,9 +38,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Install test assets
-        run: |
-          ./script/setup_test_bambam_osm.sh
+      # # we use a local fixture now for this
+      # - name: Install test assets
+      #   run: |
+      #     ./script/setup_test_bambam_osm.sh
 
       - name: Cargo test
         run: |
