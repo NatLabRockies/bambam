@@ -1,5 +1,6 @@
 use bambam::app::gtfs_flex_config::CliGtfsFlexConfigApp;
 use bambam::app::network_import::{GeographicExtent, NetworkDataSource, NetworkImportRequest};
+use bambam::app::opp_totals::{self, TotalsNamespace};
 use bambam::app::oppvec::{self, oppvec_ops};
 use bambam::app::overlay::{
     self, GeometryColumnType, GeometryFormat, OverlayOperation, OverlaySource,
@@ -267,6 +268,24 @@ pub enum App {
         about = "Impute operating speeds across all 6 time periods for a BAMBAM / RouteE Compass road network"
     )]
     CongestionImpute(ImputeCliArgs),
+    #[command(
+        name = "opportunity-totals",
+        about = "Collect opportunity totals by activity type from an OpportunityModelConfig"
+    )]
+    OpportunityTotals {
+        /// Path to TOML or JSON file containing an OpportunityModelConfig (free-standing or under plugin.output_plugins)
+        #[arg(short, long)]
+        config_file: String,
+        /// Optional path to vertices-compass.csv[.gz] to supply or override vertex_input_file on API opportunity sources
+        #[arg(short, long)]
+        vertices_file: Option<String>,
+        /// Output table namespacing: "standalone" ([opportunity_totals]) or "output-plugins" ([plugin.output_plugins.opportunity_totals])
+        #[arg(short, long, value_enum, default_value_t = TotalsNamespace::Standalone)]
+        namespace: TotalsNamespace,
+        /// Optional file path to write output (.toml or .json). Prints to stdout if omitted.
+        #[arg(short, long)]
+        output_file: Option<String>,
+    },
 }
 
 impl App {
@@ -678,6 +697,17 @@ impl App {
                     .map(|_| ())
                     .map_err(|e| e.to_string())
             }
+            App::OpportunityTotals {
+                config_file,
+                vertices_file,
+                namespace,
+                output_file,
+            } => opp_totals::run(
+                config_file,
+                vertices_file.as_deref(),
+                *namespace,
+                output_file.as_deref(),
+            ),
         }
     }
 }
