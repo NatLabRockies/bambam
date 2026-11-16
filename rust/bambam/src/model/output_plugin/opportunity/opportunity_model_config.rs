@@ -303,17 +303,11 @@ impl TryFrom<&Path> for OpportunityModelConfig {
             .unwrap_or(false);
         let value: serde_json::Value = if is_json {
             serde_json::from_str(&content).map_err(|e| {
-                format!(
-                    "failed to parse JSON config from '{}': {e}",
-                    path.display()
-                )
+                format!("failed to parse JSON config from '{}': {e}", path.display())
             })?
         } else {
             toml::from_str(&content).map_err(|e| {
-                format!(
-                    "failed to parse TOML config from '{}': {e}",
-                    path.display()
-                )
+                format!("failed to parse TOML config from '{}': {e}", path.display())
             })?
         };
         Self::try_from(&value)
