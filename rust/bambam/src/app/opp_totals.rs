@@ -49,7 +49,10 @@ pub fn is_json_path(output_file: Option<&str>) -> bool {
 }
 
 /// Serializes a configuration fragment [`serde_json::Value`] as pretty JSON or TOML.
-pub fn serialize_config_fragment(value: &serde_json::Value, as_json: bool) -> Result<String, String> {
+pub fn serialize_config_fragment(
+    value: &serde_json::Value,
+    as_json: bool,
+) -> Result<String, String> {
     if as_json {
         serde_json::to_string_pretty(value)
             .map_err(|e| format!("failed to serialize configuration fragment as JSON: {e}"))

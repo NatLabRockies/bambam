@@ -185,7 +185,9 @@ impl OpportunitySource {
         if let Some(source_val) = value.get("opportunity_source") {
             let source: OpportunitySource =
                 serde_json::from_value(source_val.clone()).map_err(|e| {
-                    format!("failed to deserialize OpportunitySource from 'opportunity_source': {e}")
+                    format!(
+                        "failed to deserialize OpportunitySource from 'opportunity_source': {e}"
+                    )
                 })?;
             let activity_cols: Option<Vec<String>> = value
                 .get("activity_column_names")
