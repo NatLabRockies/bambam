@@ -3,14 +3,16 @@ use crate::{
         is_json_path, serialize_config_fragment, write_or_print_config_fragment, TotalsNamespace,
     },
     model::output_plugin::opportunity::{
-        geometry_to_wkt, proportion_dataset_to_vertices, OpportunityDataset,
+        geometry_to_wkt, load_vertices, proportion_dataset_to_vertices, OpportunityDataset,
         OpportunityModelConfig, OpportunitySource,
     },
 };
 use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
+use bambam_network::GeographicExtent;
 use flate2::{write::GzEncoder, Compression};
 use itertools::Itertools;
 use kdam::tqdm;
+use routee_compass_core::model::network::Vertex;
 use serde_json::json;
 use std::{
     fs::File,
@@ -99,6 +101,7 @@ impl OpportunityImportOutputs {
 pub fn run(
     source_config_file: &str,
     vertices_file: Option<&str>,
+    extent_override: Option<&GeographicExtent>,
     activity_column_names: Option<Vec<String>>,
     table_orientation: Option<OpportunityOrientation>,
     namespace: TotalsNamespace,
@@ -122,11 +125,19 @@ pub fn run(
         .or(cfg_orientation)
         .unwrap_or(OpportunityOrientation::DestinationVertexOriented);
 
-    let raw_dataset = source.generate_dataset(&resolved_activities)?;
+    let vertices = vertices_file
+        .map(load_vertices)
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    let raw_dataset = source.generate_dataset_with_context(
+        &resolved_activities,
+        vertices.as_deref(),
+        extent_override,
+    )?;
 
-    run_with_dataset(
+    run_with_dataset_and_vertices(
         &raw_dataset,
-        vertices_file,
+        vertices.as_deref(),
         &resolved_activities,
         resolved_orientation,
         namespace,
@@ -143,6 +154,30 @@ pub fn run_with_dataset(
     namespace: TotalsNamespace,
     outputs: &OpportunityImportOutputs,
 ) -> Result<Option<OpportunityModelConfig>, String> {
+    let vertices = vertices_file
+        .map(load_vertices)
+        .transpose()
+        .map_err(|e| e.to_string())?;
+    run_with_dataset_and_vertices(
+        raw_dataset,
+        vertices.as_deref(),
+        activity_column_names,
+        table_orientation,
+        namespace,
+        outputs,
+    )
+}
+
+/// Executes the three-stage output pipeline given an already-collected [`OpportunityDataset`]
+/// and an optional slice of loaded [`Vertex`] records.
+pub fn run_with_dataset_and_vertices(
+    raw_dataset: &OpportunityDataset,
+    vertices: Option<&[Vertex]>,
+    activity_column_names: &[String],
+    table_orientation: OpportunityOrientation,
+    namespace: TotalsNamespace,
+    outputs: &OpportunityImportOutputs,
+) -> Result<Option<OpportunityModelConfig>, String> {
     // 1. Write opportunity counts by geometry CSV
     write_geometry_opportunities_csv(
         raw_dataset,
@@ -150,14 +185,14 @@ pub fn run_with_dataset(
         &outputs.geometries_output_file,
     )?;
 
-    let v_file = match vertices_file {
+    let verts = match vertices {
         None => return Ok(None),
-        Some(f) => f,
+        Some(v) => v,
     };
 
     // 2. Proportion opportunities across graph vertices and write vectorized CSV
     let activity_counts =
-        proportion_dataset_to_vertices(raw_dataset, v_file, activity_column_names.len())
+        proportion_dataset_to_vertices(raw_dataset, verts, activity_column_names.len())
             .map_err(|e| e.to_string())?;
 
     write_vectorized_opportunities_csv(
@@ -381,6 +416,23 @@ mod tests {
         assert_eq!(
             cfg_orient2,
             Some(OpportunityOrientation::DestinationVertexOriented)
+        );
+
+        // 3. OvertureMapsPlaces OpportunitySource TOML using GeographicExtent
+        let omf_toml_path = conf_dir.join("bambam-omf").join("omf-opportunities.toml");
+        let (src3, cfg_acts3, _cfg_orient3) =
+            OpportunitySource::from_config_path(&omf_toml_path).unwrap();
+        assert!(cfg_acts3.is_none());
+        assert_eq!(
+            src3.default_activity_column_names().unwrap(),
+            vec![
+                "entertainment".to_string(),
+                "food".to_string(),
+                "healthcare".to_string(),
+                "jobs".to_string(),
+                "retail".to_string(),
+                "services".to_string(),
+            ]
         );
     }
 

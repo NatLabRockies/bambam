@@ -1,16 +1,15 @@
 use crate::model::output_plugin::opportunity::{GeoActivityMask, OpportunityDataset};
 use bambam_omf::collection::{
-    Bbox, BuildingsRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
-    PlacesRecord,
+    BuildingsRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
+    OvertureSpatialFilter, PlacesRecord,
 };
 use bambam_omf::collection::{
     OvertureMapsCollectorConfig, ReleaseVersion, RowFilterConfig, TaxonomyModel,
     TaxonomyModelBuilder,
 };
-use geo::{centroid, Centroid, Geometry};
+use geo::{Centroid, Geometry};
 use rayon::prelude::*;
 use routee_compass_core::util::geo::PolygonalRTree;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -26,6 +25,7 @@ use std::sync::Arc;
 pub struct OvertureOpportunityCollectionModel {
     collector: OvertureMapsCollector,
     release_version: ReleaseVersion,
+    spatial_filter: OvertureSpatialFilter,
     places_row_filter_config: Option<RowFilterConfig>,
     buildings_row_filter_config: Option<RowFilterConfig>,
     places_taxonomy_model: Arc<TaxonomyModel>,
@@ -39,7 +39,7 @@ impl OvertureOpportunityCollectionModel {
     ///
     /// * collector_config - Configuration of the [`bambam_overturemaps::collection::OvertureMapsCollector`] to be used
     /// * release_version - OvertureMaps Release version (<https://docs.overturemaps.org/release/>),
-    /// * bbox_boundary - Bounding box boundary for query,
+    /// * spatial_filter - Two-stage [`OvertureSpatialFilter`] providing a Stage 1 `Bbox` for Parquet pushdown and Stage 2 geometry refinement,
     /// * places_activity_mappings - Mapping from MEP activity types to OvertureMaps categories for places dataset,
     /// * buildings_activity_mappings - Mapping from MEP activity types to OvertureMaps classes for buildings dataset. If `None`, buildings data is not used.
     ///
@@ -49,15 +49,16 @@ impl OvertureOpportunityCollectionModel {
     pub fn new(
         collector_config: OvertureMapsCollectorConfig,
         release_version: ReleaseVersion,
-        bbox_boundary: Bbox,
+        spatial_filter: OvertureSpatialFilter,
         places_activity_mappings: HashMap<String, Vec<String>>,
         buildings_activity_mappings: Option<HashMap<String, Vec<String>>>,
     ) -> Result<Self, OvertureMapsCollectionError> {
+        let bbox = spatial_filter.bbox();
         let taxonomy_model =
             Arc::new(TaxonomyModelBuilder::new(places_activity_mappings.clone(), None).build()?);
         let places_row_filter_config = RowFilterConfig::Combined {
             filters: vec![
-                Box::new(RowFilterConfig::from(bbox_boundary)),
+                Box::new(RowFilterConfig::from(bbox)),
                 Box::new(RowFilterConfig::from(places_activity_mappings)),
             ],
         };
@@ -66,7 +67,7 @@ impl OvertureOpportunityCollectionModel {
                 .clone()
                 .map(|mappings| RowFilterConfig::Combined {
                     filters: vec![
-                        Box::new(RowFilterConfig::from(bbox_boundary)),
+                        Box::new(RowFilterConfig::from(bbox)),
                         Box::new(RowFilterConfig::HasClassIn {
                             classes: HashSet::from_iter(mappings.values().flatten().cloned()),
                         }),
@@ -76,6 +77,7 @@ impl OvertureOpportunityCollectionModel {
         Ok(Self {
             collector: OvertureMapsCollector::try_from(collector_config)?,
             release_version,
+            spatial_filter,
             places_row_filter_config: Some(places_row_filter_config),
             buildings_row_filter_config,
             places_taxonomy_model: taxonomy_model,
@@ -218,14 +220,7 @@ impl OvertureOpportunityCollectionModel {
                 .len()
         );
 
-        // Zip geometries and vectors (Filtering Empty geometries in the process)
-        Ok(mep_geometries
-            .into_iter()
-            .zip(mep_vectors)
-            .filter_map(|(maybe_geometry, vector)| {
-                maybe_geometry.map(|geometry| (geometry, vector))
-            })
-            .collect::<Vec<(Geometry<f32>, Vec<bool>)>>())
+        Ok(self.filter_geometries(mep_geometries, mep_vectors))
     }
 
     fn collect_building_opportunities(
@@ -283,14 +278,27 @@ impl OvertureOpportunityCollectionModel {
             .map(|record| record.get_geometry())
             .collect();
 
-        // Zip geometries and vectors (Filtering Empty geometries in the process)
-        Ok(mep_geometries
-            .into_iter()
-            .zip(mep_vectors)
+        Ok(self.filter_geometries(mep_geometries, mep_vectors))
+    }
+
+    /// Zips candidate geometries with their MEP vectors, discarding `None` geometries
+    /// and any geometry that does not pass the Stage 2 [`OvertureSpatialFilter`].
+    fn filter_geometries(
+        &self,
+        geometries: Vec<Option<Geometry<f32>>>,
+        vectors: Vec<Vec<bool>>,
+    ) -> GeoActivityMask {
+        geometries
+            .into_par_iter()
+            .zip(vectors)
             .filter_map(|(maybe_geometry, vector)| {
-                maybe_geometry.map(|geometry| (geometry, vector))
+                maybe_geometry.and_then(|geometry| {
+                    self.spatial_filter
+                        .matches_geometry(&geometry)
+                        .then_some((geometry, vector))
+                })
             })
-            .collect::<Vec<(Geometry<f32>, Vec<bool>)>>())
+            .collect()
     }
 }
 

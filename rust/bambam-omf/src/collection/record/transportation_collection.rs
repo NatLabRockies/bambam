@@ -447,7 +447,6 @@ mod tests {
             &out_dir,
             Some(&tmp_dir),
             None,
-            None,
             Some(15.0),
         )
         .unwrap();

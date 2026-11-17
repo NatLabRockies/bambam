@@ -148,12 +148,13 @@ impl OpportunityModelConfig {
                 activity_column_names,
                 table_orientation,
             } => {
+                let vertices = load_vertices(vertex_input_file)?;
                 let raw_dataset = opportunity_source
-                    .generate_dataset(activity_column_names)
+                    .generate_dataset_with_context(activity_column_names, Some(&vertices), None)
                     .map_err(OutputPluginError::OutputPluginFailed)?;
                 let activity_counts = proportion_dataset_to_vertices(
                     &raw_dataset,
-                    vertex_input_file,
+                    &vertices,
                     activity_column_names.len(),
                 )?;
 
@@ -183,12 +184,31 @@ pub fn geometry_to_wkt(geometry: &geo::Geometry<f32>) -> Result<String, String> 
         .map_err(|e| format!("failed to convert geometry to WKT: {e}"))
 }
 
+/// Reads RouteE Compass [`Vertex`] records from `vertex_input_file` (`.csv` or `.csv.gz`).
+pub fn load_vertices(vertex_input_file: &str) -> Result<Box<[Vertex]>, OutputPluginError> {
+    read_utils::from_csv(
+        &vertex_input_file,
+        true,
+        Some(
+            Bar::builder()
+                .desc("read vertices file for opportunity map matching")
+                .animation("fillup"),
+        ),
+        None,
+    )
+    .map_err(|e| {
+        OutputPluginError::BuildFailed(format!(
+            "failure reading vertices from {vertex_input_file}: {e}"
+        ))
+    })
+}
+
 /// Inserts the geometries from `raw_dataset` (by point or polygon/multipolygon centroid) into an
-/// R-tree, matches each vertex in `vertex_input_file` to its nearest opportunity geometry, and
+/// R-tree, matches each vertex in `vertices` to its nearest opportunity geometry, and
 /// proportions each geometry's opportunity counts evenly across its matched vertices.
 pub fn proportion_dataset_to_vertices(
     raw_dataset: &OpportunityDataset,
-    vertex_input_file: &str,
+    vertices: &[Vertex],
     n_acts: usize,
 ) -> Result<Vec<Vec<f64>>, OutputPluginError> {
     let rtree_dataset = raw_dataset
@@ -217,21 +237,6 @@ pub fn proportion_dataset_to_vertices(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let rtree = RTree::bulk_load(rtree_dataset.to_vec());
-    let vertices: Box<[Vertex]> = read_utils::from_csv(
-        &vertex_input_file,
-        true,
-        Some(
-            Bar::builder()
-                .desc("read vertices file for opportunity map matching")
-                .animation("fillup"),
-        ),
-        None,
-    )
-    .map_err(|e| {
-        OutputPluginError::BuildFailed(format!(
-            "failure reading vertices from {vertex_input_file}: {e}"
-        ))
-    })?;
 
     // find which data point matches each vertex and record the id (index) of the match
     let match_iter = tqdm!(

@@ -303,6 +303,9 @@ pub enum App {
         /// "--impute-graph" is enabled.
         #[arg(short, long)]
         vertices_file: Option<String>,
+        /// Optional WKT extent file path for second-order polygonal spatial filtering
+        #[arg(short, long)]
+        extent_file: Option<String>,
         /// Optional output directory for default filenames (opportunities-geometries.csv.gz, opportunities.csv.gz, opportunity.toml)
         #[arg(short, long)]
         output_directory: Option<String>,
@@ -751,6 +754,7 @@ impl App {
                 source_config,
                 impute_graph,
                 vertices_file,
+                extent_file,
                 output_directory,
                 geometries_output_file,
                 opportunities_output_file,
@@ -773,14 +777,18 @@ impl App {
                 });
                 let vertices_file = match vertices_file {
                     Some(v) => Some(v.as_str()),
-                    None if !impute_graph => {
+                    None if *impute_graph => {
                         return Err("--impute-graph set but --vertices-file missing".to_string())
                     }
                     None => None,
                 };
+                let extent_override = extent_file
+                    .as_ref()
+                    .map(|path| GeographicExtent::WktFile { path: path.clone() });
                 opp_import::run(
                     source_config,
                     vertices_file,
+                    extent_override.as_ref(),
                     parsed_activities,
                     *table_orientation,
                     *namespace,

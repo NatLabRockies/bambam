@@ -279,3 +279,46 @@ impl OvertureSpatialFilter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use geo::Point;
+
+    #[test]
+    fn test_overture_spatial_filter_from_extent() {
+        // Triangle polygon from (0,0) -> (10,0) -> (0,10)
+        // Bounding box is [0, 0, 10, 10], but point (9, 9) lies outside the triangle.
+        let extent = GeographicExtent::Wkt {
+            wkt: "POLYGON ((0 0, 10 0, 0 10, 0 0))".to_string(),
+        };
+        let filter = OvertureSpatialFilter::from_extent(&extent).unwrap();
+
+        assert_eq!(filter.bbox(), Bbox::new(0.0, 10.0, 0.0, 10.0));
+        // Inside polygon
+        assert!(filter.matches_geometry(&Geometry::Point(Point::new(2.0, 2.0))));
+        // Inside bbox [0, 10]x[0, 10] but outside triangle polygon (Stage 2 refinement)
+        assert!(!filter.matches_geometry(&Geometry::Point(Point::new(9.0, 9.0))));
+        // Outside bbox
+        assert!(!filter.matches_geometry(&Geometry::Point(Point::new(15.0, 15.0))));
+    }
+
+    #[test]
+    fn test_overture_spatial_filter_from_vertices() {
+        let vertices = vec![
+            Vertex::new(0, -105.2705, 40.0150),
+            Vertex::new(1, -105.2600, 40.0200),
+        ];
+
+        let filter = OvertureSpatialFilter::from_vertices(&vertices, Some(200.0), None).unwrap();
+        let bbox = filter.bbox();
+        assert!(bbox.xmin < -105.2705 && bbox.xmax > -105.2600);
+        assert!(bbox.ymin < 40.0150 && bbox.ymax > 40.0200);
+
+        // Point right on vertex 0 matches
+        assert!(filter.matches_geometry(&Geometry::Point(Point::new(-105.2705, 40.0150))));
+        // Point far from both vertices (even if inside their axis-aligned bounding box corner if spaced apart) fails Stage 2
+        assert!(!filter.matches_geometry(&Geometry::Point(Point::new(-105.2600, 40.0150))));
+    }
+}
+

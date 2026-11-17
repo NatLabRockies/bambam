@@ -1,9 +1,9 @@
 # example configuration assigning OMF Buildings/Places to MEP activity categories.
 [plugin.output_plugins.model.opportunity_source]
 type = "overture"
-release_version = "Apr2025"
-bbox_boundary = {"xmin" = -124.7844079, "xmax" = -66.9513812, "ymin" = 24.7433195, "ymax" = 49.3457868}
-collector_config = {"obj_store_type" = "AmazonS3", "batch_size" = 4096 }
+release_version = "Latest"
+extent = { type = "bbox", xmin = -124.7844079, xmax = -66.9513812, ymin = 24.7433195, ymax = 49.3457868 }
+collector_config = { "obj_store_type" = "s3" }
 
 [plugin.output_plugins.model.opportunity_source.places_activity_mapping]
 food = ["restaurant", "bar"]

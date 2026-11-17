@@ -24,7 +24,7 @@ use std::path::Path;
 
 pub use bambam_network::GeographicExtent;
 use bambam_network::{ComponentsAlgorithmType, IslandDetectionAlgorithm};
-use bambam_omf::app::network::NetworkEdgeListConfiguration;
+use bambam_omf::{app::network::NetworkEdgeListConfiguration, collection::OvertureSpatialFilter};
 use bambam_osm::model::osm::{
     graph::{osm_element_filter::ElementFilter, CompassWriter, OsmGraphVectorized},
     import_ops,
@@ -128,13 +128,13 @@ pub fn import_network(request: &NetworkImportRequest) -> Result<(), String> {
     match &request.source {
         NetworkDataSource::OvertureMaps { local_source } => {
             let local_path = local_source.as_deref().map(Path::new);
+            let spatial_filter = OvertureSpatialFilter::from_geometry_and_bbox(extent_geom, &bbox);
             bambam_omf::app::network::run(
-                Some(&bbox),
+                Some(&spatial_filter),
                 &edge_lists,
                 out_dir,
                 local_path,
                 island_alg,
-                Some(extent_geom),
                 match_distance,
             )
             .map_err(|e| e.to_string())
@@ -194,7 +194,7 @@ mod tests {
         InfrastructureRecord, TransportationCollection, TransportationConnectorRecord,
         TransportationSegmentRecord,
     };
-    use geo::{LineString, Point};
+    use geo::{Geometry, LineString, Point};
     use std::path::PathBuf;
 
     #[test]

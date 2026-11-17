@@ -16,7 +16,8 @@ mod study_region;
 pub mod source;
 pub use opportunity_model::OpportunityModel;
 pub use opportunity_model_config::{
-    geometry_to_wkt, proportion_dataset_to_vertices, read_config_value, OpportunityModelConfig,
+    geometry_to_wkt, load_vertices, proportion_dataset_to_vertices, read_config_value,
+    OpportunityModelConfig,
 };
 pub use opportunity_output_plugin::OpportunityOutputPlugin;
 pub use opportunity_output_plugin_builder::OpportunityOutputPluginBuilder;

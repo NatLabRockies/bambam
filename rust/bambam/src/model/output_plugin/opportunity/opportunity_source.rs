@@ -9,7 +9,10 @@ use super::{
     study_region::StudyRegion,
 };
 use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
-use bambam_omf::collection::{Bbox, OvertureMapsCollectorConfig, ReleaseVersion};
+use bambam_network::GeographicExtent;
+use bambam_omf::collection::{
+    OvertureMapsCollectorConfig, OvertureSpatialFilter, ReleaseVersion,
+};
 use bamcensus::app::lodes_tiger;
 use bamcensus_core::model::identifier::GeoidType;
 use bamcensus_lehd::model::{
@@ -17,6 +20,7 @@ use bamcensus_lehd::model::{
 };
 use geo::Geometry;
 use itertools::Itertools;
+use routee_compass_core::model::network::Vertex;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::Path};
 
@@ -43,8 +47,16 @@ pub enum OpportunitySource {
     /// collects opportunities from <https://docs.overturemaps.org/guides/places/>.
     #[serde(rename = "overture")]
     OvertureMapsPlaces {
+        #[serde(default)]
         collector_config: OvertureMapsCollectorConfig,
-        bbox_boundary: Bbox,
+        /// Optional geographic extent (`bbox`, inline `wkt`, or `wkt_file`).
+        /// Not required when graph `vertices` are supplied during collection.
+        #[serde(default)]
+        extent: Option<GeographicExtent>,
+        /// Optional Haversine distance tolerance in meters when filtering OMF records
+        /// by proximity to graph vertices (defaults to `200.0`m).
+        #[serde(default)]
+        vertex_match_tolerance_meters: Option<f64>,
         places_activity_mapping: OverturePlacesMappingConfig,
         buildings_activity_mapping: Option<HashMap<String, Vec<String>>>,
         #[serde(default)]
@@ -68,15 +80,49 @@ impl OpportunitySource {
         &self,
         activity_types: &[String],
     ) -> Result<OpportunityDataset, String> {
+        self.generate_dataset_with_context(activity_types, None, None)
+    }
+
+    /// Generates an [`OpportunityDataset`] using optional road network `vertices` and/or
+    /// an optional `extent_override` to construct a two-stage [`OvertureSpatialFilter`]
+    /// when collecting from [`OpportunitySource::OvertureMapsPlaces`].
+    pub fn generate_dataset_with_context(
+        &self,
+        activity_types: &[String],
+        vertices: Option<&[Vertex]>,
+        extent_override: Option<&GeographicExtent>,
+    ) -> Result<OpportunityDataset, String> {
         match self {
             OpportunitySource::OvertureMapsPlaces {
                 collector_config,
-                bbox_boundary,
+                extent,
+                vertex_match_tolerance_meters,
                 places_activity_mapping,
                 buildings_activity_mapping,
                 release_version,
             } => {
                 let places_mapping = places_activity_mapping.build()?;
+                let effective_extent = extent_override.or(extent.as_ref());
+
+                let spatial_filter = match (vertices, effective_extent) {
+                    (Some(verts), ext_opt) if !verts.is_empty() => {
+                        OvertureSpatialFilter::from_vertices(
+                            verts,
+                            *vertex_match_tolerance_meters,
+                            ext_opt,
+                        )
+                        .map_err(|e| format!("Error building Overture graph spatial filter: {e}"))?
+                    }
+                    (_, Some(ext)) => OvertureSpatialFilter::from_extent(ext).map_err(|e| {
+                        format!("Error building Overture extent spatial filter: {e}")
+                    })?,
+                    _ => {
+                        return Err(
+                            "OvertureMapsPlaces requires either graph vertices (e.g. --vertices-file) or an 'extent' (in configuration or via --extent-file)"
+                                .to_string(),
+                        )
+                    }
+                };
 
                 // Instantiate Collection Model Object which re-structures activity mapping
                 // information into a fully functional collection pipeline. This step allows
@@ -85,7 +131,7 @@ impl OpportunitySource {
                 let colletor_model = OvertureOpportunityCollectionModel::new(
                     *collector_config,
                     release_version.clone(),
-                    *bbox_boundary,
+                    spatial_filter,
                     places_mapping,
                     buildings_activity_mapping.clone(),
                 )
@@ -181,20 +227,36 @@ impl OpportunitySource {
             return Self::from_model_config(model_config);
         }
 
-        // 2. Check if there is an `opportunity_source` key at the root
-        if let Some(source_val) = value.get("opportunity_source") {
+        // 2. Check if there is an `opportunity_source` key at the root, under `model`, or under `plugin.output_plugins.model`
+        let container_opt = if value.get("opportunity_source").is_some() {
+            Some(value)
+        } else if let Some(m) = value
+            .get("model")
+            .filter(|m| m.get("opportunity_source").is_some())
+        {
+            Some(m)
+        } else {
+            value
+                .get("plugin")
+                .and_then(|p| p.get("output_plugins"))
+                .and_then(|op| op.get("model"))
+                .filter(|m| m.get("opportunity_source").is_some())
+        };
+
+        if let Some(container) = container_opt {
+            let source_val = container.get("opportunity_source").unwrap();
             let source: OpportunitySource =
                 serde_json::from_value(source_val.clone()).map_err(|e| {
                     format!(
                         "failed to deserialize OpportunitySource from 'opportunity_source': {e}"
                     )
                 })?;
-            let activity_cols: Option<Vec<String>> = value
+            let activity_cols: Option<Vec<String>> = container
                 .get("activity_column_names")
                 .map(|v| serde_json::from_value(v.clone()))
                 .transpose()
                 .map_err(|e| format!("failed to parse 'activity_column_names': {e}"))?;
-            let orientation: Option<OpportunityOrientation> = value
+            let orientation: Option<OpportunityOrientation> = container
                 .get("table_orientation")
                 .map(|v| serde_json::from_value(v.clone()))
                 .transpose()
