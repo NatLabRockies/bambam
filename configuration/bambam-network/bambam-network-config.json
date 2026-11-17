@@ -32,8 +32,8 @@
         { "type": "subtype", "subtype": "road" },
         { 
           "type": "class", 
-          "classes": ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "living_street", "unclassified", "service", "unknown"], 
-          "allow_unset": true,
+          "classes": ["motorway", "trunk", "primary", "secondary", "tertiary", "residential", "living_street", "unclassified"], 
+          "allow_unset": false,
           "behavior": "include"
         },
         { "type": "access_mode", "modes": ["motor_vehicle", "car", "truck", "motorcycle"] }
