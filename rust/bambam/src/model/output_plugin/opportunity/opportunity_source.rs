@@ -5,7 +5,9 @@ use crate::model::output_plugin::opportunity::{
 
 use super::{
     source::lodes::lodes_ops,
-    source::overture_opportunity_collection_model::OvertureOpportunityCollectionModel,
+    source::overture_opportunity_collection_model::{
+        validate_overture_activity_keys, OvertureOpportunityCollectionModel,
+    },
     study_region::StudyRegion,
 };
 use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
@@ -191,16 +193,12 @@ impl OpportunitySource {
                 ..
             } => {
                 let places_mapping = places_activity_mapping.build()?;
-                let names = places_mapping
-                    .into_keys()
-                    .chain(
-                        buildings_activity_mapping
-                            .iter()
-                            .flat_map(|m| m.keys().cloned()),
-                    )
-                    .unique()
-                    .sorted()
-                    .collect_vec();
+                validate_overture_activity_keys(
+                    &places_mapping,
+                    buildings_activity_mapping.as_ref(),
+                )
+                .map_err(|e| e.to_string())?;
+                let names = places_mapping.into_keys().sorted().collect_vec();
                 Ok(names)
             }
         }

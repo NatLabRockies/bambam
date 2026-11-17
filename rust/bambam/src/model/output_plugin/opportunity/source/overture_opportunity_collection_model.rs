@@ -10,8 +10,27 @@ use bambam_omf::collection::{
 use geo::{Centroid, Geometry};
 use rayon::prelude::*;
 use routee_compass_core::util::geo::PolygonalRTree;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
+
+/// Validates that when `buildings_activity_mappings` is provided, its set of activity keys
+/// matches `places_activity_mappings` exactly.
+pub fn validate_overture_activity_keys(
+    places_activity_mappings: &HashMap<String, Vec<String>>,
+    buildings_activity_mappings: Option<&HashMap<String, Vec<String>>>,
+) -> Result<(), OvertureMapsCollectionError> {
+    if let Some(buildings_map) = buildings_activity_mappings {
+        let places_keys: BTreeSet<&str> =
+            places_activity_mappings.keys().map(String::as_str).collect();
+        let buildings_keys: BTreeSet<&str> = buildings_map.keys().map(String::as_str).collect();
+        if places_keys != buildings_keys {
+            return Err(OvertureMapsCollectionError::InvalidUserInput(format!(
+                "places_activity_mapping and buildings_activity_mapping must define the same activity keys; places={places_keys:?}, buildings={buildings_keys:?}"
+            )));
+        }
+    }
+    Ok(())
+}
 
 /// Model object that encapsulates the logic of
 /// retrieving Places and Buildings data according
@@ -53,6 +72,10 @@ impl OvertureOpportunityCollectionModel {
         places_activity_mappings: HashMap<String, Vec<String>>,
         buildings_activity_mappings: Option<HashMap<String, Vec<String>>>,
     ) -> Result<Self, OvertureMapsCollectionError> {
+        validate_overture_activity_keys(
+            &places_activity_mappings,
+            buildings_activity_mappings.as_ref(),
+        )?;
         let bbox = spatial_filter.bbox();
         let taxonomy_model =
             Arc::new(TaxonomyModelBuilder::new(places_activity_mappings.clone(), None).build()?);
@@ -333,4 +356,27 @@ fn map_taxonomy_model(
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_overture_activity_keys_rejects_mismatched_keys() {
+        let places = HashMap::from([
+            ("food".to_string(), vec!["restaurant".to_string()]),
+            ("retail".to_string(), vec!["shopping".to_string()]),
+        ]);
+        let matching_buildings = HashMap::from([
+            ("food".to_string(), vec![]),
+            ("retail".to_string(), vec!["commercial".to_string()]),
+        ]);
+        let mismatched_buildings =
+            HashMap::from([("healthcare".to_string(), vec!["medical".to_string()])]);
+
+        assert!(validate_overture_activity_keys(&places, None).is_ok());
+        assert!(validate_overture_activity_keys(&places, Some(&matching_buildings)).is_ok());
+        assert!(validate_overture_activity_keys(&places, Some(&mismatched_buildings)).is_err());
+    }
 }
