@@ -266,7 +266,7 @@ impl OvertureSpatialFilter {
             .infrastructure
             .into_par_iter()
             .filter(|infra| match infra.get_geometry() {
-                Some(geom) => self.matches_geometry(&geom),
+                Some(geom) => self.matches_geometry(geom),
                 None => false,
             })
             .collect();
