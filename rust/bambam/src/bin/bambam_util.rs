@@ -833,12 +833,9 @@ fn is_edge_complete_record_csv(edges_file: &str) -> Result<bool, String> {
     )
 }
 
-fn main() {
+fn main() -> Result<(), String> {
     let args = CliArgs::parse();
-    match args.app.run() {
-        Ok(_) => log::info!("bambam_util finished."),
-        Err(e) => log::error!("{e}"),
-    }
+    args.app.run()
 }
 
 #[cfg(test)]
