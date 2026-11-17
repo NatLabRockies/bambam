@@ -1,10 +1,11 @@
 use crate::{
     app::opp_totals::{
-        is_json_path, serialize_config_fragment, write_or_print_config_fragment, TotalsNamespace,
+        format_opportunity_totals, is_json_path, serialize_config_fragment,
+        write_or_print_config_fragment, TotalsNamespace,
     },
     model::output_plugin::opportunity::{
-        geometry_to_wkt, load_vertices, proportion_dataset_to_vertices, OpportunityDataset,
-        OpportunityModelConfig, OpportunitySource,
+        activity_totals, geometry_to_wkt, load_vertices, proportion_dataset_to_vertices,
+        OpportunityDataset, OpportunityModelConfig, OpportunitySource,
     },
 };
 use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
@@ -15,6 +16,7 @@ use kdam::tqdm;
 use routee_compass_core::model::network::Vertex;
 use serde_json::json;
 use std::{
+    collections::BTreeMap,
     fs::File,
     io::{BufWriter, Write},
     path::Path,
@@ -185,38 +187,52 @@ pub fn run_with_dataset_and_vertices(
         &outputs.geometries_output_file,
     )?;
 
-    let verts = match vertices {
-        None => return Ok(None),
-        Some(v) => v,
+    // 2. If graph vertices are provided, proportion opportunities across vertices and write
+    //    the vectorized CSV (computing totals from the proportioned counts). Otherwise compute
+    //    totals from raw_dataset.
+    let (file_source_config, totals_map) = match vertices {
+        Some(verts) => {
+            let activity_counts =
+                proportion_dataset_to_vertices(raw_dataset, verts, activity_column_names.len())
+                    .map_err(|e| e.to_string())?;
+
+            write_vectorized_opportunities_csv(
+                &activity_counts,
+                activity_column_names,
+                &outputs.opportunities_output_file,
+            )?;
+
+            let totals = activity_totals(activity_column_names, &activity_counts)?;
+            let cfg = OpportunityModelConfig::FileSource {
+                opportunity_input_file: outputs.opportunities_output_file.clone(),
+                activity_column_names: activity_column_names.to_vec(),
+                table_orientation,
+            };
+            (Some(cfg), totals)
+        }
+        None => {
+            let totals =
+                activity_totals(activity_column_names, raw_dataset.iter().map(|(_, c)| c))?;
+            (None, totals)
+        }
     };
 
-    // 2. Proportion opportunities across graph vertices and write vectorized CSV
-    let activity_counts =
-        proportion_dataset_to_vertices(raw_dataset, verts, activity_column_names.len())
-            .map_err(|e| e.to_string())?;
-
-    write_vectorized_opportunities_csv(
-        &activity_counts,
-        activity_column_names,
-        &outputs.opportunities_output_file,
-    )?;
-
-    // 3. Build and write the OpportunityModelConfig::FileSource configuration fragment
-    let file_source_config = OpportunityModelConfig::FileSource {
-        opportunity_input_file: outputs.opportunities_output_file.clone(),
-        activity_column_names: activity_column_names.to_vec(),
-        table_orientation,
-    };
-
+    // 3. Build and write the configuration fragment (including opportunity_totals and optional FileSource model)
+    let sorted_totals: BTreeMap<String, f64> = totals_map.into_iter().collect();
     let as_json = is_json_path(outputs.config_output_file.as_deref());
-    let serialized = format_file_source_config(&file_source_config, namespace, as_json)?;
+    let serialized = format_import_config_fragment(
+        file_source_config.as_ref(),
+        &sorted_totals,
+        namespace,
+        as_json,
+    )?;
     write_or_print_config_fragment(
         &serialized,
         outputs.config_output_file.as_deref(),
-        "opportunity file source config",
+        "opportunity import config",
     )?;
 
-    Ok(Some(file_source_config))
+    Ok(file_source_config)
 }
 
 /// Writes `raw_dataset` (geometries + activity counts) to a `.csv` or `.csv.gz` file
@@ -337,6 +353,35 @@ fn write_csv_records(
         .map_err(|e| format!("failed flushing CSV writer for '{output_file}': {e}"))?;
 
     Ok(())
+}
+
+/// Formats `opportunity_totals` and an optional [`OpportunityModelConfig::FileSource`] as a TOML or JSON configuration fragment.
+pub fn format_import_config_fragment(
+    config: Option<&OpportunityModelConfig>,
+    totals: &BTreeMap<String, f64>,
+    namespace: TotalsNamespace,
+    as_json: bool,
+) -> Result<String, String> {
+    match config {
+        None => format_opportunity_totals(totals, namespace, as_json),
+        Some(cfg) => {
+            let value = match namespace {
+                TotalsNamespace::Standalone => json!({
+                    "opportunity_totals": totals,
+                    "model": cfg,
+                }),
+                TotalsNamespace::OutputPlugins => json!({
+                    "plugin": {
+                        "output_plugins": {
+                            "opportunity_totals": totals,
+                            "model": cfg,
+                        }
+                    }
+                }),
+            };
+            serialize_config_fragment(&value, as_json)
+        }
+    }
 }
 
 /// Formats an [`OpportunityModelConfig::FileSource`] as a TOML or JSON configuration fragment.
@@ -475,7 +520,7 @@ mod tests {
             (Geometry::MultiPolygon(mp), vec![5.0, 30.0]),
             (
                 Geometry::Point(Point::new(100.0_f32, 100.0_f32)),
-                vec![0.0, 0.0],
+                vec![99.0, 999.0],
             ),
         ];
 
@@ -518,12 +563,17 @@ mod tests {
             assert_eq!(&records[1][1], "5");
             assert_eq!(&records[1][2], "30");
             assert!(records[2][0].starts_with("POINT"));
-            assert_eq!(&records[2][1], "0");
-            assert_eq!(&records[2][2], "0");
+            assert_eq!(&records[2][1], "99");
+            assert_eq!(&records[2][2], "999");
         }
 
-        // Verify Output 3 TOML fragment can be parsed back via OpportunityModelConfig::try_from
-        // and built via OpportunityModelConfig::FileSource::build to read Output 2 (.csv.gz)
+        // Verify Output 3 TOML fragment contains proportioned opportunity_totals AND can be
+        // parsed back via OpportunityModelConfig::try_from and built via FileSource::build
+        let config_str = std::fs::read_to_string(config_path).unwrap();
+        assert!(config_str.contains("[plugin.output_plugins.opportunity_totals]"));
+        assert!(config_str.contains("retail = 25.0"));
+        assert!(config_str.contains("jobs = 130.0"));
+
         let loaded_cfg = OpportunityModelConfig::try_from(Path::new(config_path)).unwrap();
         assert_eq!(
             serde_json::to_value(&loaded_cfg).unwrap(),
@@ -548,5 +598,30 @@ mod tests {
         let totals = model.opportunity_totals().unwrap();
         assert_eq!(totals.get("retail"), Some(&25.0));
         assert_eq!(totals.get("jobs"), Some(&130.0));
+
+        // Also verify running without vertices_file writes raw_dataset totals to config_output_file
+        let no_vert_dir = dir.path().join("opp_out_no_vertices");
+        let no_vert_outputs = OpportunityImportOutputs::resolve(
+            Some(no_vert_dir.to_str().unwrap()),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let none_cfg = run_with_dataset(
+            &raw_dataset,
+            None,
+            &activities,
+            OpportunityOrientation::DestinationVertexOriented,
+            TotalsNamespace::Standalone,
+            &no_vert_outputs,
+        )
+        .unwrap();
+        assert!(none_cfg.is_none());
+        let no_vert_toml =
+            std::fs::read_to_string(no_vert_outputs.config_output_file.unwrap()).unwrap();
+        assert!(no_vert_toml.contains("[opportunity_totals]"));
+        assert!(no_vert_toml.contains("retail = 124.0"));
+        assert!(no_vert_toml.contains("jobs = 1129.0"));
     }
 }

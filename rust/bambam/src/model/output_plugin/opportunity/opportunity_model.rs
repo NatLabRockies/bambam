@@ -280,10 +280,13 @@ impl OpportunityModel {
 }
 
 /// sums all counts into a global total for each category
-fn activity_totals(
+pub fn activity_totals<'a, I>(
     activity_types: &[String],
-    activity_counts: &[Vec<f64>],
-) -> Result<HashMap<String, f64>, String> {
+    activity_counts: I,
+) -> Result<HashMap<String, f64>, String>
+where
+    I: IntoIterator<Item = &'a Vec<f64>>,
+{
     let mut sums = vec![0.0; activity_types.len()];
     for row in activity_counts {
         if activity_types.len() != row.len() {
