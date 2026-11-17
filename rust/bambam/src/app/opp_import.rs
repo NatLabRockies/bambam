@@ -31,8 +31,9 @@ pub const DEFAULT_OPPORTUNITY_CONFIG_FILENAME: &str = "opportunity.toml";
 pub struct OpportunityImportOutputs {
     /// Path to write the opportunity counts by geometry CSV (`.csv` or `.csv.gz`).
     pub geometries_output_file: String,
-    /// Path to write the vertex-vectorized opportunity counts CSV (`.csv` or `.csv.gz`).
-    pub opportunities_output_file: String,
+    /// Optional path to write the vertex-vectorized opportunity counts CSV (`.csv` or `.csv.gz`).
+    /// Required when vertex vectorization is requested.
+    pub opportunities_output_file: Option<String>,
     /// Optional path to write the `OpportunityModelConfig::FileSource` TOML/JSON fragment
     /// (prints to stdout when `None`).
     pub config_output_file: Option<String>,
@@ -63,17 +64,13 @@ impl OpportunityImportOutputs {
         };
 
         let opportunities_output_file = match (opportunities_output_file, base_dir) {
-            (Some(f), _) => f.to_string(),
-            (None, Some(dir)) => dir
-                .join(DEFAULT_VECTORIZED_OPPORTUNITIES_FILENAME)
-                .to_string_lossy()
-                .into_owned(),
-            (None, None) => {
-                return Err(
-                    "must provide either --output-directory or --opportunities-output-file"
-                        .to_string(),
-                )
-            }
+            (Some(f), _) => Some(f.to_string()),
+            (None, Some(dir)) => Some(
+                dir.join(DEFAULT_VECTORIZED_OPPORTUNITIES_FILENAME)
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            (None, None) => None,
         };
 
         let config_output_file = match (config_output_file, base_dir) {
@@ -127,10 +124,25 @@ pub fn run(
         .or(cfg_orientation)
         .unwrap_or(OpportunityOrientation::DestinationVertexOriented);
 
+    if vertices_file.is_some() {
+        if resolved_orientation == OpportunityOrientation::EdgeOriented {
+            return Err(
+                "edge-oriented opportunity imports are not supported; choose a vertex orientation"
+                    .to_string(),
+            );
+        }
+        if outputs.opportunities_output_file.is_none() {
+            return Err(
+                "must provide either --output-directory or --opportunities-output-file".to_string(),
+            );
+        }
+    }
+
     let vertices = vertices_file
         .map(load_vertices)
         .transpose()
         .map_err(|e| e.to_string())?;
+
     let raw_dataset = source.generate_dataset_with_context(
         &resolved_activities,
         vertices.as_deref(),
@@ -186,6 +198,11 @@ pub fn run_with_dataset_and_vertices(
                 .to_string(),
         );
     }
+    if vertices.is_some() && outputs.opportunities_output_file.is_none() {
+        return Err(
+            "must provide either --output-directory or --opportunities-output-file".to_string(),
+        );
+    }
 
     // 1. Write opportunity counts by geometry CSV
     write_geometry_opportunities_csv(
@@ -199,6 +216,13 @@ pub fn run_with_dataset_and_vertices(
     //    totals from raw_dataset.
     let (file_source_config, totals_map) = match vertices {
         Some(verts) => {
+            let opportunities_output_file = outputs
+                .opportunities_output_file
+                .as_deref()
+                .ok_or_else(|| {
+                    "must provide either --output-directory or --opportunities-output-file"
+                        .to_string()
+                })?;
             let activity_counts =
                 proportion_dataset_to_vertices(raw_dataset, verts, activity_column_names.len())
                     .map_err(|e| e.to_string())?;
@@ -206,12 +230,12 @@ pub fn run_with_dataset_and_vertices(
             write_vectorized_opportunities_csv(
                 &activity_counts,
                 activity_column_names,
-                &outputs.opportunities_output_file,
+                opportunities_output_file,
             )?;
 
             let totals = activity_totals(activity_column_names, &activity_counts)?;
             let cfg = OpportunityModelConfig::FileSource {
-                opportunity_input_file: outputs.opportunities_output_file.clone(),
+                opportunity_input_file: opportunities_output_file.to_string(),
                 activity_column_names: activity_column_names.to_vec(),
                 table_orientation,
             };
@@ -549,7 +573,7 @@ mod tests {
         .expect("run_with_dataset did not return a config");
 
         assert!(Path::new(&outputs.geometries_output_file).exists());
-        assert!(Path::new(&outputs.opportunities_output_file).exists());
+        assert!(Path::new(outputs.opportunities_output_file.as_ref().unwrap()).exists());
         let config_path = outputs.config_output_file.as_ref().unwrap();
         assert!(Path::new(config_path).exists());
 
@@ -606,15 +630,31 @@ mod tests {
         assert_eq!(totals.get("retail"), Some(&25.0));
         assert_eq!(totals.get("jobs"), Some(&130.0));
 
-        // Also verify running without vertices_file writes raw_dataset totals to config_output_file
+        // Also verify running without vertices_file works when only --geometries-output-file
+        // and --config-output-file are provided (without --output-directory or --opportunities-output-file)
         let no_vert_dir = dir.path().join("opp_out_no_vertices");
+        let no_vert_geom_file = no_vert_dir.join("raw-geoms.csv.gz");
+        let no_vert_cfg_file = no_vert_dir.join("totals.toml");
         let no_vert_outputs = OpportunityImportOutputs::resolve(
-            Some(no_vert_dir.to_str().unwrap()),
             None,
+            Some(no_vert_geom_file.to_str().unwrap()),
             None,
-            None,
+            Some(no_vert_cfg_file.to_str().unwrap()),
         )
         .unwrap();
+        assert!(no_vert_outputs.opportunities_output_file.is_none());
+
+        // Passing vertices when opportunities_output_file is None must fail
+        assert!(run_with_dataset(
+            &raw_dataset,
+            Some(vertices_path.to_str().unwrap()),
+            &activities,
+            OpportunityOrientation::DestinationVertexOriented,
+            TotalsNamespace::Standalone,
+            &no_vert_outputs,
+        )
+        .is_err());
+
         let none_cfg = run_with_dataset(
             &raw_dataset,
             None,
