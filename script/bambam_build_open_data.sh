@@ -277,7 +277,7 @@ fi
 # 4. inject transit mode into config file
 if should_run_stage "gtfs-config"; then
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" gtfs-config \
-        --directory "${TRANSIT_DIR}"/transit \
+        --directory "${TRANSIT_DIR}" \
         --base-config "${OUTPUT_DIR}/bambam.toml"
     mark_stage_completed "gtfs-config"
 fi
