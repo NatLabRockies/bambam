@@ -98,12 +98,12 @@ impl OpportunityImportOutputs {
 ///    (`outputs.config_output_file` or stdout)
 pub fn run(
     source_config_file: &str,
-    vertices_file: &str,
+    vertices_file: Option<&str>,
     activity_column_names: Option<Vec<String>>,
     table_orientation: Option<OpportunityOrientation>,
     namespace: TotalsNamespace,
     outputs: &OpportunityImportOutputs,
-) -> Result<OpportunityModelConfig, String> {
+) -> Result<Option<OpportunityModelConfig>, String> {
     let (source, cfg_activities, cfg_orientation) =
         OpportunitySource::from_config_path(Path::new(source_config_file))?;
 
@@ -137,12 +137,12 @@ pub fn run(
 /// Executes the three-stage output pipeline given an already-collected [`OpportunityDataset`].
 pub fn run_with_dataset(
     raw_dataset: &OpportunityDataset,
-    vertices_file: &str,
+    vertices_file: Option<&str>,
     activity_column_names: &[String],
     table_orientation: OpportunityOrientation,
     namespace: TotalsNamespace,
     outputs: &OpportunityImportOutputs,
-) -> Result<OpportunityModelConfig, String> {
+) -> Result<Option<OpportunityModelConfig>, String> {
     // 1. Write opportunity counts by geometry CSV
     write_geometry_opportunities_csv(
         raw_dataset,
@@ -150,13 +150,15 @@ pub fn run_with_dataset(
         &outputs.geometries_output_file,
     )?;
 
+    let v_file = match vertices_file {
+        None => return Ok(None),
+        Some(f) => f,
+    };
+
     // 2. Proportion opportunities across graph vertices and write vectorized CSV
-    let activity_counts = proportion_dataset_to_vertices(
-        raw_dataset,
-        vertices_file,
-        activity_column_names.len(),
-    )
-    .map_err(|e| e.to_string())?;
+    let activity_counts =
+        proportion_dataset_to_vertices(raw_dataset, v_file, activity_column_names.len())
+            .map_err(|e| e.to_string())?;
 
     write_vectorized_opportunities_csv(
         &activity_counts,
@@ -179,7 +181,7 @@ pub fn run_with_dataset(
         "opportunity file source config",
     )?;
 
-    Ok(file_source_config)
+    Ok(Some(file_source_config))
 }
 
 /// Writes `raw_dataset` (geometries + activity counts) to a `.csv` or `.csv.gz` file
@@ -427,23 +429,20 @@ mod tests {
 
         let activities = vec!["retail".to_string(), "jobs".to_string()];
         let out_dir = dir.path().join("opp_out");
-        let outputs = OpportunityImportOutputs::resolve(
-            Some(out_dir.to_str().unwrap()),
-            None,
-            None,
-            None,
-        )
-        .unwrap();
+        let outputs =
+            OpportunityImportOutputs::resolve(Some(out_dir.to_str().unwrap()), None, None, None)
+                .unwrap();
 
         let file_cfg = run_with_dataset(
             &raw_dataset,
-            vertices_path.to_str().unwrap(),
+            Some(vertices_path.to_str().unwrap()),
             &activities,
             OpportunityOrientation::DestinationVertexOriented,
             TotalsNamespace::OutputPlugins,
             &outputs,
         )
-        .unwrap();
+        .expect("run_with_dataset returned an error")
+        .expect("run_with_dataset did not return a config");
 
         assert!(Path::new(&outputs.geometries_output_file).exists());
         assert!(Path::new(&outputs.opportunities_output_file).exists());
@@ -499,4 +498,3 @@ mod tests {
         assert_eq!(totals.get("jobs"), Some(&130.0));
     }
 }
-

@@ -297,9 +297,12 @@ pub enum App {
         /// Path to TOML or JSON file containing a serialized OpportunitySource or OpportunityModelConfig::ApiSource
         #[arg(short, long)]
         source_config: String,
-        /// Path to vertices-compass.csv[.gz] for graph vertex matching and proportioning
+        #[arg(long)]
+        impute_graph: bool,
+        /// Path to vertices-compass.csv[.gz] for graph vertex matching and proportioning. must be included if
+        /// "--impute-graph" is enabled.
         #[arg(short, long)]
-        vertices_file: String,
+        vertices_file: Option<String>,
         /// Optional output directory for default filenames (opportunities-geometries.csv.gz, opportunities.csv.gz, opportunity.toml)
         #[arg(short, long)]
         output_directory: Option<String>,
@@ -746,6 +749,7 @@ impl App {
             ),
             App::ImportOpportunities {
                 source_config,
+                impute_graph,
                 vertices_file,
                 output_directory,
                 geometries_output_file,
@@ -767,6 +771,13 @@ impl App {
                         .filter(|s| !s.is_empty())
                         .collect::<Vec<_>>()
                 });
+                let vertices_file = match vertices_file {
+                    Some(v) => Some(v.as_str()),
+                    None if !impute_graph => {
+                        return Err("--impute-graph set but --vertices-file missing".to_string())
+                    }
+                    None => None,
+                };
                 opp_import::run(
                     source_config,
                     vertices_file,
