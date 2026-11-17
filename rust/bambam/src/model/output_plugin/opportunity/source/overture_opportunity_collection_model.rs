@@ -20,8 +20,10 @@ pub fn validate_overture_activity_keys(
     buildings_activity_mappings: Option<&HashMap<String, Vec<String>>>,
 ) -> Result<(), OvertureMapsCollectionError> {
     if let Some(buildings_map) = buildings_activity_mappings {
-        let places_keys: BTreeSet<&str> =
-            places_activity_mappings.keys().map(String::as_str).collect();
+        let places_keys: BTreeSet<&str> = places_activity_mappings
+            .keys()
+            .map(String::as_str)
+            .collect();
         let buildings_keys: BTreeSet<&str> = buildings_map.keys().map(String::as_str).collect();
         if places_keys != buildings_keys {
             return Err(OvertureMapsCollectionError::InvalidUserInput(format!(
