@@ -104,6 +104,11 @@ if [[ "${MISSING}" -eq 1 ]]; then
     exit 1
 fi
 
+if [[ -z "${CENSUS_API_KEY:-}" ]]; then
+    echo "Error: Missing required environment variable CENSUS_API_KEY" >&2
+    exit 1
+fi
+
 # Resolve GTFS_MANIFEST to an absolute path so subshells that `cd` can read it
 GTFS_MANIFEST="$(cd "$(dirname "${GTFS_MANIFEST}")" && pwd)/$(basename "${GTFS_MANIFEST}")"
 
