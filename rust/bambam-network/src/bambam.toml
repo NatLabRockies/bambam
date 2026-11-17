@@ -264,14 +264,14 @@ type = "combined"
 
 [[system.response_output_policy.policies]]
 type = "file"
-path = "result.json"
+filename = "result.json"
 [system.response_output_policy.policies.format]
 type = "json"
 newline_delimited = false
 
 [[system.response_output_policy.policies]]
 type = "file"
-path = "result.csv"
+filename = "result.csv"
 [system.response_output_policy.policies.format]
 type = "csv"
 sorted = true
