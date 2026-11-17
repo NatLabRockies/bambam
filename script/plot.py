@@ -1,7 +1,6 @@
 # plot.py
 # plot outputs of a BAMBAM run, assuming a result.csv file generated based on default output arguments.
 
-from typing import Optional
 from pathlib import Path
 import argparse
 
@@ -27,6 +26,7 @@ parser.add_argument("--plot-activities", action="store_true", help="plot each mo
 parser.add_argument("--modes", default=default_modes, help="comma-delimited list of mode names")
 parser.add_argument("--activities", default=default_acts, help="comma-delimited list of activity names")
 parser.add_argument("--timebins", default=default_timebins, help="comma-delimited list of time bins")
+parser.add_argument("--runtimes-column", default="runtime", help="column name for total runtimes")
 
 def act_plot(gdf: gpd.GeoDataFrame, mode: str, act: str, timebin: int, outdir: Path) -> None:
     col = f"opps_{act}_{timebin}"
@@ -40,24 +40,30 @@ def act_plot(gdf: gpd.GeoDataFrame, mode: str, act: str, timebin: int, outdir: P
     plt.close()
     return
 
-def runtimes_plot(df: pd.DataFrame, outdir: Path) -> None:
-    ax = sns.scatterplot(df, x="iterations", y="runtime", hue="mode")
+def runtimes_plot(df: pd.DataFrame, outdir: Path, runtime_col: str) -> None:
+    ax = sns.scatterplot(df, x="iterations", y=runtime_col, hue="mode")
     ax.figure.savefig(outdir / "plot_runtime_per_iteration.png", dpi=300, bbox_inches="tight")
     plt.close()
     return
 
 def isochrone_plot(iso_df: pd.DataFrame, grid_id: str, mode: str, timebins: list[int]) -> None:
-    row = iso_df.loc[grid_id, mode]
-    geoms = [wkb.loads(row[f"isochrone_{t}"])
-             for t in timebins]
-    iso_gdf = gpd.GeoDataFrame({"geometry": geoms, "timebin": timebins}, crs="EPSG:4326").sort_values("timebin", ascending=False)
-    fig, ax = plt.subplots()
-    iso_gdf.to_crs("EPSG:3857").plot("timebin", cmap="bone_r", alpha=0.444, linewidth=1.0, edgecolor="k", legend=True, ax=ax)
-    ctx.add_basemap(ax=ax)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    fig.savefig(outdir / f"plot_isos_{grid_id}_{mode}.png", dpi=300, bbox_inches="tight")
-    plt.close()
+    try:
+        row = iso_df.loc[grid_id, mode]
+        geoms = [wkb.loads(row[f"isochrone_{t}"])
+                for t in timebins]
+        iso_gdf = gpd.GeoDataFrame({"geometry": geoms, "timebin": timebins}, crs="EPSG:4326").sort_values("timebin", ascending=False)
+        if len(iso_gdf) == 0:
+            print(f"{mode} isochrone for {grid_id} is empty")
+            return
+        fig, ax = plt.subplots()
+        iso_gdf.to_crs("EPSG:3857").plot("timebin", cmap="bone_r", alpha=0.444, linewidth=1.0, edgecolor="k", legend=True, ax=ax)
+        ctx.add_basemap(ax=ax)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        fig.savefig(outdir / f"plot_isos_{grid_id}_{mode}.png", dpi=300, bbox_inches="tight")
+        plt.close()
+    except Exception as e:
+        print(f"failure when running {grid_id} {mode}: {e}")
 
 def to_polygon(hex_id: str) -> Polygon:
     pts = h3.cell_to_boundary(hex_id)
@@ -77,7 +83,7 @@ if __name__ == "__main__":
     df["geometry"] = df.grid_id.apply(to_polygon)
     gdf = gpd.GeoDataFrame(df, crs="EPSG:4326")
 
-    runtimes_plot(df, outdir)
+    runtimes_plot(df, outdir, args.runtimes_column)
 
     if args.plot_activities:
 
