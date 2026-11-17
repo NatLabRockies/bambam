@@ -180,6 +180,13 @@ pub fn run_with_dataset_and_vertices(
     namespace: TotalsNamespace,
     outputs: &OpportunityImportOutputs,
 ) -> Result<Option<OpportunityModelConfig>, String> {
+    if vertices.is_some() && table_orientation == OpportunityOrientation::EdgeOriented {
+        return Err(
+            "edge-oriented opportunity imports are not supported; choose a vertex orientation"
+                .to_string(),
+        );
+    }
+
     // 1. Write opportunity counts by geometry CSV
     write_geometry_opportunities_csv(
         raw_dataset,
