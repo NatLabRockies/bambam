@@ -91,12 +91,21 @@ impl OvertureOpportunityCollectionModel {
         &self,
         activity_types: &[String],
     ) -> Result<OpportunityDataset, OvertureMapsCollectionError> {
+        let release_uri = match self.release_version {
+            ReleaseVersion::Latest => self.collector.get_latest_release()?,
+            ReleaseVersion::Monthly { .. } => self.release_version.to_string(),
+        };
+
         // Collect raw opportunities
-        let mut places_opportunities = self.collect_places_opportunities(activity_types)?;
+        let mut places_opportunities =
+            self.collect_places_opportunities(activity_types, &release_uri)?;
 
         if let Some(building_mappings) = &self.buildings_activity_mappings {
-            let buildings_opportunities =
-                self.collect_building_opportunities(activity_types, building_mappings)?;
+            let buildings_opportunities = self.collect_building_opportunities(
+                activity_types,
+                building_mappings,
+                &release_uri,
+            )?;
 
             // Build RTree for places
             let rtree = PolygonalRTree::new(
@@ -171,15 +180,12 @@ impl OvertureOpportunityCollectionModel {
     fn collect_places_opportunities(
         &self,
         activity_types: &[String],
+        release_uri: &str,
     ) -> Result<GeoActivityMask, OvertureMapsCollectionError> {
-        let uri = match self.release_version {
-            ReleaseVersion::Latest => self.collector.get_latest_release()?,
-            ReleaseVersion::Monthly { .. } => self.release_version.to_string(),
-        };
         let places_records = self
             .collector
             .collect_from_release(
-                &uri,
+                release_uri,
                 &OvertureRecordType::Places,
                 self.places_row_filter_config.clone(),
             )?
@@ -227,6 +233,7 @@ impl OvertureOpportunityCollectionModel {
         &self,
         activity_types: &[String],
         buildings_activity_mappings: &HashMap<String, Vec<String>>,
+        release_uri: &str,
     ) -> Result<GeoActivityMask, OvertureMapsCollectionError> {
         // Build the taxonomy model from the mapping by transforming the vectors into HashSets
         let buildings_taxonomy_model = TaxonomyModel::from_mapping(
@@ -239,11 +246,10 @@ impl OvertureOpportunityCollectionModel {
         let arc_buildings_taxonomy = Arc::new(buildings_taxonomy_model);
 
         // Use the collector to retrieve buildings data
-        let uri = self.release_version.to_string();
         let buildings_records = self
             .collector
             .collect_from_release(
-                &uri,
+                release_uri,
                 &OvertureRecordType::Buildings,
                 self.buildings_row_filter_config.clone(),
             )?
