@@ -321,4 +321,3 @@ mod tests {
         assert!(!filter.matches_geometry(&Geometry::Point(Point::new(-105.2600, 40.0150))));
     }
 }
-

@@ -10,9 +10,7 @@ use super::{
 };
 use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
 use bambam_network::GeographicExtent;
-use bambam_omf::collection::{
-    OvertureMapsCollectorConfig, OvertureSpatialFilter, ReleaseVersion,
-};
+use bambam_omf::collection::{OvertureMapsCollectorConfig, OvertureSpatialFilter, ReleaseVersion};
 use bamcensus::app::lodes_tiger;
 use bamcensus_core::model::identifier::GeoidType;
 use bamcensus_lehd::model::{
