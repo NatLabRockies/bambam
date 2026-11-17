@@ -149,7 +149,8 @@ impl OpportunitySource {
                 year,
                 fallback,
             } => {
-                //
+                let filtered_mapping =
+                    lodes_ops::filter_activity_mapping(activity_mapping, activity_types)?;
                 let geoids = study_region.get_geoids()?;
                 let dataset = LodesDataset::WAC {
                     edition: *edition,
@@ -157,14 +158,14 @@ impl OpportunitySource {
                     segment: *segment,
                     year: *year,
                 };
-                let wac_segments = activity_mapping.keys().cloned().collect_vec();
+                let wac_segments = filtered_mapping.keys().cloned().collect_vec();
                 lodes_ops::collect_lodes_opportunities(
                     &dataset,
                     &wac_segments,
                     &geoids,
                     data_granularity,
                     activity_types,
-                    activity_mapping,
+                    &filtered_mapping,
                     fallback,
                 )
             }

@@ -157,7 +157,7 @@ impl OvertureSpatialFilter {
         })
     }
 
-    /// Returns the Stage 1 [`Bbox`] used for Parquet row-group and row predicate pushdown.
+    /// Returns the Stage 1 [z`Bbox`] used for Parquet row-group and row predicate pushdown.
     pub fn bbox(&self) -> Bbox {
         match self {
             Self::Extent { bbox, .. } | Self::Graph { bbox, .. } => *bbox,
