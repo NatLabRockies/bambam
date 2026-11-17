@@ -24,7 +24,7 @@ pub mod vertex_mapping_record;
 
 pub use cli::{
     parse_wkt_str_to_geometry_and_bbox, read_extent_file_to_geometry_and_bbox,
-    CommonNetworkImportArgs, NetworkImportFilterConfig,
+    CommonNetworkImportArgs, GeographicExtent, NetworkImportFilterConfig,
 };
 pub use consts::*;
 pub use edge_complete_record::{

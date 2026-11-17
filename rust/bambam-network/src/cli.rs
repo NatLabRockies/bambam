@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use clap::Args;
 use config::{Config, File};
-use geo::{BoundingRect, Coord, Geometry, MapCoords};
+use geo::{BoundingRect, Coord, Geometry, LineString, MapCoords, Polygon};
 use geozero::{wkt::Wkt as WktReader, ToGeo};
 use routee_compass_core::model::unit::DistanceUnit;
 use schemars::JsonSchema;
@@ -134,6 +134,67 @@ impl CommonNetworkImportArgs {
             .as_deref()
             .map(read_extent_file_to_geometry_and_bbox)
             .transpose()
+    }
+}
+
+/// Geographic extent specification for a road network or opportunity import.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum GeographicExtent {
+    /// Bounding box in WGS84 lon/lat degrees: `[xmin, ymin, xmax, ymax]`.
+    Bbox {
+        xmin: f32,
+        ymin: f32,
+        xmax: f32,
+        ymax: f32,
+    },
+    /// Inline WKT string (`POLYGON` or `MULTIPOLYGON`).
+    Wkt { wkt: String },
+    /// Path to a file containing a WKT polygon/multipolygon (or JSON with an `"extent"` key).
+    WktFile { path: String },
+}
+
+impl GeographicExtent {
+    /// Converts the extent specification into a `geo::Geometry<f32>` polygon/multipolygon
+    /// and its bounding [`CliBoundingBox`].
+    pub fn to_geometry_and_bbox(&self) -> Result<(Geometry<f32>, CliBoundingBox), String> {
+        match self {
+            GeographicExtent::Bbox {
+                xmin,
+                ymin,
+                xmax,
+                ymax,
+            } => {
+                if xmin >= xmax || ymin >= ymax {
+                    return Err(format!(
+                        "invalid bbox: expected xmin < xmax and ymin < ymax, got [{xmin}, {ymin}, {xmax}, {ymax}]"
+                    ));
+                }
+                let poly = Polygon::new(
+                    LineString::from(vec![
+                        (*xmin, *ymin),
+                        (*xmax, *ymin),
+                        (*xmax, *ymax),
+                        (*xmin, *ymax),
+                        (*xmin, *ymin),
+                    ]),
+                    vec![],
+                );
+                let bbox = CliBoundingBox {
+                    xmin: *xmin,
+                    ymin: *ymin,
+                    xmax: *xmax,
+                    ymax: *ymax,
+                };
+                Ok((Geometry::Polygon(poly), bbox))
+            }
+            GeographicExtent::Wkt { wkt } => {
+                parse_wkt_str_to_geometry_and_bbox(wkt).map_err(|e| e.to_string())
+            }
+            GeographicExtent::WktFile { path } => {
+                read_extent_file_to_geometry_and_bbox(path).map_err(|e| e.to_string())
+            }
+        }
     }
 }
 

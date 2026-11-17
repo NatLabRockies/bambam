@@ -22,120 +22,16 @@
 
 use std::path::Path;
 
+pub use bambam_network::GeographicExtent;
 use bambam_network::{ComponentsAlgorithmType, IslandDetectionAlgorithm};
-use bambam_omf::app::{network::NetworkEdgeListConfiguration, CliBoundingBox};
+use bambam_omf::app::network::NetworkEdgeListConfiguration;
 use bambam_osm::model::osm::{
     graph::{osm_element_filter::ElementFilter, CompassWriter, OsmGraphVectorized},
     import_ops,
 };
-use geo::{BoundingRect, Coord, Geometry, LineString, MapCoords, Polygon};
-use geozero::{wkt::Wkt as WktReader, ToGeo};
 use routee_compass_core::model::unit::DistanceUnit;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-/// Geographic extent specification for a road network import.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum GeographicExtent {
-    /// Bounding box in WGS84 lon/lat degrees: `[xmin, ymin, xmax, ymax]`.
-    Bbox {
-        xmin: f32,
-        ymin: f32,
-        xmax: f32,
-        ymax: f32,
-    },
-    /// Inline WKT string (`POLYGON` or `MULTIPOLYGON`).
-    Wkt { wkt: String },
-    /// Path to a file containing a WKT polygon/multipolygon (or JSON with an `"extent"` key).
-    WktFile { path: String },
-}
-
-impl GeographicExtent {
-    /// Converts the extent specification into a `geo::Geometry<f32>` polygon/multipolygon
-    /// and its bounding `CliBoundingBox`.
-    pub fn to_geometry_and_bbox(&self) -> Result<(Geometry<f32>, CliBoundingBox), String> {
-        match self {
-            GeographicExtent::Bbox {
-                xmin,
-                ymin,
-                xmax,
-                ymax,
-            } => {
-                if xmin >= xmax || ymin >= ymax {
-                    return Err(format!(
-                        "invalid bbox: expected xmin < xmax and ymin < ymax, got [{xmin}, {ymin}, {xmax}, {ymax}]"
-                    ));
-                }
-                let poly = Polygon::new(
-                    LineString::from(vec![
-                        (*xmin, *ymin),
-                        (*xmax, *ymin),
-                        (*xmax, *ymax),
-                        (*xmin, *ymax),
-                        (*xmin, *ymin),
-                    ]),
-                    vec![],
-                );
-                let bbox = CliBoundingBox {
-                    xmin: *xmin,
-                    ymin: *ymin,
-                    xmax: *xmax,
-                    ymax: *ymax,
-                };
-                Ok((Geometry::Polygon(poly), bbox))
-            }
-            GeographicExtent::Wkt { wkt } => parse_wkt_str_to_geometry_and_bbox(wkt),
-            GeographicExtent::WktFile { path } => {
-                let raw = std::fs::read_to_string(path)
-                    .map_err(|e| format!("failed to read extent file '{path}': {e}"))?;
-                parse_wkt_str_to_geometry_and_bbox(&raw)
-            }
-        }
-    }
-}
-
-fn parse_wkt_str_to_geometry_and_bbox(
-    raw: &str,
-) -> Result<(Geometry<f32>, CliBoundingBox), String> {
-    let trimmed = raw.trim();
-    // Support JSON with an `{"extent": "POLYGON(...)"}` wrapper as well as plain WKT
-    let wkt_str: String = if trimmed.starts_with('{') {
-        let json_val: serde_json::Value = serde_json::from_str(trimmed)
-            .map_err(|e| format!("failed to parse JSON extent wrapper: {e}"))?;
-        json_val
-            .get("extent")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| "JSON extent object missing string key 'extent'".to_string())?
-            .trim()
-            .to_string()
-    } else {
-        trimmed.to_string()
-    };
-
-    let geom_f64 = WktReader(wkt_str.as_str())
-        .to_geo()
-        .map_err(|e| format!("failed to parse WKT geometry: {e}"))?;
-    let geom_f32: Geometry<f32> = geom_f64.map_coords(|Coord { x, y }| Coord {
-        x: x as f32,
-        y: y as f32,
-    });
-
-    match &geom_f32 {
-        Geometry::Polygon(_) | Geometry::MultiPolygon(_) => {}
-        other => {
-            return Err(format!(
-                "extent WKT must be a POLYGON or MULTIPOLYGON, got {other:?}"
-            ))
-        }
-    }
-
-    let rect = geom_f32
-        .bounding_rect()
-        .ok_or_else(|| "extent geometry has empty bounding box".to_string())?;
-    let bbox = CliBoundingBox::from_coords(&rect.min(), &rect.max())?;
-    Ok((geom_f32, bbox))
-}
 
 /// Source dataset for road network import.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
