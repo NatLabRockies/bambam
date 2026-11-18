@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// configures the granularity and algorithmic parameters for generating and
 /// recording opportunities.
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "format", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "format", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
 pub enum BambamOutputConfig {
     Aggregate {
