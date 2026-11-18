@@ -65,7 +65,7 @@ use uom::si::f64::{Energy, Length, Time};
 /// values.drive = { limit = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
 /// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ConstraintConfig {
     /// Restrict routes to only use allowed transportation modes.
     AllowedModes { values: Vec<String> },
