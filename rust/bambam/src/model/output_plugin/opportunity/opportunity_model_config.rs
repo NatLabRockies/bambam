@@ -21,7 +21,7 @@ use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
 /// [`routee_compass::plugin::output::OutputPluginBuilder`]. See [`OpportunityModel`]
 /// for algorithm implementation details.
 #[derive(Deserialize, Serialize, Clone, Debug)]
-#[serde(tag = "type")]
+#[serde(tag = "type", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum OpportunityModelConfig {
     /// this collection of opportunities comes from a file source.
