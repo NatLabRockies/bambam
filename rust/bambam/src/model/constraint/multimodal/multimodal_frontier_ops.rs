@@ -26,7 +26,11 @@ pub fn get_mode_counts(
         })?;
     let mut counts: HashMap<String, usize> = HashMap::new();
     for mode in modes.into_iter() {
-        counts.entry(mode).and_modify(|cnt| *cnt += 1).or_insert(1);
+        if let Some(cnt) = counts.get_mut(mode) {
+            *cnt += 1;
+        } else {
+            counts.insert(mode.to_string(), 1);
+        }
     }
     Ok(counts)
 }

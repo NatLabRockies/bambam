@@ -267,13 +267,13 @@ fn validate_mode_counts(
 }
 
 /// runs the constraint model validation logic for exact sequence constraints
-fn validate_mode_sequences(
+fn validate_mode_sequences<'a>(
     state: &[StateVariable],
     state_model: &StateModel,
     trie: &SubSequenceTrie,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &CategoricalMapping<String, i64>,
-    edge_mode: &str,
+    mode_to_state: &'a CategoricalMapping<String, i64>,
+    edge_mode: &'a str,
 ) -> ConstraintResult {
     let mut modes = state_ops::get_mode_sequence(state, state_model, max_trip_legs, mode_to_state)
         .map_err(|e| {
@@ -292,7 +292,7 @@ fn validate_mode_sequences(
             },
         )?;
     if Some(edge_mode) != active_mode {
-        modes.push(edge_mode.to_string());
+        modes.push(edge_mode);
     }
     let is_match = trie.contains(&modes);
     Ok(is_match)
