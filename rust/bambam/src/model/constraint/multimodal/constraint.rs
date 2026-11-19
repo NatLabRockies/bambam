@@ -65,6 +65,24 @@ pub enum Constraint {
 }
 
 impl Constraint {
+    /// returns false if this constraint statically forbids `edge_mode` for the entire query.
+    ///
+    /// # performance
+    ///
+    /// runtimes are up to _O(n log n)_ due to exact sequences trie traversal.
+    pub fn allows_mode(&self, edge_mode: &str, max_trip_legs: NonZeroU64) -> bool {
+        use Constraint as MFC;
+
+        match self {
+            MFC::AllowedModes(items) => items.contains(edge_mode),
+            MFC::ModeCounts(limits) => limits.get(edge_mode).copied().unwrap_or(0) > 0,
+            MFC::ExactSequences(trie) => {
+                trie.contains_mode(edge_mode, Some(max_trip_legs.get() as usize))
+            }
+            _ => true,
+        }
+    }
+
     /// validates an edge independent of search state (e.g., during map matching).
     pub fn valid_edge(&self, edge_mode: &str, _edge: &Edge) -> Result<bool, ConstraintModelError> {
         use Constraint as MFC;
@@ -72,6 +90,7 @@ impl Constraint {
         match self {
             MFC::AllowedModes(items) => Ok(items.contains(edge_mode)),
             MFC::ModeCounts(limits) => Ok(limits.get(edge_mode).copied().unwrap_or(0) > 0),
+            MFC::ExactSequences(trie) => Ok(trie.contains_mode(edge_mode, None)),
             _ => Ok(true),
         }
     }

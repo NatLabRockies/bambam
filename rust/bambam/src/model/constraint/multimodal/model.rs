@@ -17,6 +17,7 @@ pub struct MultimodalConstraintModel {
     pub engine: Arc<MultimodalConstraintEngine>,
     pub constraints: Vec<Constraint>,
     pub max_trip_legs: NonZeroU64,
+    pub mode_enabled: bool,
 }
 
 impl MultimodalConstraintModel {
@@ -25,10 +26,24 @@ impl MultimodalConstraintModel {
         constraints: Vec<Constraint>,
         max_trip_legs: NonZeroU64,
     ) -> Self {
+        let mode_enabled = constraints
+            .iter()
+            .all(|c| c.allows_mode(&engine.mode, max_trip_legs));
+        // Filter out static mode-membership constraints (`AllowedModes`) that are already
+        // satisfied for `engine.mode` so `valid_frontier` doesn't re-check them on every edge.
+        let active_constraints = if mode_enabled {
+            constraints
+                .into_iter()
+                .filter(|c| !matches!(c, Constraint::AllowedModes(_)))
+                .collect()
+        } else {
+            Vec::new()
+        };
         Self {
             engine,
-            constraints,
+            constraints: active_constraints,
             max_trip_legs,
+            mode_enabled,
         }
     }
 
@@ -69,6 +84,9 @@ impl ConstraintModel for MultimodalConstraintModel {
     }
 
     fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
+        if !self.mode_enabled {
+            return Ok(false);
+        }
         for constraint in self.constraints.iter() {
             if !constraint.valid_edge(&self.engine.mode, edge)? {
                 return Ok(false);
@@ -90,6 +108,10 @@ fn validate_frontier(
     state_model: &StateModel,
     model: &MultimodalConstraintModel,
 ) -> Result<bool, ConstraintModelError> {
+    if !model.mode_enabled {
+        return Ok(false);
+    }
+
     // if adding this edge would exceed max_trip_legs, we can skip running the constraints
     // and directly reject this edge.
     let valid_leg_count = state_ops::appending_edge_mode_is_valid(
@@ -139,6 +161,10 @@ fn evaluate_multimodal_constraints(
     state_model: &StateModel,
     model: &MultimodalConstraintModel,
 ) -> Result<bool, ConstraintModelError> {
+    if !model.mode_enabled {
+        return Ok(false);
+    }
+
     // if adding this edge would exceed max_trip_legs, we can skip running the constraints
     // and directly reject this edge.
     let valid_leg_count = state_ops::appending_edge_mode_is_valid(
@@ -983,5 +1009,40 @@ mod test {
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(100.0));
         assert!(walk_mfm.valid_edge(&edge).expect("test failed"));
         assert!(!drive_mfm.valid_edge(&edge).expect("test failed"));
+    }
+
+    #[test]
+    fn test_mode_disabled_short_circuits_at_build_time() {
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
+
+        // 1. Disabled via AllowedModes
+        let allowed = Constraint::AllowedModes(HashSet::from(["walk".to_string()]));
+        let (_, drive_mfm, state_model, state) =
+            test_setup(vec![allowed], "drive", &["walk", "drive"], max_trip_legs);
+        assert!(!drive_mfm.mode_enabled);
+        assert!(drive_mfm.constraints.is_empty());
+
+        let edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(100.0));
+        assert!(!drive_mfm.valid_edge(&edge).unwrap());
+        assert!(!validate_frontier(&edge, &state, &state_model, &drive_mfm).unwrap());
+
+        // 2. Disabled via ExactSequences (mode not in sequences within max_trip_legs)
+        let mut trie = SubSequenceTrie::new();
+        trie.insert_sequence(vec![
+            "walk".to_string(),
+            "transit".to_string(),
+            "bike".to_string(),
+        ]);
+        let seq_constraint = Constraint::ExactSequences(trie);
+        // max_trip_legs = 2 means leg 3 ("bike") can never be reached
+        let (_, bike_mfm, state_model, state) = test_setup(
+            vec![seq_constraint],
+            "bike",
+            &["walk", "transit", "bike"],
+            max_trip_legs,
+        );
+        assert!(!bike_mfm.mode_enabled);
+        assert!(!bike_mfm.valid_edge(&edge).unwrap());
+        assert!(!validate_frontier(&edge, &state, &state_model, &bike_mfm).unwrap());
     }
 }

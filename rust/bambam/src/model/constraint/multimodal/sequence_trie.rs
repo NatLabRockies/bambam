@@ -69,6 +69,33 @@ impl SubSequenceTrie {
         }
         true
     }
+
+    /// Returns true if `mode` appears at any position within max_depth (1-based) in the trie.
+    pub fn contains_mode(&self, mode: &str, max_depth: Option<usize>) -> bool {
+        Self::contains_mode_recursive(&self.root, mode, 1, max_depth)
+    }
+
+    fn contains_mode_recursive(
+        node: &TrieNode,
+        mode: &str,
+        current_depth: usize,
+        max_depth: Option<usize>,
+    ) -> bool {
+        if let Some(max) = max_depth {
+            if current_depth > max {
+                return false;
+            }
+        }
+        for (key, child) in &node.children {
+            if key == mode {
+                return true;
+            }
+            if Self::contains_mode_recursive(child, mode, current_depth + 1, max_depth) {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl Default for SubSequenceTrie {
