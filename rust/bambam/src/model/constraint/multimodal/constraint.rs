@@ -66,10 +66,6 @@ pub enum Constraint {
 
 impl Constraint {
     /// returns false if this constraint statically forbids `edge_mode` for the entire query.
-    ///
-    /// # performance
-    ///
-    /// runtimes are up to _O(n log n)_ due to exact sequences trie traversal.
     pub fn allows_mode(&self, edge_mode: &str, max_trip_legs: NonZeroU64) -> bool {
         use Constraint as MFC;
 
