@@ -785,19 +785,18 @@ mod test {
     #[test]
     fn test_mode_leg_min_time_limit_on_mode_switch() {
         use crate::model::constraint::multimodal::{
-            constraint_config::{LimitOperation, ModeLegTimeConstraint},
-            TimeConstraint, TripLegConstraint,
+            constraint_config::ModeLegTimeConstraint, TimeConstraint, TripLegConstraint,
         };
         use routee_compass_core::model::unit::TimeUnit;
         use uom::si::f64::Time;
 
         let min_drive = ModeLegTimeConstraint {
             leg: TripLegConstraint::Any,
-            constraint: TimeConstraint {
-                limit: Time::new::<uom::si::time::minute>(5.0),
-                unit: TimeUnit::Minutes,
-                op: LimitOperation::MinInclusive,
-            },
+            constraint: TimeConstraint::new(
+                Some(Time::new::<uom::si::time::minute>(5.0)),
+                None,
+                TimeUnit::Minutes,
+            ),
         };
         let constraint = Constraint::ModeLegTimeLimit {
             mode_leg_time_limit: HashMap::from([("drive".to_string(), min_drive)]),
@@ -831,11 +830,11 @@ mod test {
         // 2. Switching from drive (after 2 min < 5 min) into walk should be rejected
         let min_drive_2 = ModeLegTimeConstraint {
             leg: TripLegConstraint::Any,
-            constraint: TimeConstraint {
-                limit: Time::new::<uom::si::time::minute>(5.0),
-                unit: TimeUnit::Minutes,
-                op: LimitOperation::MinInclusive,
-            },
+            constraint: TimeConstraint::new(
+                Some(Time::new::<uom::si::time::minute>(5.0)),
+                None,
+                TimeUnit::Minutes,
+            ),
         };
         let constraint_2 = Constraint::ModeLegTimeLimit {
             mode_leg_time_limit: HashMap::from([("drive".to_string(), min_drive_2)]),
@@ -872,6 +871,70 @@ mod test {
             )
             .unwrap();
         assert!(validate_frontier(&walk_edge, &state2, &state_model, &walk_mfm).unwrap());
+    }
+
+    #[test]
+    fn test_flattened_deserialization_and_build_validation() {
+        use crate::model::constraint::multimodal::MultimodalConstraintModelQuery;
+        use bambam_core::model::state::CategoricalMapping;
+        use serde_json::json;
+
+        let mode_to_state = CategoricalMapping::new(&[
+            "walk".to_string(),
+            "bike".to_string(),
+            "drive".to_string(),
+            "transit".to_string(),
+        ])
+        .unwrap();
+
+        // 1. Valid flattened syntax with combined min + max on a single leg constraint
+        let valid_query_json = json!({
+            "max_trip_legs": 3,
+            "constraints": [
+                { "type": "time_limit", "max": 40.0, "unit": "minutes" },
+                { "type": "mode_leg_distance_limit", "values": { "walk": { "max": 0.25, "unit": "miles" } } },
+                { "type": "mode_leg_time_limit", "values": { "drive": { "min": 5.0, "max": 35.0, "unit": "minutes" } } },
+                { "type": "exact_sequences", "values": [["drive", "walk"], ["walk", "drive", "walk"]] }
+            ]
+        });
+        let query: MultimodalConstraintModelQuery =
+            serde_json::from_value(valid_query_json).expect("should deserialize flattened syntax");
+        assert!(query.build_constraints(&mode_to_state).is_ok());
+
+        // 2. Reject exact_sequences longer than max_trip_legs
+        let seq_too_long_json = json!({
+            "max_trip_legs": 2,
+            "constraints": [
+                { "type": "exact_sequences", "values": [["walk", "drive", "walk"]] }
+            ]
+        });
+        let query_too_long: MultimodalConstraintModelQuery =
+            serde_json::from_value(seq_too_long_json).unwrap();
+        assert!(query_too_long.build_constraints(&mode_to_state).is_err());
+
+        // 3. Reject unknown travel mode
+        let unknown_mode_json = json!({
+            "max_trip_legs": 3,
+            "constraints": [
+                { "type": "allowed_modes", "values": ["walk", "spaceship"] }
+            ]
+        });
+        let query_unknown_mode: MultimodalConstraintModelQuery =
+            serde_json::from_value(unknown_mode_json).unwrap();
+        assert!(query_unknown_mode
+            .build_constraints(&mode_to_state)
+            .is_err());
+
+        // 4. Reject min > max
+        let inverted_bounds_json = json!({
+            "max_trip_legs": 3,
+            "constraints": [
+                { "type": "mode_leg_time_limit", "values": { "drive": { "min": 20.0, "max": 5.0, "unit": "minutes" } } }
+            ]
+        });
+        let query_inverted: MultimodalConstraintModelQuery =
+            serde_json::from_value(inverted_bounds_json).unwrap();
+        assert!(query_inverted.build_constraints(&mode_to_state).is_err());
     }
 
     #[test]

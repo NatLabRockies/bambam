@@ -24,7 +24,7 @@ use uom::si::f64::{Energy, Length, Time};
 ///
 /// ```toml
 /// type = "mode_distance_limit"
-/// values.walk = { limit = 0.5, unit = "miles" }
+/// values.walk = { max = 0.5, unit = "miles" }
 /// ```
 ///
 /// ## Walk mode can only be used in the first or third leg of a trip
@@ -40,21 +40,21 @@ use uom::si::f64::{Energy, Length, Time};
 /// ```toml
 /// [[constraints]]
 /// type = "mode_leg_time_limit"
-/// values.walk = { leg.type = "first", constraint = { limit = 5.0, unit = "minutes" } }
+/// values.walk = { leg.type = "first", max = 5.0, unit = "minutes" }
 /// [[constraints]]
 /// type = "mode_time_limit"
-/// values.walk = { limit = 20.0, unit = "minutes" }
+/// values.walk = { max = 20.0, unit = "minutes" }
 /// ```
 ///
 /// ### Drive mode legs should never be shorter than 5 minutes or 0.33 miles
 ///
 /// ```toml
 /// [[constraints]]
-/// type = "mode_time_limit"
-/// values.drive = { limit = 5.0, unit = "minutes", op = "min_exclusive" }
+/// type = "mode_leg_time_limit"
+/// values.drive = { min = 5.0, unit = "minutes" }
 /// [[constraints]]
-/// type = "mode_distance_limit"
-/// values.drive = { limit = 0.33, unit = "miles", op = "min_exclusive" }
+/// type = "mode_leg_distance_limit"
+/// values.drive = { min = 0.33, unit = "miles" }
 /// ```
 ///
 /// ### Drive mode should not exceed 2 gallons of gas
@@ -62,7 +62,7 @@ use uom::si::f64::{Energy, Length, Time};
 /// ```toml
 /// [[constraints]]
 /// type = "mode_energy_limit"
-/// values.drive = { limit = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
+/// values.drive = { max = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
 /// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
@@ -82,11 +82,11 @@ pub enum ConstraintConfig {
     // /// Set maximum time limit for the trip.
     // #[serde(rename = "energy_limit")]
     // EnergyConstraint,
-    /// Set maximum distance limits for each transportation mode.
+    /// Set distance limits for each transportation mode.
     ModeDistanceLimit {
         values: HashMap<String, DistanceConstraint>,
     },
-    /// Set maximum time limits for each transportation mode.
+    /// Set time limits for each transportation mode.
     ModeTimeLimit {
         values: HashMap<String, TimeConstraint>,
     },
@@ -109,27 +109,37 @@ pub enum ConstraintConfig {
 }
 
 /// Pairs a trip leg constraint with a distance constraint.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+/// Supports both flattened syntax (`{ leg = ..., min = ..., max = ..., unit = ... }`)
+/// and nested syntax (`{ leg = ..., constraint = { ... } }`).
+#[derive(Serialize, Debug, Clone)]
 pub struct ModeLegDistanceConstraint {
+    #[serde(default)]
     pub leg: TripLegConstraint,
+    #[serde(flatten)]
     pub constraint: DistanceConstraint,
 }
 
 /// Pairs a trip leg constraint with a time constraint.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+/// Supports both flattened syntax (`{ leg = ..., min = ..., max = ..., unit = ... }`)
+/// and nested syntax (`{ leg = ..., constraint = { ... } }`).
+#[derive(Serialize, Debug, Clone)]
 pub struct ModeLegTimeConstraint {
+    #[serde(default)]
     pub leg: TripLegConstraint,
+    #[serde(flatten)]
     pub constraint: TimeConstraint,
 }
 
 /// Pairs a trip leg constraint with an energy constraint.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone)]
 pub struct ModeLegEnergyConstraint {
+    #[serde(default)]
     pub leg: TripLegConstraint,
+    #[serde(flatten)]
     pub constraint: EnergyConstraint,
 }
 
-/// operation to use when testing a constraint
+/// operation to use when testing a legacy single-bound constraint
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitOperation {
@@ -144,32 +154,47 @@ pub enum LimitOperation {
     MaxExclusive,
 }
 
-/// Distance constraint value with associated unit.
+/// Distance constraint with optional `min` and/or `max` bounds and associated unit.
 #[derive(Serialize, Debug, Clone)]
 pub struct DistanceConstraint {
-    pub limit: Length,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<Length>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<Length>,
     pub unit: DistanceUnit,
-    #[serde(default)]
-    pub op: LimitOperation,
+    #[serde(default, skip_serializing)]
+    pub min_exclusive: bool,
+    #[serde(default, skip_serializing)]
+    pub max_exclusive: bool,
 }
 
-/// Time constraint value with associated unit.
+/// Time constraint with optional `min` and/or `max` bounds and associated unit.
 #[derive(Serialize, Debug, Clone)]
 pub struct TimeConstraint {
-    pub limit: Time,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<Time>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<Time>,
     pub unit: TimeUnit,
-    #[serde(default)]
-    pub op: LimitOperation,
+    #[serde(default, skip_serializing)]
+    pub min_exclusive: bool,
+    #[serde(default, skip_serializing)]
+    pub max_exclusive: bool,
 }
 
-/// Energy constraint value with associated unit.
+/// Energy constraint with optional `min` and/or `max` bounds and associated unit.
 #[derive(Serialize, Debug, Clone)]
 pub struct EnergyConstraint {
-    pub limit: Energy,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min: Option<Energy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<Energy>,
     pub unit: EnergyUnit,
     pub variable: EnergyStateVariable,
-    #[serde(default)]
-    pub op: LimitOperation,
+    #[serde(default, skip_serializing)]
+    pub min_exclusive: bool,
+    #[serde(default, skip_serializing)]
+    pub max_exclusive: bool,
 }
 
 /// where to grab energy values when comparing against this constraint
@@ -186,7 +211,7 @@ pub enum EnergyStateVariable {
 /// Identifies a specific trip leg for constraint application.
 ///
 /// Allows constraints to target specific steps in a trip.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TripLegConstraint {
     /// the departing trip leg, an alias for LegIndex(0)
@@ -201,6 +226,7 @@ pub enum TripLegConstraint {
         destination_predicate: DestinationPredicate,
     },
     /// all legs must meet this criteria independently
+    #[default]
     Any,
 }
 
@@ -219,15 +245,7 @@ impl LimitOperation {
         )
     }
 
-    /// tests if a given value is within some limit. if it is a min comparison,
-    ///
-    /// ### mode_switch
-    ///
-    /// a min* comparison must reserve rejecting edges until it is clear that the trip leg
-    /// is ending due to a mode switch. if we have been in leg 0 with mode A, and entering
-    /// this edge would move us to leg 1 and mode B, then `mode_switch == true`. at this
-    /// point, we can run the limit comparison and decide if such a mode transition is valid
-    /// for this trip leg constraint's min limit operation.
+    /// tests if a given value is within some limit.
     pub fn test<D, U, V>(
         &self,
         value: uom::si::Quantity<D, U, V>,
@@ -249,20 +267,134 @@ impl LimitOperation {
 }
 
 impl DistanceConstraint {
+    pub fn new(min: Option<Length>, max: Option<Length>, unit: DistanceUnit) -> Self {
+        Self {
+            min,
+            max,
+            unit,
+            min_exclusive: false,
+            max_exclusive: false,
+        }
+    }
+
+    pub fn has_min(&self) -> bool {
+        self.min.is_some()
+    }
+
+    pub fn has_max(&self) -> bool {
+        self.max.is_some()
+    }
+
+    pub fn test_min(&self, value: Length) -> bool {
+        match self.min {
+            Some(limit) if self.min_exclusive => value > limit,
+            Some(limit) => value >= limit,
+            None => true,
+        }
+    }
+
+    pub fn test_max(&self, value: Length) -> bool {
+        match self.max {
+            Some(limit) if self.max_exclusive => value < limit,
+            Some(limit) => value <= limit,
+            None => true,
+        }
+    }
+
     pub fn test(&self, value: Length, mode_switch: bool) -> bool {
-        self.op.test(value, self.limit, mode_switch)
+        let min_ok = !mode_switch || self.test_min(value);
+        let max_ok = self.test_max(value);
+        min_ok && max_ok
     }
 }
 
 impl TimeConstraint {
+    pub fn new(min: Option<Time>, max: Option<Time>, unit: TimeUnit) -> Self {
+        Self {
+            min,
+            max,
+            unit,
+            min_exclusive: false,
+            max_exclusive: false,
+        }
+    }
+
+    pub fn has_min(&self) -> bool {
+        self.min.is_some()
+    }
+
+    pub fn has_max(&self) -> bool {
+        self.max.is_some()
+    }
+
+    pub fn test_min(&self, value: Time) -> bool {
+        match self.min {
+            Some(limit) if self.min_exclusive => value > limit,
+            Some(limit) => value >= limit,
+            None => true,
+        }
+    }
+
+    pub fn test_max(&self, value: Time) -> bool {
+        match self.max {
+            Some(limit) if self.max_exclusive => value < limit,
+            Some(limit) => value <= limit,
+            None => true,
+        }
+    }
+
     pub fn test(&self, value: Time, mode_switch: bool) -> bool {
-        self.op.test(value, self.limit, mode_switch)
+        let min_ok = !mode_switch || self.test_min(value);
+        let max_ok = self.test_max(value);
+        min_ok && max_ok
     }
 }
 
 impl EnergyConstraint {
+    pub fn new(
+        min: Option<Energy>,
+        max: Option<Energy>,
+        unit: EnergyUnit,
+        variable: EnergyStateVariable,
+    ) -> Self {
+        Self {
+            min,
+            max,
+            unit,
+            variable,
+            min_exclusive: false,
+            max_exclusive: false,
+        }
+    }
+
+    pub fn has_min(&self) -> bool {
+        self.min.is_some()
+    }
+
+    pub fn has_max(&self) -> bool {
+        self.max.is_some()
+    }
+
+    pub fn test_min(&self, value: Energy) -> bool {
+        match self.min {
+            Some(limit) if self.min_exclusive => value > limit,
+            Some(limit) => value >= limit,
+            None => true,
+        }
+    }
+
+    pub fn test_max(&self, value: Energy) -> bool {
+        match self.max {
+            Some(limit) if self.max_exclusive => value < limit,
+            Some(limit) => value <= limit,
+            None => true,
+        }
+    }
+
     pub fn test(&self, value: Energy, mode_switch: bool) -> bool {
-        self.op.test(value, self.limit, mode_switch)
+        let min_ok = !mode_switch || self.test_min(value);
+        let max_ok = self.test_max(value);
+        min_ok && max_ok
     }
 }
 
@@ -316,19 +448,59 @@ impl<'de> Deserialize<'de> for DistanceConstraint {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct RawConstraint {
-            limit: f64,
+            min: Option<f64>,
+            max: Option<f64>,
+            limit: Option<f64>,
             unit: DistanceUnit,
+            op: Option<LimitOperation>,
             #[serde(default)]
-            op: LimitOperation,
+            min_exclusive: bool,
+            #[serde(default)]
+            max_exclusive: bool,
         }
 
         let raw = RawConstraint::deserialize(deserializer)?;
-        let limit = raw.unit.to_uom(raw.limit);
+        let mut min = raw.min.map(|v| raw.unit.to_uom(v));
+        let mut max = raw.max.map(|v| raw.unit.to_uom(v));
+        let mut min_exclusive = raw.min_exclusive;
+        let mut max_exclusive = raw.max_exclusive;
+
+        if let Some(limit_val) = raw.limit {
+            let limit_uom = raw.unit.to_uom(limit_val);
+            match raw.op.unwrap_or_default() {
+                LimitOperation::MinInclusive => {
+                    min = Some(limit_uom);
+                    min_exclusive = false;
+                }
+                LimitOperation::MinExclusive => {
+                    min = Some(limit_uom);
+                    min_exclusive = true;
+                }
+                LimitOperation::MaxInclusive => {
+                    max = Some(limit_uom);
+                    max_exclusive = false;
+                }
+                LimitOperation::MaxExclusive => {
+                    max = Some(limit_uom);
+                    max_exclusive = true;
+                }
+            }
+        }
+
+        if min.is_none() && max.is_none() {
+            return Err(serde::de::Error::custom(
+                "distance constraint requires at least one of 'min', 'max', or 'limit'",
+            ));
+        }
+
         Ok(DistanceConstraint {
-            limit,
+            min,
+            max,
             unit: raw.unit,
-            op: raw.op,
+            min_exclusive,
+            max_exclusive,
         })
     }
 }
@@ -339,19 +511,59 @@ impl<'de> Deserialize<'de> for TimeConstraint {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct RawConstraint {
-            limit: f64,
+            min: Option<f64>,
+            max: Option<f64>,
+            limit: Option<f64>,
             unit: TimeUnit,
+            op: Option<LimitOperation>,
             #[serde(default)]
-            op: LimitOperation,
+            min_exclusive: bool,
+            #[serde(default)]
+            max_exclusive: bool,
         }
 
         let raw = RawConstraint::deserialize(deserializer)?;
-        let limit = raw.unit.to_uom(raw.limit);
+        let mut min = raw.min.map(|v| raw.unit.to_uom(v));
+        let mut max = raw.max.map(|v| raw.unit.to_uom(v));
+        let mut min_exclusive = raw.min_exclusive;
+        let mut max_exclusive = raw.max_exclusive;
+
+        if let Some(limit_val) = raw.limit {
+            let limit_uom = raw.unit.to_uom(limit_val);
+            match raw.op.unwrap_or_default() {
+                LimitOperation::MinInclusive => {
+                    min = Some(limit_uom);
+                    min_exclusive = false;
+                }
+                LimitOperation::MinExclusive => {
+                    min = Some(limit_uom);
+                    min_exclusive = true;
+                }
+                LimitOperation::MaxInclusive => {
+                    max = Some(limit_uom);
+                    max_exclusive = false;
+                }
+                LimitOperation::MaxExclusive => {
+                    max = Some(limit_uom);
+                    max_exclusive = true;
+                }
+            }
+        }
+
+        if min.is_none() && max.is_none() {
+            return Err(serde::de::Error::custom(
+                "time constraint requires at least one of 'min', 'max', or 'limit'",
+            ));
+        }
+
         Ok(TimeConstraint {
-            limit,
+            min,
+            max,
             unit: raw.unit,
-            op: raw.op,
+            min_exclusive,
+            max_exclusive,
         })
     }
 }
@@ -362,22 +574,152 @@ impl<'de> Deserialize<'de> for EnergyConstraint {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
         struct RawConstraint {
-            limit: f64,
+            min: Option<f64>,
+            max: Option<f64>,
+            limit: Option<f64>,
             unit: EnergyUnit,
             variable: EnergyStateVariable,
+            op: Option<LimitOperation>,
             #[serde(default)]
-            op: LimitOperation,
+            min_exclusive: bool,
+            #[serde(default)]
+            max_exclusive: bool,
         }
 
         let raw = RawConstraint::deserialize(deserializer)?;
-        let limit = raw.unit.to_uom(raw.limit);
+        let mut min = raw.min.map(|v| raw.unit.to_uom(v));
+        let mut max = raw.max.map(|v| raw.unit.to_uom(v));
+        let mut min_exclusive = raw.min_exclusive;
+        let mut max_exclusive = raw.max_exclusive;
+
+        if let Some(limit_val) = raw.limit {
+            let limit_uom = raw.unit.to_uom(limit_val);
+            match raw.op.unwrap_or_default() {
+                LimitOperation::MinInclusive => {
+                    min = Some(limit_uom);
+                    min_exclusive = false;
+                }
+                LimitOperation::MinExclusive => {
+                    min = Some(limit_uom);
+                    min_exclusive = true;
+                }
+                LimitOperation::MaxInclusive => {
+                    max = Some(limit_uom);
+                    max_exclusive = false;
+                }
+                LimitOperation::MaxExclusive => {
+                    max = Some(limit_uom);
+                    max_exclusive = true;
+                }
+            }
+        }
+
+        if min.is_none() && max.is_none() {
+            return Err(serde::de::Error::custom(
+                "energy constraint requires at least one of 'min', 'max', or 'limit'",
+            ));
+        }
+
         Ok(EnergyConstraint {
-            limit,
+            min,
+            max,
             unit: raw.unit,
             variable: raw.variable,
-            op: raw.op,
+            min_exclusive,
+            max_exclusive,
         })
+    }
+}
+
+impl<'de> Deserialize<'de> for ModeLegDistanceConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum RawModeLegDistance {
+            Nested {
+                #[serde(default)]
+                leg: TripLegConstraint,
+                constraint: DistanceConstraint,
+            },
+            Flattened {
+                #[serde(default)]
+                leg: TripLegConstraint,
+                #[serde(flatten)]
+                constraint: DistanceConstraint,
+            },
+        }
+
+        match RawModeLegDistance::deserialize(deserializer)? {
+            RawModeLegDistance::Nested { leg, constraint }
+            | RawModeLegDistance::Flattened { leg, constraint } => {
+                Ok(ModeLegDistanceConstraint { leg, constraint })
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModeLegTimeConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum RawModeLegTime {
+            Nested {
+                #[serde(default)]
+                leg: TripLegConstraint,
+                constraint: TimeConstraint,
+            },
+            Flattened {
+                #[serde(default)]
+                leg: TripLegConstraint,
+                #[serde(flatten)]
+                constraint: TimeConstraint,
+            },
+        }
+
+        match RawModeLegTime::deserialize(deserializer)? {
+            RawModeLegTime::Nested { leg, constraint }
+            | RawModeLegTime::Flattened { leg, constraint } => {
+                Ok(ModeLegTimeConstraint { leg, constraint })
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ModeLegEnergyConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum RawModeLegEnergy {
+            Nested {
+                #[serde(default)]
+                leg: TripLegConstraint,
+                constraint: EnergyConstraint,
+            },
+            Flattened {
+                #[serde(default)]
+                leg: TripLegConstraint,
+                #[serde(flatten)]
+                constraint: EnergyConstraint,
+            },
+        }
+
+        match RawModeLegEnergy::deserialize(deserializer)? {
+            RawModeLegEnergy::Nested { leg, constraint }
+            | RawModeLegEnergy::Flattened { leg, constraint } => {
+                Ok(ModeLegEnergyConstraint { leg, constraint })
+            }
+        }
     }
 }
 
@@ -385,7 +727,7 @@ impl std::fmt::Display for LimitOperation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             LimitOperation::MinInclusive => "min-inclusive",
-            LimitOperation::MinExclusive => "mix-exclusive",
+            LimitOperation::MinExclusive => "min-exclusive",
             LimitOperation::MaxInclusive => "max-inclusive",
             LimitOperation::MaxExclusive => "max-exclusive",
         };
@@ -409,25 +751,55 @@ impl std::fmt::Display for TripLegConstraint {
 
 impl std::fmt::Display for DistanceConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "distance constraint of {} {} ({})",
-            self.unit.from_uom(self.limit),
-            self.unit,
-            self.op
-        )
+        match (self.min, self.max) {
+            (Some(min), Some(max)) => write!(
+                f,
+                "distance constraint in [{}, {}] {}",
+                self.unit.from_uom(min),
+                self.unit.from_uom(max),
+                self.unit
+            ),
+            (Some(min), None) => write!(
+                f,
+                "distance constraint >= {} {}",
+                self.unit.from_uom(min),
+                self.unit
+            ),
+            (None, Some(max)) => write!(
+                f,
+                "distance constraint <= {} {}",
+                self.unit.from_uom(max),
+                self.unit
+            ),
+            (None, None) => write!(f, "unbounded distance constraint"),
+        }
     }
 }
 
 impl std::fmt::Display for TimeConstraint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "time constraint of {} {} ({})",
-            self.unit.from_uom(self.limit),
-            self.unit,
-            self.op
-        )
+        match (self.min, self.max) {
+            (Some(min), Some(max)) => write!(
+                f,
+                "time constraint in [{}, {}] {}",
+                self.unit.from_uom(min),
+                self.unit.from_uom(max),
+                self.unit
+            ),
+            (Some(min), None) => write!(
+                f,
+                "time constraint >= {} {}",
+                self.unit.from_uom(min),
+                self.unit
+            ),
+            (None, Some(max)) => write!(
+                f,
+                "time constraint <= {} {}",
+                self.unit.from_uom(max),
+                self.unit
+            ),
+            (None, None) => write!(f, "unbounded time constraint"),
+        }
     }
 }
 

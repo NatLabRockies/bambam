@@ -369,9 +369,9 @@ fn validate_mode_distance(
     if ending_leg {
         if let Some(prev_mode) = active_mode {
             if let Some(constraint) = limits.get(prev_mode) {
-                if constraint.op.is_min() {
+                if constraint.has_min() {
                     let value: Length = get_mode_distance(prev_mode, state, state_model)?;
-                    if !constraint.test(value, true) {
+                    if !constraint.test_min(value) {
                         return Ok(false);
                     }
                 }
@@ -381,9 +381,9 @@ fn validate_mode_distance(
 
     // validate any maximum distance constraint on the incoming edge's mode
     if let Some(constraint) = limits.get(edge_mode) {
-        if constraint.op.is_max() {
+        if constraint.has_max() {
             let value: Length = get_mode_distance(edge_mode, state, state_model)?;
-            if !constraint.test(value, false) {
+            if !constraint.test_max(value) {
                 return Ok(false);
             }
         }
@@ -408,9 +408,9 @@ fn validate_mode_time(
     if ending_leg {
         if let Some(prev_mode) = active_mode {
             if let Some(constraint) = limits.get(prev_mode) {
-                if constraint.op.is_min() {
+                if constraint.has_min() {
                     let value: Time = get_mode_time(prev_mode, state, state_model)?;
-                    if !constraint.test(value, true) {
+                    if !constraint.test_min(value) {
                         return Ok(false);
                     }
                 }
@@ -420,9 +420,9 @@ fn validate_mode_time(
 
     // validate any maximum time constraint on the incoming edge's mode
     if let Some(constraint) = limits.get(edge_mode) {
-        if constraint.op.is_max() {
+        if constraint.has_max() {
             let value: Time = get_mode_time(edge_mode, state, state_model)?;
-            if !constraint.test(value, false) {
+            if !constraint.test_max(value) {
                 return Ok(false);
             }
         }
@@ -446,9 +446,9 @@ fn validate_mode_energy(
     if ending_leg {
         if let Some(prev_mode) = active_mode {
             if let Some(constraint) = limits.get(prev_mode) {
-                if constraint.op.is_min() {
+                if constraint.has_min() {
                     let value: Energy = get_mode_energy(&constraint.variable, state, state_model)?;
-                    if !constraint.test(value, true) {
+                    if !constraint.test_min(value) {
                         return Ok(false);
                     }
                 }
@@ -457,9 +457,9 @@ fn validate_mode_energy(
     }
 
     if let Some(constraint) = limits.get(edge_mode) {
-        if constraint.op.is_max() {
+        if constraint.has_max() {
             let value: Energy = get_mode_energy(&constraint.variable, state, state_model)?;
-            if !constraint.test(value, false) {
+            if !constraint.test_max(value) {
                 return Ok(false);
             }
         }
@@ -489,11 +489,11 @@ fn validate_mode_leg_distance(
     if ending_leg {
         if let Some(prev_mode) = active_mode {
             if let Some(ModeLegDistanceConstraint { leg, constraint }) = limits.get(prev_mode) {
-                if constraint.op.is_min()
+                if constraint.has_min()
                     && leg.matches_leg_idx(active_leg_idx, state, state_model, max_trip_legs)?
                 {
                     if let Some(value) = get_active_leg_distance(state, state_model)? {
-                        if !constraint.test(value, true) {
+                        if !constraint.test_min(value) {
                             return Ok(false);
                         }
                     }
@@ -504,7 +504,7 @@ fn validate_mode_leg_distance(
 
     // 2. Check any maximum leg distance constraint on the incoming edge's mode
     if let Some(ModeLegDistanceConstraint { leg, constraint }) = limits.get(edge_mode) {
-        if constraint.op.is_max() {
+        if constraint.has_max() {
             let target_leg_idx = match (active_leg_idx, ending_leg) {
                 (None, _) => Some(0),
                 (Some(idx), true) => Some(idx + 1),
@@ -516,7 +516,7 @@ fn validate_mode_leg_distance(
                 } else {
                     Length::default()
                 };
-                if !constraint.test(value, false) {
+                if !constraint.test_max(value) {
                     return Ok(false);
                 }
             }
@@ -545,11 +545,11 @@ fn validate_mode_leg_time(
     if ending_leg {
         if let Some(prev_mode) = active_mode {
             if let Some(ModeLegTimeConstraint { leg, constraint }) = limits.get(prev_mode) {
-                if constraint.op.is_min()
+                if constraint.has_min()
                     && leg.matches_leg_idx(active_leg_idx, state, state_model, max_trip_legs)?
                 {
                     if let Some(value) = get_active_leg_time(state, state_model)? {
-                        if !constraint.test(value, true) {
+                        if !constraint.test_min(value) {
                             return Ok(false);
                         }
                     }
@@ -560,7 +560,7 @@ fn validate_mode_leg_time(
 
     // 2. Check any maximum leg time constraint on the incoming edge's mode
     if let Some(ModeLegTimeConstraint { leg, constraint }) = limits.get(edge_mode) {
-        if constraint.op.is_max() {
+        if constraint.has_max() {
             let target_leg_idx = match (active_leg_idx, ending_leg) {
                 (None, _) => Some(0),
                 (Some(idx), true) => Some(idx + 1),
@@ -572,7 +572,7 @@ fn validate_mode_leg_time(
                 } else {
                     Time::default()
                 };
-                if !constraint.test(value, false) {
+                if !constraint.test_max(value) {
                     return Ok(false);
                 }
             }
@@ -600,11 +600,11 @@ fn validate_mode_leg_energy(
     if ending_leg {
         if let Some(prev_mode) = active_mode {
             if let Some(ModeLegEnergyConstraint { leg, constraint }) = limits.get(prev_mode) {
-                if constraint.op.is_min()
+                if constraint.has_min()
                     && leg.matches_leg_idx(active_leg_idx, state, state_model, max_trip_legs)?
                 {
                     if let Some(value) = get_active_leg_energy(state, state_model)? {
-                        if !constraint.test(value, true) {
+                        if !constraint.test_min(value) {
                             return Ok(false);
                         }
                     }
@@ -614,7 +614,7 @@ fn validate_mode_leg_energy(
     }
 
     if let Some(ModeLegEnergyConstraint { leg, constraint }) = limits.get(edge_mode) {
-        if constraint.op.is_max() {
+        if constraint.has_max() {
             let target_leg_idx = match (active_leg_idx, ending_leg) {
                 (None, _) => Some(0),
                 (Some(idx), true) => Some(idx + 1),
@@ -626,7 +626,7 @@ fn validate_mode_leg_energy(
                 } else {
                     Energy::default()
                 };
-                if !constraint.test(value, false) {
+                if !constraint.test_max(value) {
                     return Ok(false);
                 }
             }
