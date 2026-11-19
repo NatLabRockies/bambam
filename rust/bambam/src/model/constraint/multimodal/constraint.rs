@@ -127,7 +127,9 @@ impl Constraint {
                 edge_mode,
             ),
 
-            MFC::DistanceConstraint(limit) => validate_trip_distance(state, state_model, limit),
+            MFC::DistanceConstraint(limit) => {
+                validate_trip_distance(state, state_model, edge, limit)
+            }
 
             MFC::TimeConstraint(limit) => validate_trip_time(state, state_model, limit),
 
@@ -136,6 +138,7 @@ impl Constraint {
             } => validate_mode_distance(
                 state,
                 state_model,
+                edge,
                 mode_distance_limit,
                 max_trip_legs,
                 mode_to_state,
@@ -163,6 +166,7 @@ impl Constraint {
             } => validate_mode_leg_distance(
                 state,
                 state_model,
+                edge,
                 mode_leg_distance_limit,
                 max_trip_legs,
                 mode_to_state,
@@ -290,6 +294,44 @@ fn validate_mode_sequences<'a>(
     mode_to_state: &'a CategoricalMapping<String, i64>,
     edge_mode: &'a str,
 ) -> ConstraintResult {
+    const STACK_CAP: usize = 16;
+    let max_legs = max_trip_legs.get() as usize;
+
+    if max_legs + 1 <= STACK_CAP {
+        let mut buf: [&'a str; STACK_CAP] = [""; STACK_CAP];
+        let mut len = 0usize;
+        let mut leg_idx = 0u64;
+
+        while state_ops::contains_leg(state, leg_idx, state_model, max_trip_legs).map_err(|e| {
+            ConstraintModelError::ConstraintModelError(format!(
+                "while testing for matching mode sub-sequence, had error: {e}"
+            ))
+        })? {
+            let mode = state_ops::get_existing_leg_mode(
+                state,
+                leg_idx,
+                state_model,
+                max_trip_legs,
+                mode_to_state,
+            )
+            .map_err(|e| {
+                ConstraintModelError::ConstraintModelError(format!(
+                    "while testing for matching mode sub-sequence, had error: {e}"
+                ))
+            })?;
+            buf[len] = mode;
+            len += 1;
+            leg_idx += 1;
+        }
+
+        let active_mode = if len > 0 { Some(buf[len - 1]) } else { None };
+        if Some(edge_mode) != active_mode {
+            buf[len] = edge_mode;
+            len += 1;
+        }
+        return Ok(trie.contains(&buf[..len]));
+    }
+
     let mut modes = state_ops::get_mode_sequence(state, state_model, max_trip_legs, mode_to_state)
         .map_err(|e| {
             ConstraintModelError::ConstraintModelError(format!(
@@ -298,14 +340,7 @@ fn validate_mode_sequences<'a>(
         })?;
 
     // simulate a mode transition if the incoming edge has a different mode than the trip's active mode
-    let active_mode =
-        state_ops::get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state).map_err(
-            |e| {
-                ConstraintModelError::ConstraintModelError(format!(
-                    "while testing for matching mode sub-sequence, {e}"
-                ))
-            },
-        )?;
+    let active_mode = modes.last().copied();
     if Some(edge_mode) != active_mode {
         modes.push(edge_mode);
     }
@@ -316,6 +351,7 @@ fn validate_mode_sequences<'a>(
 fn validate_trip_distance(
     state: &[StateVariable],
     state_model: &StateModel,
+    edge: &Edge,
     limit: &DistanceConstraint,
 ) -> ConstraintResult {
     let dist: Length = state_model
@@ -327,7 +363,7 @@ fn validate_trip_distance(
             );
             ConstraintModelError::ConstraintModelError(msg)
         })?;
-    let valid = limit.test(dist, false);
+    let valid = limit.test(dist + edge.distance, false);
     Ok(valid)
 }
 
@@ -357,6 +393,7 @@ fn validate_trip_time(
 fn validate_mode_distance(
     state: &[StateVariable],
     state_model: &StateModel,
+    edge: &Edge,
     limits: &HashMap<String, DistanceConstraint>,
     max_trip_legs: NonZeroU64,
     mode_to_state: &CategoricalMapping<String, i64>,
@@ -383,7 +420,7 @@ fn validate_mode_distance(
     if let Some(constraint) = limits.get(edge_mode) {
         if constraint.has_max() {
             let value: Length = get_mode_distance(edge_mode, state, state_model)?;
-            if !constraint.test_max(value) {
+            if !constraint.test_max(value + edge.distance) {
                 return Ok(false);
             }
         }
@@ -472,6 +509,7 @@ fn validate_mode_energy(
 fn validate_mode_leg_distance(
     state: &[StateVariable],
     state_model: &StateModel,
+    edge: &Edge,
     limits: &HashMap<String, ModeLegDistanceConstraint>,
     max_trip_legs: NonZeroU64,
     mode_to_state: &CategoricalMapping<String, i64>,
@@ -516,7 +554,7 @@ fn validate_mode_leg_distance(
                 } else {
                     Length::default()
                 };
-                if !constraint.test_max(value) {
+                if !constraint.test_max(value + edge.distance) {
                     return Ok(false);
                 }
             }

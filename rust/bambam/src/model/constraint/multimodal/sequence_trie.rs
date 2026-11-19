@@ -61,12 +61,13 @@ impl SubSequenceTrie {
         }
     }
 
-    /// Searches for a prefix match within the trie.
+    /// Searches for a prefix match within the trie using an iterator of mode strings.
     /// Returns true if the given sequence is a prefix of (or equal to) any sequence in the trie.
-    /// Accepts both &[String] and &[&str]
-    pub fn contains<T>(&self, sequence: &[T]) -> bool
+    #[inline]
+    pub fn contains_iter<'a, I, T>(&self, sequence: I) -> bool
     where
-        T: AsRef<str>,
+        I: IntoIterator<Item = &'a T>,
+        T: AsRef<str> + 'a + ?Sized,
     {
         let mut current_node = &self.root;
         for item in sequence {
@@ -76,6 +77,16 @@ impl SubSequenceTrie {
             }
         }
         true
+    }
+
+    /// Searches for a prefix match within the trie.
+    /// Returns true if the given sequence is a prefix of (or equal to) any sequence in the trie.
+    /// Accepts both &[String] and &[&str]
+    pub fn contains<T>(&self, sequence: &[T]) -> bool
+    where
+        T: AsRef<str>,
+    {
+        self.contains_iter(sequence.iter())
     }
 
     /// Returns true in O(1) time if `mode` appears at any position within `max_depth` (1-based) in the trie.

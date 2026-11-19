@@ -18,19 +18,27 @@ pub fn get_mode_counts(
     max_trip_legs: NonZeroU64,
     mode_to_state: &CategoricalStateMapping,
 ) -> Result<HashMap<String, usize>, ConstraintModelError> {
-    let modes = state_ops::get_mode_sequence(state, state_model, max_trip_legs, mode_to_state)
-        .map_err(|e| {
-            ConstraintModelError::ConstraintModelError(
-                (format!("while getting mode counts for this trip: {e}")),
-            )
-        })?;
     let mut counts: HashMap<String, usize> = HashMap::new();
-    for mode in modes.into_iter() {
+    let mut leg_idx = 0;
+
+    while state_ops::contains_leg(state, leg_idx, state_model, max_trip_legs).map_err(|e| {
+        ConstraintModelError::ConstraintModelError(format!(
+            "while getting mode counts for this trip: {e}"
+        ))
+    })? {
+        let mode =
+            state_ops::get_existing_leg_mode(state, leg_idx, state_model, max_trip_legs, mode_to_state)
+                .map_err(|e| {
+                    ConstraintModelError::ConstraintModelError(format!(
+                        "while getting mode counts for this trip: {e}"
+                    ))
+                })?;
         if let Some(cnt) = counts.get_mut(mode) {
             *cnt += 1;
         } else {
             counts.insert(mode.to_string(), 1);
         }
+        leg_idx += 1;
     }
     Ok(counts)
 }
