@@ -712,7 +712,7 @@ mod test {
         let max_trip_legs = NonZeroU64::new(5).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
-            "walk",
+            "bike",
             &["walk", "bike", "transit"],
             max_trip_legs,
         );
@@ -730,6 +730,122 @@ mod test {
         let is_valid =
             validate_frontier(&bike_edge, &state, &state_model, &mfm).expect("test failed");
         assert!(is_valid);
+    }
+
+    #[test]
+    fn test_exact_sequences_rejects_skipped_prefix() {
+        // With sequence ["walk", "drive", "walk"], starting directly with "drive" must be rejected
+        let mut trie = SubSequenceTrie::new();
+        trie.insert_sequence(vec![
+            "walk".to_string(),
+            "drive".to_string(),
+            "walk".to_string(),
+        ]);
+        let mode_constraint = Constraint::ExactSequences(trie);
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
+        let (_mam, mfm, state_model, state) = test_setup(
+            vec![mode_constraint],
+            "drive",
+            &["walk", "drive"],
+            max_trip_legs,
+        );
+
+        let drive_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
+        let is_valid =
+            validate_frontier(&drive_edge, &state, &state_model, &mfm).expect("test failed");
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_mode_leg_min_time_limit_on_mode_switch() {
+        use crate::model::constraint::multimodal::{
+            constraint_config::{LimitOperation, ModeLegTimeConstraint},
+            TimeConstraint, TripLegConstraint,
+        };
+        use routee_compass_core::model::unit::TimeUnit;
+        use uom::si::f64::Time;
+
+        let min_drive = ModeLegTimeConstraint {
+            leg: TripLegConstraint::Any,
+            constraint: TimeConstraint {
+                limit: Time::new::<uom::si::time::minute>(5.0),
+                unit: TimeUnit::Minutes,
+                op: LimitOperation::MinInclusive,
+            },
+        };
+        let constraint = Constraint::ModeLegTimeLimit {
+            mode_leg_time_limit: HashMap::from([("drive".to_string(), min_drive)]),
+        };
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
+
+        // 1. Switching from walk (after 1 min) into drive should be allowed
+        let (drive_mtm, drive_mfm, state_model, mut state) = test_setup(
+            vec![constraint],
+            "drive",
+            &["walk", "drive"],
+            max_trip_legs,
+        );
+        inject_trip_legs(
+            &["walk"],
+            &mut state,
+            &state_model,
+            &drive_mtm.mode_enumeration,
+            max_trip_legs,
+        );
+        state_model
+            .set_time(
+                &mut state,
+                &bambam_core::model::state::fieldname::leg_time_fieldname(0),
+                &Time::new::<uom::si::time::minute>(1.0),
+            )
+            .unwrap();
+        let drive_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(500.0));
+        assert!(validate_frontier(&drive_edge, &state, &state_model, &drive_mfm).unwrap());
+
+        // 2. Switching from drive (after 2 min < 5 min) into walk should be rejected
+        let min_drive_2 = ModeLegTimeConstraint {
+            leg: TripLegConstraint::Any,
+            constraint: TimeConstraint {
+                limit: Time::new::<uom::si::time::minute>(5.0),
+                unit: TimeUnit::Minutes,
+                op: LimitOperation::MinInclusive,
+            },
+        };
+        let constraint_2 = Constraint::ModeLegTimeLimit {
+            mode_leg_time_limit: HashMap::from([("drive".to_string(), min_drive_2)]),
+        };
+        let (walk_mtm, walk_mfm, state_model, mut state2) = test_setup(
+            vec![constraint_2],
+            "walk",
+            &["walk", "drive"],
+            max_trip_legs,
+        );
+        inject_trip_legs(
+            &["walk", "drive"],
+            &mut state2,
+            &state_model,
+            &walk_mtm.mode_enumeration,
+            max_trip_legs,
+        );
+        state_model
+            .set_time(
+                &mut state2,
+                &bambam_core::model::state::fieldname::leg_time_fieldname(1),
+                &Time::new::<uom::si::time::minute>(2.0),
+            )
+            .unwrap();
+        let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(100.0));
+        assert!(!validate_frontier(&walk_edge, &state2, &state_model, &walk_mfm).unwrap());
+
+        // 3. Switching from drive (after 6 min >= 5 min) into walk should be allowed
+        state_model
+            .set_time(
+                &mut state2,
+                &bambam_core::model::state::fieldname::leg_time_fieldname(1),
+                &Time::new::<uom::si::time::minute>(6.0),
+            )
+            .unwrap();
+        assert!(validate_frontier(&walk_edge, &state2, &state_model, &walk_mfm).unwrap());
     }
 
     #[test]

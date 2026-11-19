@@ -347,19 +347,37 @@ fn validate_mode_distance(
     mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
-    match limits.get(edge_mode) {
-        Some(constraint) => {
-            let value: Length = get_mode_distance(edge_mode, state, state_model)?;
-            let ending_leg =
-                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
-            let valid = constraint.test(value, ending_leg);
-            Ok(valid)
+    let active_mode = get_active_mode(state, state_model, max_trip_legs, mode_to_state)?;
+    let ending_leg = active_mode.is_some_and(|leg| leg != edge_mode);
+
+    // if switching modes, validate any minimum distance constraint on the ending leg's mode
+    if ending_leg {
+        if let Some(prev_mode) = active_mode {
+            if let Some(constraint) = limits.get(prev_mode) {
+                if constraint.op.is_min() {
+                    let value: Length = get_mode_distance(prev_mode, state, state_model)?;
+                    if !constraint.test(value, true) {
+                        return Ok(false);
+                    }
+                }
+            }
         }
-        None => Ok(true),
     }
+
+    // validate any maximum distance constraint on the incoming edge's mode
+    if let Some(constraint) = limits.get(edge_mode) {
+        if constraint.op.is_max() {
+            let value: Length = get_mode_distance(edge_mode, state, state_model)?;
+            if !constraint.test(value, false) {
+                return Ok(false);
+            }
+        }
+    }
+
+    Ok(true)
 }
 
-/// runs the constraint model validation logic for mode distance constraints
+/// runs the constraint model validation logic for mode time constraints
 fn validate_mode_time(
     state: &[StateVariable],
     state_model: &StateModel,
@@ -368,19 +386,37 @@ fn validate_mode_time(
     mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
-    match limits.get(edge_mode) {
-        Some(constraint) => {
-            let value: Time = get_mode_time(edge_mode, state, state_model)?;
-            let ending_leg =
-                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
-            let valid = constraint.test(value, ending_leg);
-            Ok(valid)
+    let active_mode = get_active_mode(state, state_model, max_trip_legs, mode_to_state)?;
+    let ending_leg = active_mode.is_some_and(|leg| leg != edge_mode);
+
+    // if switching modes, validate any minimum time constraint on the ending leg's mode
+    if ending_leg {
+        if let Some(prev_mode) = active_mode {
+            if let Some(constraint) = limits.get(prev_mode) {
+                if constraint.op.is_min() {
+                    let value: Time = get_mode_time(prev_mode, state, state_model)?;
+                    if !constraint.test(value, true) {
+                        return Ok(false);
+                    }
+                }
+            }
         }
-        None => Ok(true),
     }
+
+    // validate any maximum time constraint on the incoming edge's mode
+    if let Some(constraint) = limits.get(edge_mode) {
+        if constraint.op.is_max() {
+            let value: Time = get_mode_time(edge_mode, state, state_model)?;
+            if !constraint.test(value, false) {
+                return Ok(false);
+            }
+        }
+    }
+
+    Ok(true)
 }
 
-/// runs the constraint model validation logic for mode distance constraints
+/// runs the constraint model validation logic for mode energy constraints
 fn validate_mode_energy(
     state: &[StateVariable],
     state_model: &StateModel,
@@ -389,19 +425,35 @@ fn validate_mode_energy(
     mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
-    match limits.get(edge_mode) {
-        Some(constraint) => {
-            let value: Energy = get_mode_energy(&constraint.variable, state, state_model)?;
-            let ending_leg =
-                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
-            let valid = constraint.test(value, ending_leg);
-            Ok(valid)
+    let active_mode = get_active_mode(state, state_model, max_trip_legs, mode_to_state)?;
+    let ending_leg = active_mode.is_some_and(|leg| leg != edge_mode);
+
+    if ending_leg {
+        if let Some(prev_mode) = active_mode {
+            if let Some(constraint) = limits.get(prev_mode) {
+                if constraint.op.is_min() {
+                    let value: Energy = get_mode_energy(&constraint.variable, state, state_model)?;
+                    if !constraint.test(value, true) {
+                        return Ok(false);
+                    }
+                }
+            }
         }
-        None => Ok(true),
     }
+
+    if let Some(constraint) = limits.get(edge_mode) {
+        if constraint.op.is_max() {
+            let value: Energy = get_mode_energy(&constraint.variable, state, state_model)?;
+            if !constraint.test(value, false) {
+                return Ok(false);
+            }
+        }
+    }
+
+    Ok(true)
 }
 
-/// runs the constraint model validation logic for mode distance constraints
+/// runs the constraint model validation logic for mode leg distance constraints
 fn validate_mode_leg_distance(
     state: &[StateVariable],
     state_model: &StateModel,
@@ -410,26 +462,56 @@ fn validate_mode_leg_distance(
     mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
-    match limits.get(edge_mode) {
-        Some(ModeLegDistanceConstraint { leg, constraint }) => {
-            let matches = leg.matches(state, state_model, max_trip_legs)?;
-            if !matches {
-                return Ok(true);
+    let active_leg_idx = state_ops::get_active_leg_idx(state, state_model).map_err(|e| {
+        ConstraintModelError::ConstraintModelError(format!(
+            "while validating mode leg distance, {e}"
+        ))
+    })?;
+    let active_mode = get_active_mode(state, state_model, max_trip_legs, mode_to_state)?;
+    let ending_leg = active_mode.is_some_and(|leg| leg != edge_mode);
+
+    // 1. If we are switching modes, check any minimum leg distance constraint on the leg that is ending
+    if ending_leg {
+        if let Some(prev_mode) = active_mode {
+            if let Some(ModeLegDistanceConstraint { leg, constraint }) = limits.get(prev_mode) {
+                if constraint.op.is_min()
+                    && leg.matches_leg_idx(active_leg_idx, state, state_model, max_trip_legs)?
+                {
+                    if let Some(value) = get_active_leg_distance(state, state_model)? {
+                        if !constraint.test(value, true) {
+                            return Ok(false);
+                        }
+                    }
+                }
             }
-            let value: Length = match get_active_leg_distance(state, state_model)? {
-                Some(v) => v,
-                None => return Ok(true), // trip hasn't begun yet
-            };
-            let ending_leg =
-                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
-            let valid = constraint.test(value, ending_leg);
-            Ok(valid)
         }
-        None => Ok(true),
     }
+
+    // 2. Check any maximum leg distance constraint on the incoming edge's mode
+    if let Some(ModeLegDistanceConstraint { leg, constraint }) = limits.get(edge_mode) {
+        if constraint.op.is_max() {
+            let target_leg_idx = match (active_leg_idx, ending_leg) {
+                (None, _) => Some(0),
+                (Some(idx), true) => Some(idx + 1),
+                (Some(idx), false) => Some(idx),
+            };
+            if leg.matches_leg_idx(target_leg_idx, state, state_model, max_trip_legs)? {
+                let value = if active_mode == Some(edge_mode) {
+                    get_active_leg_distance(state, state_model)?.unwrap_or_default()
+                } else {
+                    Length::default()
+                };
+                if !constraint.test(value, false) {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+
+    Ok(true)
 }
 
-/// runs the constraint model validation logic for mode time constraints
+/// runs the constraint model validation logic for mode leg time constraints
 fn validate_mode_leg_time(
     state: &[StateVariable],
     state_model: &StateModel,
@@ -438,26 +520,54 @@ fn validate_mode_leg_time(
     mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
-    match limits.get(edge_mode) {
-        Some(ModeLegTimeConstraint { leg, constraint }) => {
-            let matches = leg.matches(state, state_model, max_trip_legs)?;
-            if !matches {
-                return Ok(true);
+    let active_leg_idx = state_ops::get_active_leg_idx(state, state_model).map_err(|e| {
+        ConstraintModelError::ConstraintModelError(format!("while validating mode leg time, {e}"))
+    })?;
+    let active_mode = get_active_mode(state, state_model, max_trip_legs, mode_to_state)?;
+    let ending_leg = active_mode.is_some_and(|leg| leg != edge_mode);
+
+    // 1. If we are switching modes, check any minimum leg time constraint on the leg that is ending
+    if ending_leg {
+        if let Some(prev_mode) = active_mode {
+            if let Some(ModeLegTimeConstraint { leg, constraint }) = limits.get(prev_mode) {
+                if constraint.op.is_min()
+                    && leg.matches_leg_idx(active_leg_idx, state, state_model, max_trip_legs)?
+                {
+                    if let Some(value) = get_active_leg_time(state, state_model)? {
+                        if !constraint.test(value, true) {
+                            return Ok(false);
+                        }
+                    }
+                }
             }
-            let value: Time = match get_active_leg_time(state, state_model)? {
-                Some(v) => v,
-                None => return Ok(true), // trip hasn't begun yet
-            };
-            let ending_leg =
-                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
-            let valid = constraint.test(value, ending_leg);
-            Ok(valid)
         }
-        None => Ok(true),
     }
+
+    // 2. Check any maximum leg time constraint on the incoming edge's mode
+    if let Some(ModeLegTimeConstraint { leg, constraint }) = limits.get(edge_mode) {
+        if constraint.op.is_max() {
+            let target_leg_idx = match (active_leg_idx, ending_leg) {
+                (None, _) => Some(0),
+                (Some(idx), true) => Some(idx + 1),
+                (Some(idx), false) => Some(idx),
+            };
+            if leg.matches_leg_idx(target_leg_idx, state, state_model, max_trip_legs)? {
+                let value = if active_mode == Some(edge_mode) {
+                    get_active_leg_time(state, state_model)?.unwrap_or_default()
+                } else {
+                    Time::default()
+                };
+                if !constraint.test(value, false) {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+
+    Ok(true)
 }
 
-/// runs the constraint model validation logic for mode time constraints
+/// runs the constraint model validation logic for mode leg energy constraints
 fn validate_mode_leg_energy(
     state: &[StateVariable],
     state_model: &StateModel,
@@ -466,23 +576,49 @@ fn validate_mode_leg_energy(
     mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> ConstraintResult {
-    match limits.get(edge_mode) {
-        Some(ModeLegEnergyConstraint { leg, constraint }) => {
-            let matches = leg.matches(state, state_model, max_trip_legs)?;
-            if !matches {
-                return Ok(true);
+    let active_leg_idx = state_ops::get_active_leg_idx(state, state_model).map_err(|e| {
+        ConstraintModelError::ConstraintModelError(format!("while validating mode leg energy, {e}"))
+    })?;
+    let active_mode = get_active_mode(state, state_model, max_trip_legs, mode_to_state)?;
+    let ending_leg = active_mode.is_some_and(|leg| leg != edge_mode);
+
+    if ending_leg {
+        if let Some(prev_mode) = active_mode {
+            if let Some(ModeLegEnergyConstraint { leg, constraint }) = limits.get(prev_mode) {
+                if constraint.op.is_min()
+                    && leg.matches_leg_idx(active_leg_idx, state, state_model, max_trip_legs)?
+                {
+                    if let Some(value) = get_active_leg_energy(state, state_model)? {
+                        if !constraint.test(value, true) {
+                            return Ok(false);
+                        }
+                    }
+                }
             }
-            let value: Energy = match get_active_leg_energy(state, state_model)? {
-                Some(v) => v,
-                None => return Ok(true), // trip hasn't begun yet
-            };
-            let mode_switch =
-                check_mode_switch(state, state_model, max_trip_legs, mode_to_state, edge_mode)?;
-            let valid = constraint.test(value, mode_switch);
-            Ok(valid)
         }
-        None => Ok(true),
     }
+
+    if let Some(ModeLegEnergyConstraint { leg, constraint }) = limits.get(edge_mode) {
+        if constraint.op.is_max() {
+            let target_leg_idx = match (active_leg_idx, ending_leg) {
+                (None, _) => Some(0),
+                (Some(idx), true) => Some(idx + 1),
+                (Some(idx), false) => Some(idx),
+            };
+            if leg.matches_leg_idx(target_leg_idx, state, state_model, max_trip_legs)? {
+                let value = if active_mode == Some(edge_mode) {
+                    get_active_leg_energy(state, state_model)?.unwrap_or_default()
+                } else {
+                    Energy::default()
+                };
+                if !constraint.test(value, false) {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+
+    Ok(true)
 }
 
 /// helper for retrieving distance values from the state vector.
@@ -531,6 +667,20 @@ fn get_energy(
     })
 }
 
+/// inspect the active trip mode for this state.
+fn get_active_mode<'a>(
+    state: &[StateVariable],
+    state_model: &StateModel,
+    max_trip_legs: NonZeroU64,
+    mode_to_state: &'a CategoricalMapping<String, i64>,
+) -> Result<Option<&'a str>, ConstraintModelError> {
+    state_ops::get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state).map_err(|e| {
+        ConstraintModelError::ConstraintModelError(format!(
+            "while checking active leg mode in metric-based constraint, {e}"
+        ))
+    })
+}
+
 /// inspect the active trip mode and this edge's travel mode. if they do not match,
 /// then we are ending a leg by making this transition.
 fn check_mode_switch(
@@ -540,14 +690,7 @@ fn check_mode_switch(
     mode_to_state: &CategoricalMapping<String, i64>,
     edge_mode: &str,
 ) -> Result<bool, ConstraintModelError> {
-    let active_leg =
-        state_ops::get_active_leg_mode(state, state_model, max_trip_legs, mode_to_state).map_err(
-            |e| {
-                ConstraintModelError::ConstraintModelError(format!(
-                    "while checking for mode switch in metric-based constraint, {e}"
-                ))
-            },
-        )?;
+    let active_leg = get_active_mode(state, state_model, max_trip_legs, mode_to_state)?;
     match active_leg {
         None => Ok(false),
         Some(leg) => Ok(leg != edge_mode),

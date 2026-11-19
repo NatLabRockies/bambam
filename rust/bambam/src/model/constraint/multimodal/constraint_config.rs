@@ -130,7 +130,7 @@ pub struct ModeLegEnergyConstraint {
 }
 
 /// operation to use when testing a constraint
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitOperation {
     /// value is greater than or equal to the limit
@@ -205,6 +205,20 @@ pub enum TripLegConstraint {
 }
 
 impl LimitOperation {
+    pub fn is_min(&self) -> bool {
+        matches!(
+            self,
+            LimitOperation::MinInclusive | LimitOperation::MinExclusive
+        )
+    }
+
+    pub fn is_max(&self) -> bool {
+        matches!(
+            self,
+            LimitOperation::MaxInclusive | LimitOperation::MaxExclusive
+        )
+    }
+
     /// tests if a given value is within some limit. if it is a min comparison,
     ///
     /// ### mode_switch
@@ -260,13 +274,28 @@ impl TripLegConstraint {
         state_model: &StateModel,
         max_trip_legs: NonZeroU64,
     ) -> Result<bool, ConstraintModelError> {
+        let active_leg_idx = state_ops::get_active_leg_idx(state, state_model).map_err(|e| {
+            let msg = format!("while checking trip leg constraint: {e}");
+            ConstraintModelError::ConstraintModelError(msg)
+        })?;
+        self.matches_leg_idx(active_leg_idx, state, state_model, max_trip_legs)
+    }
+
+    /// true if the provided `leg_idx` matches this `TripLegConstraint`.
+    pub fn matches_leg_idx(
+        &self,
+        leg_idx: Option<u64>,
+        state: &[StateVariable],
+        state_model: &StateModel,
+        max_trip_legs: NonZeroU64,
+    ) -> Result<bool, ConstraintModelError> {
         match self {
-            TripLegConstraint::First => matches_leg(state, state_model, 0),
-            TripLegConstraint::LegIndex { index } => matches_leg(state, state_model, *index as u64),
+            TripLegConstraint::First => Ok(leg_idx == Some(0)),
+            TripLegConstraint::LegIndex { index } => Ok(leg_idx == Some(*index as u64)),
             TripLegConstraint::Last => {
                 // safe to call -1 here on max_trip_legs which is strictly > 0
                 let max_trip_idx = max_trip_legs.get() - 1;
-                matches_leg(state, state_model, max_trip_idx)
+                Ok(leg_idx == Some(max_trip_idx))
             }
             TripLegConstraint::Arrival {
                 destination_predicate,
@@ -276,7 +305,7 @@ impl TripLegConstraint {
                     let msg = format!("while checking trip leg constraint: {e}");
                     ConstraintModelError::ConstraintModelError(msg)
                 }),
-            TripLegConstraint::Any => Ok(true),
+            TripLegConstraint::Any => Ok(leg_idx.is_some()),
         }
     }
 }
