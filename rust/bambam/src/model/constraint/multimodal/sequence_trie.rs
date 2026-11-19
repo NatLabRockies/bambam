@@ -6,6 +6,8 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct SubSequenceTrie {
     root: TrieNode,
+    /// Minimum 1-based depth (leg position) at which each mode appears across all stored sequences.
+    min_depth: HashMap<String, usize>,
 }
 
 /// Internal node structure for the trie
@@ -28,6 +30,7 @@ impl SubSequenceTrie {
     pub fn new() -> Self {
         Self {
             root: TrieNode::new(),
+            min_depth: HashMap::new(),
         }
     }
 
@@ -45,7 +48,12 @@ impl SubSequenceTrie {
     pub fn insert_sequence(&mut self, sequence: Vec<String>) {
         let mut current_node = &mut self.root;
 
-        for item in sequence {
+        for (idx, item) in sequence.into_iter().enumerate() {
+            let depth = idx + 1;
+            self.min_depth
+                .entry(item.clone())
+                .and_modify(|min_d| *min_d = (*min_d).min(depth))
+                .or_insert(depth);
             current_node = current_node
                 .children
                 .entry(item)
@@ -70,31 +78,14 @@ impl SubSequenceTrie {
         true
     }
 
-    /// Returns true if `mode` appears at any position within max_depth (1-based) in the trie.
+    /// Returns true in O(1) time if `mode` appears at any position within `max_depth` (1-based) in the trie.
+    #[inline]
     pub fn contains_mode(&self, mode: &str, max_depth: Option<usize>) -> bool {
-        Self::contains_mode_recursive(&self.root, mode, 1, max_depth)
-    }
-
-    fn contains_mode_recursive(
-        node: &TrieNode,
-        mode: &str,
-        current_depth: usize,
-        max_depth: Option<usize>,
-    ) -> bool {
-        if let Some(max) = max_depth {
-            if current_depth > max {
-                return false;
-            }
+        match (self.min_depth.get(mode), max_depth) {
+            (Some(&depth), Some(max)) => depth <= max,
+            (Some(_), None) => true,
+            (None, _) => false,
         }
-        for (key, child) in &node.children {
-            if key == mode {
-                return true;
-            }
-            if Self::contains_mode_recursive(child, mode, current_depth + 1, max_depth) {
-                return true;
-            }
-        }
-        false
     }
 }
 
