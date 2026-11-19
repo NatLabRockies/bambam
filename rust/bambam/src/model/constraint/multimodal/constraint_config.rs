@@ -118,8 +118,24 @@ pub enum ConstraintConfig {
 
 /// Helper wrapper allowing mode-keyed constraint configs to be written either as a map
 /// (`values = { walk = { ... } }`) or inline for a single mode (`mode = "walk", ...`).
-#[derive(Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct ModeConstraintMap<T>(pub HashMap<String, T>);
+
+impl<T> Serialize for ModeConstraintMap<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct MapWrapper<'a, T> {
+            values: &'a HashMap<String, T>,
+        }
+        MapWrapper { values: &self.0 }.serialize(serializer)
+    }
+}
 
 impl<T> std::ops::Deref for ModeConstraintMap<T> {
     type Target = HashMap<String, T>;
@@ -206,45 +222,33 @@ pub enum LimitOperation {
 }
 
 /// Distance constraint with optional `min` and/or `max` bounds and associated unit.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct DistanceConstraint {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub min: Option<Length>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<Length>,
     pub unit: DistanceUnit,
-    #[serde(default, skip_serializing)]
     pub min_exclusive: bool,
-    #[serde(default, skip_serializing)]
     pub max_exclusive: bool,
 }
 
 /// Time constraint with optional `min` and/or `max` bounds and associated unit.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct TimeConstraint {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub min: Option<Time>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<Time>,
     pub unit: TimeUnit,
-    #[serde(default, skip_serializing)]
     pub min_exclusive: bool,
-    #[serde(default, skip_serializing)]
     pub max_exclusive: bool,
 }
 
 /// Energy constraint with optional `min` and/or `max` bounds and associated unit.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct EnergyConstraint {
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub min: Option<Energy>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<Energy>,
     pub unit: EnergyUnit,
     pub variable: EnergyStateVariable,
-    #[serde(default, skip_serializing)]
     pub min_exclusive: bool,
-    #[serde(default, skip_serializing)]
     pub max_exclusive: bool,
 }
 
@@ -411,6 +415,34 @@ impl DistanceConstraint {
     }
 }
 
+impl Serialize for DistanceConstraint {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct RawConstraint {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            min: Option<f64>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            max: Option<f64>,
+            unit: DistanceUnit,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            min_exclusive: bool,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            max_exclusive: bool,
+        }
+        let raw = RawConstraint {
+            min: self.min.map(|v| self.unit.from_uom(v)),
+            max: self.max.map(|v| self.unit.from_uom(v)),
+            unit: self.unit,
+            min_exclusive: self.min_exclusive,
+            max_exclusive: self.max_exclusive,
+        };
+        raw.serialize(serializer)
+    }
+}
+
 impl TimeConstraint {
     pub fn new(min: Option<Time>, max: Option<Time>, unit: TimeUnit) -> Self {
         Self {
@@ -450,6 +482,34 @@ impl TimeConstraint {
         let min_ok = !mode_switch || self.test_min(value);
         let max_ok = self.test_max(value);
         min_ok && max_ok
+    }
+}
+
+impl Serialize for TimeConstraint {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct RawConstraint {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            min: Option<f64>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            max: Option<f64>,
+            unit: TimeUnit,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            min_exclusive: bool,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            max_exclusive: bool,
+        }
+        let raw = RawConstraint {
+            min: self.min.map(|v| self.unit.from_uom(v)),
+            max: self.max.map(|v| self.unit.from_uom(v)),
+            unit: self.unit,
+            min_exclusive: self.min_exclusive,
+            max_exclusive: self.max_exclusive,
+        };
+        raw.serialize(serializer)
     }
 }
 
@@ -498,6 +558,36 @@ impl EnergyConstraint {
         let min_ok = !mode_switch || self.test_min(value);
         let max_ok = self.test_max(value);
         min_ok && max_ok
+    }
+}
+
+impl Serialize for EnergyConstraint {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(Serialize)]
+        struct RawConstraint {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            min: Option<f64>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            max: Option<f64>,
+            unit: EnergyUnit,
+            variable: EnergyStateVariable,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            min_exclusive: bool,
+            #[serde(skip_serializing_if = "std::ops::Not::not")]
+            max_exclusive: bool,
+        }
+        let raw = RawConstraint {
+            min: self.min.map(|v| self.unit.from_uom(v)),
+            max: self.max.map(|v| self.unit.from_uom(v)),
+            unit: self.unit,
+            variable: self.variable.clone(),
+            min_exclusive: self.min_exclusive,
+            max_exclusive: self.max_exclusive,
+        };
+        raw.serialize(serializer)
     }
 }
 

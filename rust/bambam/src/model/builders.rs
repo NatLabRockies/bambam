@@ -1,4 +1,5 @@
 use super::input_plugin::grid::grid_input_plugin_builder::GridInputPluginBuilder;
+use super::input_plugin::trip_modes::trip_modes_input_plugin_builder::TripModesInputPluginBuilder;
 use super::traversal::fixed_speed::FixedSpeedBuilder;
 use super::traversal::time_delay::TripArrivalDelayBuilder;
 use super::traversal::time_delay::TripDepartureDelayBuilder;
@@ -59,6 +60,10 @@ pub const BUILDER_REGISTRATION: BuilderRegistration = BuilderRegistration(|build
     );
 
     builders.add_input_plugin(String::from("grid"), Rc::new(GridInputPluginBuilder {}));
+    builders.add_input_plugin(
+        String::from("trip_modes"),
+        Rc::new(TripModesInputPluginBuilder {}),
+    );
 
     builders.add_output_plugin("bambam".to_string(), Rc::new(BambamOutputPluginBuilder {}));
     builders.add_output_plugin("h3".to_string(), Rc::new(H3UtilOutputPluginBuilder {}));
