@@ -1,6 +1,6 @@
 use super::opportunity_spatial_row::OpportunitySpatialRow;
 use bambam_core::model::{
-    destination::iter::DestinationsIter,
+    destination::iter::{DestinationBranch, DestinationsIter},
     output_plugin::opportunity::{
         DestinationOpportunity, OpportunityOrientation, OpportunityRowId,
     },
@@ -97,6 +97,75 @@ impl OpportunityModel {
 
     pub fn vector_length(&self) -> usize {
         self.activity_types().len()
+    }
+
+    /// Accumulates opportunity counts directly across already-deduplicated `destinations`
+    /// without per-vertex heap allocations or state vector clones.
+    pub fn collect_aggregate_opportunities(
+        &self,
+        destinations: &[DestinationBranch<'_>],
+        _si: &SearchInstance,
+    ) -> Result<HashMap<String, f64>, OutputPluginError> {
+        let activity_types = self.activity_types();
+        let mut sums = vec![0.0; activity_types.len()];
+        self.accumulate_tabular_slice(destinations, &mut sums, 0)?;
+
+        let mut result = HashMap::with_capacity(activity_types.len());
+        for (act, sum) in activity_types.into_iter().zip(sums) {
+            result.insert(act, sum);
+        }
+        Ok(result)
+    }
+
+    fn accumulate_tabular_slice(
+        &self,
+        destinations: &[DestinationBranch<'_>],
+        sums: &mut [f64],
+        offset: usize,
+    ) -> Result<usize, OutputPluginError> {
+        match self {
+            OpportunityModel::Tabular {
+                activity_types,
+                activity_counts,
+                opportunity_orientation,
+            } => {
+                let n_cols = activity_types.len();
+                let target_sums = &mut sums[offset..offset + n_cols];
+                for (origin_label, search_tree_branch) in destinations {
+                    let opp_row = OpportunityRowId::new(
+                        origin_label,
+                        search_tree_branch,
+                        opportunity_orientation,
+                    )?;
+                    let index = match &opp_row {
+                        OpportunityRowId::OriginVertex(vertex_id) => vertex_id.0,
+                        OpportunityRowId::DestinationVertex(vertex_id) => vertex_id.0,
+                        OpportunityRowId::Edge(_edge_list_id, _edge_id) => {
+                            return Err(OutputPluginError::InternalError(
+                                "edge-oriented opportunities not yet implemented".to_string(),
+                            ))
+                        }
+                    };
+                    let row_counts = activity_counts.get(index).ok_or_else(|| {
+                        OutputPluginError::OutputPluginFailed(format!(
+                            "activity table lookup failed - {opportunity_orientation} index {index} not found"
+                        ))
+                    })?;
+                    for (acc, &val) in target_sums.iter_mut().zip(row_counts.iter()) {
+                        *acc += val;
+                    }
+                }
+                Ok(offset + n_cols)
+            }
+            OpportunityModel::Combined { models } => {
+                let mut current_offset = offset;
+                for model in models {
+                    current_offset =
+                        model.accumulate_tabular_slice(destinations, sums, current_offset)?;
+                }
+                Ok(current_offset)
+            }
+        }
     }
 
     /// collect all opportunities that are reachable by some collection of destinations, with a

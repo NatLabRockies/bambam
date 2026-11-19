@@ -203,17 +203,10 @@ fn process_aggregate_opportunities(
         let start_time = Instant::now();
         let bin_key = bin.bin_key();
 
-        let destinations_iter: destination::iter::DestinationsIter<'_> =
-            Box::new(destinations.into_iter().map(Ok));
-
-        // collect aggregated opportunities and write to output
-        let destination_opportunities = plugin
+        // collect aggregated opportunities directly from the deduplicated slice and write to output
+        let opps = plugin
             .model
-            .collect_trip_opportunities(destinations_iter, instance)?;
-        let opps = opportunity_ops::collect_aggregate(
-            &destination_opportunities,
-            &plugin.model.activity_types(),
-        )?;
+            .collect_aggregate_opportunities(&destinations, instance)?;
         agg.set_opportunities(&bin_key, &opps)?;
 
         // write bin-level runtime

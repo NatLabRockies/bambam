@@ -16,6 +16,7 @@ use crate::model::constraint::multimodal::ConstraintConfig;
 /// type = "trip_modes"
 ///
 /// [plugin.input_plugins.defaults]
+/// multimodal_label = false
 /// constraints = [
 ///     { type = "time_limit", max = 40.0, unit = "minutes" },
 /// ]
@@ -40,6 +41,7 @@ use crate::model::constraint::multimodal::ConstraintConfig;
 /// ]
 ///
 /// [plugin.input_plugins.modes.transit]
+/// multimodal_label = true
 /// max_trip_legs = 4
 /// intensity = { energy = 0.65, cost = 0.855 }
 /// constraints = [
@@ -64,6 +66,10 @@ pub struct TripModesConfig {
 pub struct TripModeDefaults {
     #[serde(default)]
     pub max_trip_legs: Option<NonZeroU64>,
+    /// When `false`, uses `VertexLabelModel` (`Label::Vertex`) instead of `MultimodalLabelModel`
+    /// so that the cost-dominant path to each vertex wins regardless of mode sequence.
+    #[serde(default)]
+    pub multimodal_label: Option<bool>,
     #[serde(default)]
     pub constraints: Vec<ConstraintConfig>,
     #[serde(flatten)]
@@ -75,6 +81,10 @@ pub struct TripModeDefaults {
 pub struct TripModeEntry {
     #[serde(default)]
     pub max_trip_legs: Option<NonZeroU64>,
+    /// When `false`, uses `VertexLabelModel` (`Label::Vertex`) instead of `MultimodalLabelModel`
+    /// so that the cost-dominant path to each vertex wins regardless of mode sequence.
+    #[serde(default)]
+    pub multimodal_label: Option<bool>,
     #[serde(default)]
     pub constraints: Vec<ConstraintConfig>,
     #[serde(flatten)]
@@ -143,6 +153,9 @@ impl TripModesConfig {
             fields.insert("trip_mode".to_string(), json!(mode_name));
             fields.insert("max_trip_legs".to_string(), json!(resolved_max_legs));
             fields.insert("constraints".to_string(), constraints_json);
+            if let Some(mm_label) = entry.multimodal_label.or(self.defaults.multimodal_label) {
+                fields.insert("multimodal_label".to_string(), json!(mm_label));
+            }
 
             compiled.push(CompiledTripMode {
                 trip_mode: mode_name.clone(),

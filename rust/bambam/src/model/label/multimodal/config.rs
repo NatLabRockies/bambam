@@ -14,4 +14,9 @@ use bambam_core::model::state::LegIdx;
 pub struct MultimodalLabelConfig {
     pub max_trip_legs: Option<NonZeroU64>,
     pub modes: Option<Vec<String>>,
+    /// when `false`, disables mode-sequence labeling for this query and labels vertices
+    /// by `VertexId` only (`Label::Vertex`), so the lowest-cost path to each vertex
+    /// dominates regardless of mode sequence. defaults to `true`.
+    #[serde(default)]
+    pub multimodal_label: Option<bool>,
 }

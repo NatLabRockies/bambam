@@ -98,7 +98,7 @@ impl IsochronePointModel {
         destinations: &[(Label, &SearchTreeNode)],
         map_model: Arc<MapModel>,
     ) -> Result<MultiPoint<f32>, OutputPluginError> {
-        let mut result: Vec<Point<f32>> = Vec::new();
+        let mut result: Vec<Point<f32>> = Vec::with_capacity(destinations.len() * 2);
         for (_label, branch) in destinations.iter() {
             if let Some(e) = branch.incoming_edge() {
                 let linestring = map_model
@@ -108,8 +108,7 @@ impl IsochronePointModel {
                             "failure generating destination points: {e}"
                         ))
                     })?;
-                let points = self.linestring_to_points(linestring)?;
-                result.extend(points);
+                self.extend_linestring_points(linestring, &mut result)?;
             }
         }
 
@@ -117,20 +116,26 @@ impl IsochronePointModel {
         Ok(mp)
     }
 
-    pub fn linestring_to_points(
+    pub fn extend_linestring_points(
         &self,
         linestring: &LineString<f32>,
-    ) -> Result<Vec<Point<f32>>, OutputPluginError> {
+        out: &mut Vec<Point<f32>>,
+    ) -> Result<(), OutputPluginError> {
         match self {
             IsochronePointModel::DestinationPoint => {
                 let last_point = dst_point(linestring)?;
-                Ok(vec![last_point])
+                out.push(last_point);
+                Ok(())
             }
-            IsochronePointModel::LinestringCoordinates => Ok(linestring.points().collect()),
+            IsochronePointModel::LinestringCoordinates => {
+                out.extend(linestring.points());
+                Ok(())
+            }
             IsochronePointModel::LinestringStride { stride } => {
                 let meters = stride.get::<uom::si::length::meter>() as f32;
                 let dense_linestring = linestring.densify(&Haversine, meters);
-                Ok(dense_linestring.into_points())
+                out.extend(dense_linestring.points());
+                Ok(())
             }
             IsochronePointModel::BufferedLinestring {
                 buffer_radius,
@@ -140,8 +145,8 @@ impl IsochronePointModel {
                 let radius_latlon = radius / 111132.0;
                 let buffered = linestring.buffer(radius_latlon);
                 let final_mp = stride(buffered, buffer_stride.as_ref());
-                let result = final_mp.coords_iter().map(Point::from).collect();
-                Ok(result)
+                out.extend(final_mp.coords_iter().map(Point::from));
+                Ok(())
             }
             IsochronePointModel::BufferedDestinationPoint {
                 buffer_radius,
@@ -152,10 +157,19 @@ impl IsochronePointModel {
                 let dst = dst_point(linestring)?;
                 let buffered = dst.buffer(radius_latlon);
                 let final_mp = stride(buffered, buffer_stride.as_ref());
-                let result = final_mp.coords_iter().map(Point::from).collect();
-                Ok(result)
+                out.extend(final_mp.coords_iter().map(Point::from));
+                Ok(())
             }
         }
+    }
+
+    pub fn linestring_to_points(
+        &self,
+        linestring: &LineString<f32>,
+    ) -> Result<Vec<Point<f32>>, OutputPluginError> {
+        let mut out = Vec::new();
+        self.extend_linestring_points(linestring, &mut out)?;
+        Ok(out)
     }
 }
 

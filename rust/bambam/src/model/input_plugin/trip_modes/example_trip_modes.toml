@@ -1,6 +1,7 @@
 type = "trip_modes"
 
 [defaults]
+multimodal_label = false
 constraints = [
     { type = "time_limit", max = 40.0, unit = "minutes" },
 ]
@@ -25,6 +26,7 @@ constraints = [
 ]
 
 [modes.transit]
+multimodal_label = true
 max_trip_legs = 4
 intensity = { energy = 0.65, cost = 0.855 }
 constraints = [
