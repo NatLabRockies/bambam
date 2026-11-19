@@ -24,7 +24,9 @@ use uom::si::f64::{Energy, Length, Time};
 ///
 /// ```toml
 /// type = "mode_distance_limit"
-/// values.walk = { max = 0.5, unit = "miles" }
+/// mode = "walk"
+/// max = 0.5
+/// unit = "miles"
 /// ```
 ///
 /// ## Walk mode can only be used in the first or third leg of a trip
@@ -35,15 +37,22 @@ use uom::si::f64::{Energy, Length, Time};
 /// values = [["walk", "bike", "walk"], ["walk", "drive", "walk"]]
 /// ```
 ///
-/// ### Walk mode should not exceed 5m on first leg of trip and 20m total
+/// ### Walk mode should not exceed 5m on first leg of trip and 20m total (inline shorthand)
+///
+/// ```toml
+/// constraints = [
+///     { type = "mode_leg_time_limit", mode = "walk", leg = "first", max = 5.0, unit = "minutes" },
+///     { type = "mode_time_limit", mode = "walk", max = 20.0, unit = "minutes" },
+/// ]
+/// ```
+///
+/// ### Multi-mode map syntax is also supported
 ///
 /// ```toml
 /// [[constraints]]
 /// type = "mode_leg_time_limit"
-/// values.walk = { leg.type = "first", max = 5.0, unit = "minutes" }
-/// [[constraints]]
-/// type = "mode_time_limit"
-/// values.walk = { max = 20.0, unit = "minutes" }
+/// values.walk = { leg = "first", max = 5.0, unit = "minutes" }
+/// values.drive = { min = 5.0, max = 35.0, unit = "minutes" }
 /// ```
 ///
 /// ### Drive mode legs should never be shorter than 5 minutes or 0.33 miles
@@ -51,10 +60,14 @@ use uom::si::f64::{Energy, Length, Time};
 /// ```toml
 /// [[constraints]]
 /// type = "mode_leg_time_limit"
-/// values.drive = { min = 5.0, unit = "minutes" }
+/// mode = "drive"
+/// min = 5.0
+/// unit = "minutes"
 /// [[constraints]]
 /// type = "mode_leg_distance_limit"
-/// values.drive = { min = 0.33, unit = "miles" }
+/// mode = "drive"
+/// min = 0.33
+/// unit = "miles"
 /// ```
 ///
 /// ### Drive mode should not exceed 2 gallons of gas
@@ -62,10 +75,13 @@ use uom::si::f64::{Energy, Length, Time};
 /// ```toml
 /// [[constraints]]
 /// type = "mode_energy_limit"
-/// values.drive = { max = 2.0, unit = "gallons_gasoline_equivalent", variable = "liquid" }
+/// mode = "drive"
+/// max = 2.0
+/// unit = "gallons_gasoline_equivalent"
+/// variable = "liquid"
 /// ```
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConstraintConfig {
     /// Restrict routes to only use allowed transportation modes.
     AllowedModes { values: Vec<String> },
@@ -83,29 +99,64 @@ pub enum ConstraintConfig {
     // #[serde(rename = "energy_limit")]
     // EnergyConstraint,
     /// Set distance limits for each transportation mode.
-    ModeDistanceLimit {
-        values: HashMap<String, DistanceConstraint>,
-    },
+    ModeDistanceLimit(ModeConstraintMap<DistanceConstraint>),
     /// Set time limits for each transportation mode.
-    ModeTimeLimit {
-        values: HashMap<String, TimeConstraint>,
-    },
+    ModeTimeLimit(ModeConstraintMap<TimeConstraint>),
     // /// Set maximum energy limits for each transportation mode.
     // ModeEnergyLimit {
     //     values: HashMap<String, EnergyConstraint>,
     // },
     /// Set distance limits for specific modes on specific trip legs.
-    ModeLegDistanceLimit {
-        values: HashMap<String, ModeLegDistanceConstraint>,
-    },
+    ModeLegDistanceLimit(ModeConstraintMap<ModeLegDistanceConstraint>),
     /// Set time limits for specific modes on specific trip legs.
-    ModeLegTimeLimit {
-        values: HashMap<String, ModeLegTimeConstraint>,
-    },
+    ModeLegTimeLimit(ModeConstraintMap<ModeLegTimeConstraint>),
     // /// Set energy limits for specific modes on specific trip legs.
     // ModeLegEnergyLimit {
     //     values: HashMap<String, ModeLegEnergyConstraint>,
     // },
+}
+
+/// Helper wrapper allowing mode-keyed constraint configs to be written either as a map
+/// (`values = { walk = { ... } }`) or inline for a single mode (`mode = "walk", ...`).
+#[derive(Serialize, Debug, Clone)]
+pub struct ModeConstraintMap<T>(pub HashMap<String, T>);
+
+impl<T> std::ops::Deref for ModeConstraintMap<T> {
+    type Target = HashMap<String, T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de, T> Deserialize<'de> for ModeConstraintMap<T>
+where
+    T: Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum RawMapOrSingle<T> {
+            Map {
+                values: HashMap<String, T>,
+            },
+            Single {
+                mode: String,
+                #[serde(flatten)]
+                constraint: T,
+            },
+        }
+
+        match RawMapOrSingle::<T>::deserialize(deserializer)? {
+            RawMapOrSingle::Map { values } => Ok(ModeConstraintMap(values)),
+            RawMapOrSingle::Single { mode, constraint } => {
+                Ok(ModeConstraintMap(HashMap::from([(mode, constraint)])))
+            }
+        }
+    }
 }
 
 /// Pairs a trip leg constraint with a distance constraint.
@@ -211,7 +262,9 @@ pub enum EnergyStateVariable {
 /// Identifies a specific trip leg for constraint application.
 ///
 /// Allows constraints to target specific steps in a trip.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Supports both string/integer shorthands (`"first"`, `"last"`, `"any"`, `0`)
+/// and tagged object syntax (`{ type = "first" }`, `{ type = "leg_index", index = 0 }`, etc.).
+#[derive(Debug, Clone, Default, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TripLegConstraint {
     /// the departing trip leg, an alias for LegIndex(0)
@@ -228,6 +281,56 @@ pub enum TripLegConstraint {
     /// all legs must meet this criteria independently
     #[default]
     Any,
+}
+
+impl<'de> Deserialize<'de> for TripLegConstraint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+        enum TaggedLeg {
+            First,
+            LegIndex { index: usize },
+            Last,
+            Arrival {
+                destination_predicate: DestinationPredicate,
+            },
+            Any,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum RawLeg {
+            Str(String),
+            Index(usize),
+            Tagged(TaggedLeg),
+        }
+
+        match RawLeg::deserialize(deserializer)? {
+            RawLeg::Str(s) => match s.as_str() {
+                "first" => Ok(TripLegConstraint::First),
+                "last" => Ok(TripLegConstraint::Last),
+                "any" => Ok(TripLegConstraint::Any),
+                other => Err(serde::de::Error::custom(format!(
+                    "unknown leg shorthand '{other}', expected 'first', 'last', 'any', a leg index integer, or a tagged object"
+                ))),
+            },
+            RawLeg::Index(index) => Ok(TripLegConstraint::LegIndex { index }),
+            RawLeg::Tagged(t) => Ok(match t {
+                TaggedLeg::First => TripLegConstraint::First,
+                TaggedLeg::LegIndex { index } => TripLegConstraint::LegIndex { index },
+                TaggedLeg::Last => TripLegConstraint::Last,
+                TaggedLeg::Arrival {
+                    destination_predicate,
+                } => TripLegConstraint::Arrival {
+                    destination_predicate,
+                },
+                TaggedLeg::Any => TripLegConstraint::Any,
+            }),
+        }
+    }
 }
 
 impl LimitOperation {
@@ -828,12 +931,12 @@ impl std::fmt::Display for ConstraintConfig {
             }
             ConstraintConfig::DistanceConstraint(constraint) => write!(f, "overall {}", constraint),
             ConstraintConfig::TimeConstraint(constraint) => write!(f, "overall {}", constraint),
-            ConstraintConfig::ModeDistanceLimit { values } => write!(f, "{}", pretty_map(values)),
-            ConstraintConfig::ModeTimeLimit { values } => write!(f, "{}", pretty_map(values)),
-            ConstraintConfig::ModeLegDistanceLimit { values } => {
+            ConstraintConfig::ModeDistanceLimit(values) => write!(f, "{}", pretty_map(values)),
+            ConstraintConfig::ModeTimeLimit(values) => write!(f, "{}", pretty_map(values)),
+            ConstraintConfig::ModeLegDistanceLimit(values) => {
                 write!(f, "{}", pretty_map(values))
             }
-            ConstraintConfig::ModeLegTimeLimit { values } => write!(f, "{}", pretty_map(values)),
+            ConstraintConfig::ModeLegTimeLimit(values) => write!(f, "{}", pretty_map(values)),
         }
     }
 }

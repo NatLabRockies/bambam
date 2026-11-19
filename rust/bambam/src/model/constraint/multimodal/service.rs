@@ -54,7 +54,7 @@ impl ConstraintModelService for MultimodalConstraintService {
         let model = MultimodalConstraintModel::new(
             self.engine.clone(),
             constraints,
-            model_config.max_trip_legs,
+            model_config.resolved_max_trip_legs(),
         );
         Ok(Arc::new(model))
     }

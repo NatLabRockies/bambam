@@ -932,9 +932,19 @@ mod test {
                 { "type": "mode_leg_time_limit", "values": { "drive": { "min": 20.0, "max": 5.0, "unit": "minutes" } } }
             ]
         });
-        let query_inverted: MultimodalConstraintModelQuery =
-            serde_json::from_value(inverted_bounds_json).unwrap();
-        assert!(query_inverted.build_constraints(&mode_to_state).is_err());
+        // 5. Inline `mode = "..."` and `leg = "first"` shorthand + inferred `max_trip_legs`
+        let shorthand_query_json = json!({
+            "constraints": [
+                { "type": "time_limit", "max": 40.0, "unit": "minutes" },
+                { "type": "mode_leg_distance_limit", "mode": "walk", "leg": "first", "max": 0.5, "unit": "kilometers" },
+                { "type": "mode_time_limit", "mode": "walk", "max": 10.0, "unit": "minutes" },
+                { "type": "exact_sequences", "values": [["drive"], ["walk", "drive"]] }
+            ]
+        });
+        let shorthand_query: MultimodalConstraintModelQuery =
+            serde_json::from_value(shorthand_query_json).expect("should deserialize mode/leg shorthand");
+        assert_eq!(shorthand_query.resolved_max_trip_legs().get(), 2);
+        assert!(shorthand_query.build_constraints(&mode_to_state).is_ok());
     }
 
     #[test]

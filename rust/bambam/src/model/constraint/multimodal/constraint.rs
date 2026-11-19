@@ -229,20 +229,20 @@ impl TryFrom<&ConstraintConfig> for Constraint {
             }
             MFCC::DistanceConstraint(c) => Ok(Self::DistanceConstraint(c.clone())),
             MFCC::TimeConstraint(c) => Ok(Self::TimeConstraint(c.clone())),
-            MFCC::ModeDistanceLimit { values } => Ok(Self::ModeDistanceLimit {
-                mode_distance_limit: values.clone(),
+            MFCC::ModeDistanceLimit(values) => Ok(Self::ModeDistanceLimit {
+                mode_distance_limit: values.0.clone(),
             }),
-            MFCC::ModeTimeLimit { values } => Ok(Self::ModeTimeLimit {
-                mode_time_limit: values.clone(),
+            MFCC::ModeTimeLimit(values) => Ok(Self::ModeTimeLimit {
+                mode_time_limit: values.0.clone(),
             }),
             // MFCC::ModeEnergyLimit { mode_energy_limit } => Ok(Self::ModeEnergyLimit {
             //     mode_energy_limit: mode_energy_limit.clone(),
             // }),
-            MFCC::ModeLegDistanceLimit { values } => Ok(Self::ModeLegDistanceLimit {
-                mode_leg_distance_limit: values.clone(),
+            MFCC::ModeLegDistanceLimit(values) => Ok(Self::ModeLegDistanceLimit {
+                mode_leg_distance_limit: values.0.clone(),
             }),
-            MFCC::ModeLegTimeLimit { values } => Ok(Self::ModeLegTimeLimit {
-                mode_leg_time_limit: values.clone(),
+            MFCC::ModeLegTimeLimit(values) => Ok(Self::ModeLegTimeLimit {
+                mode_leg_time_limit: values.0.clone(),
             }),
             // MFCC::ModeLegEnergyLimit {
             //     mode_leg_energy_limit,

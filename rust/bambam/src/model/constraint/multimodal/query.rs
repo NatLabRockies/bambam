@@ -24,9 +24,9 @@ pub struct MultimodalConstraintModelQuery {
     /// configuration value to limit to realistic mode usage and also an algorithmic
     /// configuration value as space complexity grows k^n for k modes, n legs.
     ///
-    /// default value: 1 trip leg (unimodal trip).
-    #[serde(default = "unimodal_trip")]
-    pub max_trip_legs: NonZeroU64,
+    /// if omitted, inferred from `exact_sequences` (max sequence length) or defaults to 1.
+    #[serde(default)]
+    pub max_trip_legs: Option<NonZeroU64>,
 }
 
 /// use 1 trip leg by default.
@@ -38,6 +38,28 @@ pub fn unimodal_trip() -> NonZeroU64 {
 static EMPTY_CONSTRAINTS_WARNING: Once = Once::new();
 
 impl MultimodalConstraintModelQuery {
+    /// resolves `max_trip_legs`, using the explicit value if provided, or inferring it from
+    /// `exact_sequences` (longest sequence length) if present, otherwise defaulting to 1.
+    pub fn resolved_max_trip_legs(&self) -> NonZeroU64 {
+        if let Some(explicit) = self.max_trip_legs {
+            return explicit;
+        }
+        if let Some(configs) = &self.constraints {
+            let max_seq_len = configs
+                .iter()
+                .filter_map(|c| match c {
+                    ConstraintConfig::ExactSequences { values } => {
+                        values.iter().map(|s| s.len()).max()
+                    }
+                    _ => None,
+                })
+                .max()
+                .unwrap_or(1);
+            return NonZeroU64::new(max_seq_len as u64).unwrap_or(NonZeroU64::MIN);
+        }
+        unimodal_trip()
+    }
+
     pub fn build_constraints(
         &self,
         mode_to_state: &CategoricalStateMapping,
@@ -71,7 +93,7 @@ impl MultimodalConstraintModelQuery {
         configs: &[ConstraintConfig],
         mode_to_state: &CategoricalStateMapping,
     ) -> Result<(), ConstraintModelError> {
-        let max_legs = self.max_trip_legs.get() as usize;
+        let max_legs = self.resolved_max_trip_legs().get() as usize;
 
         for config in configs {
             match config {
@@ -106,27 +128,27 @@ impl MultimodalConstraintModelQuery {
                 ConstraintConfig::TimeConstraint(c) => {
                     validate_time_bounds(c)?;
                 }
-                ConstraintConfig::ModeDistanceLimit { values } => {
-                    for (mode, c) in values {
+                ConstraintConfig::ModeDistanceLimit(values) => {
+                    for (mode, c) in values.iter() {
                         validate_mode_exists(mode, mode_to_state)?;
                         validate_distance_bounds(c)?;
                     }
                 }
-                ConstraintConfig::ModeTimeLimit { values } => {
-                    for (mode, c) in values {
+                ConstraintConfig::ModeTimeLimit(values) => {
+                    for (mode, c) in values.iter() {
                         validate_mode_exists(mode, mode_to_state)?;
                         validate_time_bounds(c)?;
                     }
                 }
-                ConstraintConfig::ModeLegDistanceLimit { values } => {
-                    for (mode, ModeLegDistanceConstraint { leg, constraint }) in values {
+                ConstraintConfig::ModeLegDistanceLimit(values) => {
+                    for (mode, ModeLegDistanceConstraint { leg, constraint }) in values.iter() {
                         validate_mode_exists(mode, mode_to_state)?;
                         validate_leg_index(leg, max_legs)?;
                         validate_distance_bounds(constraint)?;
                     }
                 }
-                ConstraintConfig::ModeLegTimeLimit { values } => {
-                    for (mode, ModeLegTimeConstraint { leg, constraint }) in values {
+                ConstraintConfig::ModeLegTimeLimit(values) => {
+                    for (mode, ModeLegTimeConstraint { leg, constraint }) in values.iter() {
                         validate_mode_exists(mode, mode_to_state)?;
                         validate_leg_index(leg, max_legs)?;
                         validate_time_bounds(constraint)?;
