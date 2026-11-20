@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
-/// A trie-like data structure for storing and searching sequences of strings.
-/// Optimized for subsequence matching - finds if any stored sequence contains
-/// the query sequence as a subsequence (maintaining order but allowing gaps).
+/// A trie data structure for storing and searching sequences of strings.
+/// Matches prefixes of stored sequences: returns true if the query sequence
+/// is a prefix of (or equal to) at least one stored sequence.
 #[derive(Debug, Clone)]
 pub struct SubSequenceTrie {
     root: TrieNode,
+    /// Minimum 1-based depth (leg position) at which each mode appears across all stored sequences.
+    min_depth: HashMap<String, usize>,
 }
 
 /// Internal node structure for the trie
@@ -28,6 +30,7 @@ impl SubSequenceTrie {
     pub fn new() -> Self {
         Self {
             root: TrieNode::new(),
+            min_depth: HashMap::new(),
         }
     }
 
@@ -45,7 +48,12 @@ impl SubSequenceTrie {
     pub fn insert_sequence(&mut self, sequence: Vec<String>) {
         let mut current_node = &mut self.root;
 
-        for item in sequence {
+        for (idx, item) in sequence.into_iter().enumerate() {
+            let depth = idx + 1;
+            self.min_depth
+                .entry(item.clone())
+                .and_modify(|min_d| *min_d = (*min_d).min(depth))
+                .or_insert(depth);
             current_node = current_node
                 .children
                 .entry(item)
@@ -53,51 +61,42 @@ impl SubSequenceTrie {
         }
     }
 
-    /// Searches for a subsequence within the trie
-    /// Returns true if the given sequence is a subsequence of any sequence in the trie
+    /// Searches for a prefix match within the trie using an iterator of mode strings.
+    /// Returns true if the given sequence is a prefix of (or equal to) any sequence in the trie.
+    #[inline]
+    pub fn contains_iter<'a, I, T>(&self, sequence: I) -> bool
+    where
+        I: IntoIterator<Item = &'a T>,
+        T: AsRef<str> + 'a + ?Sized,
+    {
+        let mut current_node = &self.root;
+        for item in sequence {
+            match current_node.children.get(item.as_ref()) {
+                Some(child) => current_node = child,
+                None => return false,
+            }
+        }
+        true
+    }
+
+    /// Searches for a prefix match within the trie.
+    /// Returns true if the given sequence is a prefix of (or equal to) any sequence in the trie.
     /// Accepts both &[String] and &[&str]
     pub fn contains<T>(&self, sequence: &[T]) -> bool
     where
         T: AsRef<str>,
     {
-        self.search_subsequence_recursive(&self.root, sequence, 0)
+        self.contains_iter(sequence.iter())
     }
 
-    /// Recursive helper function to search for subsequences
-    /// Explores all possible paths through the trie to find if the sequence matches any subsequence
-    fn search_subsequence_recursive<T>(
-        &self,
-        node: &TrieNode,
-        sequence: &[T],
-        seq_index: usize,
-    ) -> bool
-    where
-        T: AsRef<str>,
-    {
-        // If we've matched all elements in the target sequence, we found a match
-        if seq_index >= sequence.len() {
-            return true;
+    /// Returns true in O(1) time if `mode` appears at any position within `max_depth` (1-based) in the trie.
+    #[inline]
+    pub fn contains_mode(&self, mode: &str, max_depth: Option<usize>) -> bool {
+        match (self.min_depth.get(mode), max_depth) {
+            (Some(&depth), Some(max)) => depth <= max,
+            (Some(_), None) => true,
+            (None, _) => false,
         }
-
-        let target_element = sequence[seq_index].as_ref();
-
-        // Explore all children of the current node
-        for (child_key, child_node) in &node.children {
-            if child_key == target_element {
-                // Exact match: move to the next element in both trie and sequence
-                if self.search_subsequence_recursive(child_node, sequence, seq_index + 1) {
-                    return true;
-                }
-            } else {
-                // No match: continue searching in this child without advancing sequence index
-                // This allows us to skip elements in the stored sequences
-                if self.search_subsequence_recursive(child_node, sequence, seq_index) {
-                    return true;
-                }
-            }
-        }
-
-        false
     }
 }
 
@@ -128,11 +127,14 @@ mod tests {
         // Should find exact match
         assert!(trie.contains(&["A", "B", "C"]));
 
-        // Should find subsequences
+        // Should find valid prefixes
         assert!(trie.contains(&["A"]));
         assert!(trie.contains(&["A", "B"]));
-        assert!(trie.contains(&["A", "C"]));
-        assert!(trie.contains(&["B", "C"]));
+
+        // Should not find non-prefix subsequences (cannot skip elements)
+        assert!(!trie.contains(&["A", "C"]));
+        assert!(!trie.contains(&["B", "C"]));
+        assert!(!trie.contains(&["B"]));
 
         // Should not find non-subsequences
         assert!(!trie.contains(&["C", "A"]));
@@ -150,13 +152,15 @@ mod tests {
 
         let trie = SubSequenceTrie::from_sequences(sequences);
 
-        // Should find sequences from first branch
+        // Should find prefixes from first branch
         assert!(trie.contains(&["A", "B"]));
-        assert!(trie.contains(&["B", "C"]));
+        assert!(trie.contains(&["A", "B", "C"]));
+        assert!(!trie.contains(&["B", "C"]));
 
-        // Should find sequences from second branch
+        // Should find prefixes from second branch
         assert!(trie.contains(&["A", "D"]));
-        assert!(trie.contains(&["D", "E"]));
+        assert!(trie.contains(&["A", "D", "E"]));
+        assert!(!trie.contains(&["D", "E"]));
 
         // Should find sequences from third branch
         assert!(trie.contains(&["X", "Y"]));
@@ -214,12 +218,14 @@ mod tests {
         assert!(trie.contains(&["A"]));
         assert!(trie.contains(&["A", "B"]));
 
-        // Should find branch-specific subsequences
-        assert!(trie.contains(&["B", "C"]));
-        assert!(trie.contains(&["B", "D"]));
+        // Should find branch-specific sequences
+        assert!(trie.contains(&["A", "B", "C"]));
+        assert!(trie.contains(&["A", "B", "D"]));
         assert!(trie.contains(&["A", "E"]));
 
-        // Should not find cross-branch subsequences
+        // Should not find non-prefix subsequences or cross-branch subsequences
+        assert!(!trie.contains(&["B", "C"]));
+        assert!(!trie.contains(&["B", "D"]));
         assert!(!trie.contains(&["C", "D"]));
         assert!(!trie.contains(&["E", "C"]));
     }
@@ -253,11 +259,16 @@ mod tests {
             "F".to_string(),
         ]);
 
-        // Test various subsequence lengths
+        // Test various prefix lengths
         assert!(trie.contains(&["A"]));
-        assert!(trie.contains(&["A", "C"]));
-        assert!(trie.contains(&["A", "C", "E"]));
-        assert!(trie.contains(&["B", "D", "F"]));
+        assert!(trie.contains(&["A", "B"]));
+        assert!(trie.contains(&["A", "B", "C", "D"]));
+        assert!(trie.contains(&["A", "B", "C", "D", "E", "F"]));
+
+        // Non-prefix subsequences should not match
+        assert!(!trie.contains(&["A", "C"]));
+        assert!(!trie.contains(&["A", "C", "E"]));
+        assert!(!trie.contains(&["B", "D", "F"]));
 
         // Test order preservation
         assert!(!trie.contains(&["C", "A"]));
@@ -288,8 +299,8 @@ mod tests {
 
     #[test]
     fn test_nested_sequences_still_work_correctly() {
-        // This test demonstrates that subsequence matching works correctly
-        // even when one sequence is a prefix of another
+        // This test demonstrates that prefix matching works correctly
+        // when one sequence is a prefix of another
         let sequences = vec![
             vec!["A".to_string(), "B".to_string()], // Short sequence
             vec!["A".to_string(), "B".to_string(), "C".to_string()], // Extended sequence
@@ -297,15 +308,15 @@ mod tests {
 
         let trie = SubSequenceTrie::from_sequences(sequences);
 
-        // Both sequences should be found as subsequences
+        // Both sequences should be found
         assert!(trie.contains(&["A", "B"]));
         assert!(trie.contains(&["A", "B", "C"]));
 
-        // And their sub-parts should also be found
+        // Prefixes should be found, non-prefixes should not
         assert!(trie.contains(&["A"]));
-        assert!(trie.contains(&["B"]));
-        assert!(trie.contains(&["A", "C"]));
-        assert!(trie.contains(&["B", "C"]));
+        assert!(!trie.contains(&["B"]));
+        assert!(!trie.contains(&["A", "C"]));
+        assert!(!trie.contains(&["B", "C"]));
     }
 
     #[test]
@@ -319,18 +330,19 @@ mod tests {
 
         // Test with &[String] (keeping these to demonstrate the generic capability)
         assert!(trie.contains(&["Hello".to_string(), "World".to_string()]));
-        assert!(trie.contains(&["Hello".to_string(), "Test".to_string()]));
+        assert!(trie.contains(&["Hello".to_string(), "World".to_string(), "Test".to_string()]));
 
         // Test with &[&str]
         assert!(trie.contains(&["Hello", "World"]));
-        assert!(trie.contains(&["Hello", "Test"]));
-        assert!(trie.contains(&["World", "Test"]));
+        assert!(trie.contains(&["Hello", "World", "Test"]));
+        assert!(!trie.contains(&["Hello", "Test"]));
+        assert!(!trie.contains(&["World", "Test"]));
 
         // Test mixed scenarios
         let string_vec = vec!["Hello".to_string()];
         let str_slice = ["World"];
         assert!(trie.contains(&string_vec));
-        assert!(trie.contains(&str_slice));
+        assert!(!trie.contains(&str_slice));
 
         // Test non-matches with both types
         assert!(!trie.contains(&["World", "Hello"])); // Wrong order

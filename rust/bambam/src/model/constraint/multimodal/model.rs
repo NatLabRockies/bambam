@@ -17,6 +17,7 @@ pub struct MultimodalConstraintModel {
     pub engine: Arc<MultimodalConstraintEngine>,
     pub constraints: Vec<Constraint>,
     pub max_trip_legs: NonZeroU64,
+    pub mode_enabled: bool,
 }
 
 impl MultimodalConstraintModel {
@@ -25,10 +26,24 @@ impl MultimodalConstraintModel {
         constraints: Vec<Constraint>,
         max_trip_legs: NonZeroU64,
     ) -> Self {
+        let mode_enabled = constraints
+            .iter()
+            .all(|c| c.allows_mode(&engine.mode, max_trip_legs));
+        // Filter out static mode-membership constraints (`AllowedModes`) that are already
+        // satisfied for `engine.mode` so `valid_frontier` doesn't re-check them on every edge.
+        let active_constraints = if mode_enabled {
+            constraints
+                .into_iter()
+                .filter(|c| !matches!(c, Constraint::AllowedModes(_)))
+                .collect()
+        } else {
+            Vec::new()
+        };
         Self {
             engine,
-            constraints,
+            constraints: active_constraints,
             max_trip_legs,
+            mode_enabled,
         }
     }
 
@@ -69,6 +84,9 @@ impl ConstraintModel for MultimodalConstraintModel {
     }
 
     fn valid_edge(&self, edge: &Edge) -> Result<bool, ConstraintModelError> {
+        if !self.mode_enabled {
+            return Ok(false);
+        }
         for constraint in self.constraints.iter() {
             if !constraint.valid_edge(&self.engine.mode, edge)? {
                 return Ok(false);
@@ -90,6 +108,10 @@ fn validate_frontier(
     state_model: &StateModel,
     model: &MultimodalConstraintModel,
 ) -> Result<bool, ConstraintModelError> {
+    if !model.mode_enabled {
+        return Ok(false);
+    }
+
     // if adding this edge would exceed max_trip_legs, we can skip running the constraints
     // and directly reject this edge.
     let valid_leg_count = state_ops::appending_edge_mode_is_valid(
@@ -139,6 +161,10 @@ fn evaluate_multimodal_constraints(
     state_model: &StateModel,
     model: &MultimodalConstraintModel,
 ) -> Result<bool, ConstraintModelError> {
+    if !model.mode_enabled {
+        return Ok(false);
+    }
+
     // if adding this edge would exceed max_trip_legs, we can skip running the constraints
     // and directly reject this edge.
     let valid_leg_count = state_ops::appending_edge_mode_is_valid(
@@ -712,7 +738,7 @@ mod test {
         let max_trip_legs = NonZeroU64::new(5).unwrap();
         let (mam, mfm, state_model, mut state) = test_setup(
             vec![mode_constraint],
-            "walk",
+            "bike",
             &["walk", "bike", "transit"],
             max_trip_legs,
         );
@@ -730,6 +756,192 @@ mod test {
         let is_valid =
             validate_frontier(&bike_edge, &state, &state_model, &mfm).expect("test failed");
         assert!(is_valid);
+    }
+
+    #[test]
+    fn test_exact_sequences_rejects_skipped_prefix() {
+        // With sequence ["walk", "drive", "walk"], starting directly with "drive" must be rejected
+        let mut trie = SubSequenceTrie::new();
+        trie.insert_sequence(vec![
+            "walk".to_string(),
+            "drive".to_string(),
+            "walk".to_string(),
+        ]);
+        let mode_constraint = Constraint::ExactSequences(trie);
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
+        let (_mam, mfm, state_model, state) = test_setup(
+            vec![mode_constraint],
+            "drive",
+            &["walk", "drive"],
+            max_trip_legs,
+        );
+
+        let drive_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(1000.0));
+        let is_valid =
+            validate_frontier(&drive_edge, &state, &state_model, &mfm).expect("test failed");
+        assert!(!is_valid);
+    }
+
+    #[test]
+    fn test_mode_leg_min_time_limit_on_mode_switch() {
+        use crate::model::constraint::multimodal::{
+            constraint_config::ModeLegTimeConstraint, TimeConstraint, TripLegConstraint,
+        };
+        use routee_compass_core::model::unit::TimeUnit;
+        use uom::si::f64::Time;
+
+        let min_drive = ModeLegTimeConstraint {
+            leg: TripLegConstraint::Any,
+            constraint: TimeConstraint::new(
+                Some(Time::new::<uom::si::time::minute>(5.0)),
+                None,
+                TimeUnit::Minutes,
+            ),
+        };
+        let constraint = Constraint::ModeLegTimeLimit {
+            mode_leg_time_limit: HashMap::from([("drive".to_string(), min_drive)]),
+        };
+        let max_trip_legs = NonZeroU64::new(3).unwrap();
+
+        // 1. Switching from walk (after 1 min) into drive should be allowed
+        let (drive_mtm, drive_mfm, state_model, mut state) =
+            test_setup(vec![constraint], "drive", &["walk", "drive"], max_trip_legs);
+        inject_trip_legs(
+            &["walk"],
+            &mut state,
+            &state_model,
+            &drive_mtm.mode_enumeration,
+            max_trip_legs,
+        );
+        state_model
+            .set_time(
+                &mut state,
+                &bambam_core::model::state::fieldname::leg_time_fieldname(0),
+                &Time::new::<uom::si::time::minute>(1.0),
+            )
+            .unwrap();
+        let drive_edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(500.0));
+        assert!(validate_frontier(&drive_edge, &state, &state_model, &drive_mfm).unwrap());
+
+        // 2. Switching from drive (after 2 min < 5 min) into walk should be rejected
+        let min_drive_2 = ModeLegTimeConstraint {
+            leg: TripLegConstraint::Any,
+            constraint: TimeConstraint::new(
+                Some(Time::new::<uom::si::time::minute>(5.0)),
+                None,
+                TimeUnit::Minutes,
+            ),
+        };
+        let constraint_2 = Constraint::ModeLegTimeLimit {
+            mode_leg_time_limit: HashMap::from([("drive".to_string(), min_drive_2)]),
+        };
+        let (walk_mtm, walk_mfm, state_model, mut state2) = test_setup(
+            vec![constraint_2],
+            "walk",
+            &["walk", "drive"],
+            max_trip_legs,
+        );
+        inject_trip_legs(
+            &["walk", "drive"],
+            &mut state2,
+            &state_model,
+            &walk_mtm.mode_enumeration,
+            max_trip_legs,
+        );
+        state_model
+            .set_time(
+                &mut state2,
+                &bambam_core::model::state::fieldname::leg_time_fieldname(1),
+                &Time::new::<uom::si::time::minute>(2.0),
+            )
+            .unwrap();
+        let walk_edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(100.0));
+        assert!(!validate_frontier(&walk_edge, &state2, &state_model, &walk_mfm).unwrap());
+
+        // 3. Switching from drive (after 6 min >= 5 min) into walk should be allowed
+        state_model
+            .set_time(
+                &mut state2,
+                &bambam_core::model::state::fieldname::leg_time_fieldname(1),
+                &Time::new::<uom::si::time::minute>(6.0),
+            )
+            .unwrap();
+        assert!(validate_frontier(&walk_edge, &state2, &state_model, &walk_mfm).unwrap());
+    }
+
+    #[test]
+    fn test_flattened_deserialization_and_build_validation() {
+        use crate::model::constraint::multimodal::MultimodalConstraintModelQuery;
+        use bambam_core::model::state::CategoricalMapping;
+        use serde_json::json;
+
+        let mode_to_state = CategoricalMapping::new(&[
+            "walk".to_string(),
+            "bike".to_string(),
+            "drive".to_string(),
+            "transit".to_string(),
+        ])
+        .unwrap();
+
+        // 1. Valid flattened syntax with combined min + max on a single leg constraint
+        let valid_query_json = json!({
+            "max_trip_legs": 3,
+            "constraints": [
+                { "type": "time_limit", "max": 40.0, "unit": "minutes" },
+                { "type": "mode_leg_distance_limit", "values": { "walk": { "max": 0.25, "unit": "miles" } } },
+                { "type": "mode_leg_time_limit", "values": { "drive": { "min": 5.0, "max": 35.0, "unit": "minutes" } } },
+                { "type": "exact_sequences", "values": [["drive", "walk"], ["walk", "drive", "walk"]] }
+            ]
+        });
+        let query: MultimodalConstraintModelQuery =
+            serde_json::from_value(valid_query_json).expect("should deserialize flattened syntax");
+        assert!(query.build_constraints(&mode_to_state).is_ok());
+
+        // 2. Reject exact_sequences longer than max_trip_legs
+        let seq_too_long_json = json!({
+            "max_trip_legs": 2,
+            "constraints": [
+                { "type": "exact_sequences", "values": [["walk", "drive", "walk"]] }
+            ]
+        });
+        let query_too_long: MultimodalConstraintModelQuery =
+            serde_json::from_value(seq_too_long_json).unwrap();
+        assert!(query_too_long.build_constraints(&mode_to_state).is_err());
+
+        // 3. Reject unknown travel mode
+        let unknown_mode_json = json!({
+            "max_trip_legs": 3,
+            "constraints": [
+                { "type": "allowed_modes", "values": ["walk", "spaceship"] }
+            ]
+        });
+        let query_unknown_mode: MultimodalConstraintModelQuery =
+            serde_json::from_value(unknown_mode_json).unwrap();
+        assert!(query_unknown_mode
+            .build_constraints(&mode_to_state)
+            .is_err());
+
+        // 4. Reject min > max
+        let inverted_bounds_json = json!({
+            "max_trip_legs": 3,
+            "constraints": [
+                { "type": "mode_leg_time_limit", "values": { "drive": { "min": 20.0, "max": 5.0, "unit": "minutes" } } }
+            ]
+        });
+        // 5. Inline `mode = "..."` and `leg = "first"` shorthand + inferred `max_trip_legs`
+        let shorthand_query_json = json!({
+            "constraints": [
+                { "type": "time_limit", "max": 40.0, "unit": "minutes" },
+                { "type": "mode_leg_distance_limit", "mode": "walk", "leg": "first", "max": 0.5, "unit": "kilometers" },
+                { "type": "mode_time_limit", "mode": "walk", "max": 10.0, "unit": "minutes" },
+                { "type": "exact_sequences", "values": [["drive"], ["walk", "drive"]] }
+            ]
+        });
+        let shorthand_query: MultimodalConstraintModelQuery =
+            serde_json::from_value(shorthand_query_json)
+                .expect("should deserialize mode/leg shorthand");
+        assert_eq!(shorthand_query.resolved_max_trip_legs().get(), 2);
+        assert!(shorthand_query.build_constraints(&mode_to_state).is_ok());
     }
 
     #[test]
@@ -867,5 +1079,40 @@ mod test {
         let edge = Edge::new(0, 0, 0, 1, Length::new::<uom::si::length::meter>(100.0));
         assert!(walk_mfm.valid_edge(&edge).expect("test failed"));
         assert!(!drive_mfm.valid_edge(&edge).expect("test failed"));
+    }
+
+    #[test]
+    fn test_mode_disabled_short_circuits_at_build_time() {
+        let max_trip_legs = NonZeroU64::new(2).unwrap();
+
+        // 1. Disabled via AllowedModes
+        let allowed = Constraint::AllowedModes(HashSet::from(["walk".to_string()]));
+        let (_, drive_mfm, state_model, state) =
+            test_setup(vec![allowed], "drive", &["walk", "drive"], max_trip_legs);
+        assert!(!drive_mfm.mode_enabled);
+        assert!(drive_mfm.constraints.is_empty());
+
+        let edge = Edge::new(1, 0, 0, 1, Length::new::<uom::si::length::meter>(100.0));
+        assert!(!drive_mfm.valid_edge(&edge).unwrap());
+        assert!(!validate_frontier(&edge, &state, &state_model, &drive_mfm).unwrap());
+
+        // 2. Disabled via ExactSequences (mode not in sequences within max_trip_legs)
+        let mut trie = SubSequenceTrie::new();
+        trie.insert_sequence(vec![
+            "walk".to_string(),
+            "transit".to_string(),
+            "bike".to_string(),
+        ]);
+        let seq_constraint = Constraint::ExactSequences(trie);
+        // max_trip_legs = 2 means leg 3 ("bike") can never be reached
+        let (_, bike_mfm, state_model, state) = test_setup(
+            vec![seq_constraint],
+            "bike",
+            &["walk", "transit", "bike"],
+            max_trip_legs,
+        );
+        assert!(!bike_mfm.mode_enabled);
+        assert!(!bike_mfm.valid_edge(&edge).unwrap());
+        assert!(!validate_frontier(&edge, &state, &state_model, &bike_mfm).unwrap());
     }
 }

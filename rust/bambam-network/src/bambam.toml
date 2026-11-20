@@ -109,44 +109,36 @@ acs_categories = ["B01001_001E"]
 # different modal constraints in each search and a shared overall
 # time limit of 40 minutes.
 [[plugin.input_plugins]]
-type = "inject"
-format = "key_value"
-write_mode = "overwrite"
-key = "grid_search"
-[[plugin.input_plugins.value._modes]]
-trip_mode = "walk"
-constraints = [
-    { type = "time_limit", limit = 40.0, unit = "minutes" },
-    { type = "allowed_modes", values = ["walk"]}
-]
-max_trip_legs = 1
-[[plugin.input_plugins.value._modes]]
-trip_mode = "bike"
-constraints = [
-    { type = "time_limit", limit = 40.0, unit = "minutes" },
-    { type = "mode_time_limit", values = { walk = { limit = 10.0, unit = "minutes" }}},
-    { type = "allowed_modes", values = ["walk", "bike"]}
-]
-max_trip_legs = 3
-[[plugin.input_plugins.value._modes]]
-trip_mode = "drive"
-constraints = [
-    { type = "time_limit", limit = 40.0, unit = "minutes" },
-    { type = "mode_leg_distance_limit", values.walk = { leg.type = "first", constraint = { limit = 0.5, unit = "miles" }}},
-    { type = "mode_leg_distance_limit", values.walk = { leg.type = "last", constraint = { limit = 0.5, unit = "miles" }}},
-    { type = "allowed_modes", values = ["walk", "drive"]}
-]
-max_trip_legs = 3
+type = "trip_modes"
 
-[[plugin.input_plugins]]
-type = "inject"
-format = "key_value"
-write_mode = "overwrite"
-key = "max_trip_legs"
-value = 3
+[plugin.input_plugins.defaults]
+constraints = [
+    { type = "time_limit", max = 40.0, unit = "minutes" },
+]
 
-[[plugin.input_plugins]]
-type = "grid_search"
+[plugin.input_plugins.modes.walk]
+constraints = [
+    { type = "allowed_modes", values = ["walk"] },
+]
+
+[plugin.input_plugins.modes.bike]
+constraints = [
+    { type = "allowed_modes", values = ["bike"] },
+]
+
+[plugin.input_plugins.modes.drive]
+constraints = [
+    { type = "mode_leg_distance_limit", mode = "walk", leg = "first", max = 0.5, unit = "kilometers" },
+    { type = "exact_sequences", values = [["drive"], ["walk", "drive"]] },
+]
+
+# [plugin.input_plugins.modes.transit]
+# max_trip_legs = 4
+# constraints = [
+#     { type = "mode_time_limit", mode = "walk", max = 10.0, unit = "minutes" },
+#     { type = "mode_leg_time_limit", mode = "transit", min = 3.0, unit = "minutes" },
+#     { type = "allowed_modes", values = ["walk", "transit"] },
+# ]
 
 [[plugin.output_plugins]]
 type = "traversal"
@@ -257,7 +249,7 @@ CNS20 = ["jobs"] # 92 (Public Administration)
 
 [system]
 parallelism = 8
-response_persistence_policy = "persist_response_in_memory"
+response_persistence_policy = "discard_response_from_memory"
 
 [system.response_output_policy]
 type = "combined"

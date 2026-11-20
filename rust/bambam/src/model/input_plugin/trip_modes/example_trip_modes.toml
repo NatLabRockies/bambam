@@ -1,0 +1,36 @@
+type = "trip_modes"
+
+[defaults]
+multimodal_label = false
+constraints = [
+    { type = "time_limit", max = 40.0, unit = "minutes" },
+]
+
+[modes.walk]
+intensity = { energy = 0.0, cost = 0.0 }
+constraints = [
+    { type = "allowed_modes", values = ["walk"] },
+]
+
+[modes.bike]
+intensity = { energy = 0.0, cost = 0.0 }
+constraints = [
+    { type = "allowed_modes", values = ["bike"] },
+]
+
+[modes.drive]
+intensity = { energy = 0.9, cost = 0.48 }
+constraints = [
+    { type = "mode_leg_distance_limit", mode = "walk", leg = "first", max = 0.5, unit = "kilometers" },
+    { type = "exact_sequences", values = [["drive"], ["walk", "drive"]] },
+]
+
+[modes.transit]
+multimodal_label = true
+max_trip_legs = 4
+intensity = { energy = 0.65, cost = 0.855 }
+constraints = [
+    { type = "mode_time_limit", mode = "walk", max = 10.0, unit = "minutes" },
+    { type = "mode_leg_time_limit", mode = "transit", min = 3.0, unit = "minutes" },
+    { type = "allowed_modes", values = ["walk", "transit"] },
+]

@@ -54,35 +54,35 @@ impl TraversalModel for MultimodalTraversalModel {
             variable::active_leg_variable_config(),
         ));
         let leg_mode = (0..self.max_trip_legs.get()).map(|idx| {
-            let name = fieldname::leg_mode_fieldname(idx);
+            let name = fieldname::leg_mode_fieldname(idx).into_owned();
             let config = variable::leg_mode_variable_config();
             (name, config)
         });
 
         let leg_dist = (0..self.max_trip_legs.get()).map(|idx| {
-            let name = fieldname::leg_distance_fieldname(idx);
+            let name = fieldname::leg_distance_fieldname(idx).into_owned();
             let config = variable::multimodal_distance_variable_config(None);
             (name, config)
         });
         let leg_time = (0..self.max_trip_legs.get()).map(|idx| {
-            let name = fieldname::leg_time_fieldname(idx);
+            let name = fieldname::leg_time_fieldname(idx).into_owned();
             let config = variable::multimodal_time_variable_config(None);
             (name, config)
         });
         let leg_route_id = (0..self.max_trip_legs.get()).map(|idx| {
-            let name = fieldname::leg_route_id_fieldname(idx);
+            let name = fieldname::leg_route_id_fieldname(idx).into_owned();
             let config = variable::route_id_variable_config();
             (name, config)
         });
 
         let mode_dist = self.mode_enumeration.get_categories().iter().map(|mode| {
-            let name = fieldname::mode_distance_fieldname(mode);
+            let name = fieldname::mode_distance_fieldname(mode).into_owned();
             let config = variable::multimodal_distance_variable_config(None);
             (name, config)
         });
 
         let mode_time = self.mode_enumeration.get_categories().iter().map(|mode| {
-            let name = fieldname::mode_time_fieldname(mode);
+            let name = fieldname::mode_time_fieldname(mode).into_owned();
             let config = variable::multimodal_time_variable_config(None);
             (name, config)
         });

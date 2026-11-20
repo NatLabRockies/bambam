@@ -243,19 +243,19 @@ pub fn get_mode_label_sequence(
 
 /// retrieves the sequence of modes stored on this state. stops when an unset
 /// mode label is encountered.
-pub fn get_mode_sequence(
+pub fn get_mode_sequence<'a>(
     state: &[StateVariable],
     state_model: &StateModel,
     max_trip_legs: NonZeroU64,
-    mode_to_state: &CategoricalStateMapping,
-) -> Result<Vec<String>, StateModelError> {
-    let mut modes: Vec<String> = vec![];
+    mode_to_state: &'a CategoricalStateMapping,
+) -> Result<Vec<&'a str>, StateModelError> {
+    let mut modes: Vec<&'a str> = vec![];
     let mut leg_idx = 0;
 
     while contains_leg(state, leg_idx, state_model, max_trip_legs)? {
         let mode =
             get_existing_leg_mode(state, leg_idx, state_model, max_trip_legs, mode_to_state)?;
-        modes.push(mode.to_string());
+        modes.push(mode);
         leg_idx += 1;
     }
 
