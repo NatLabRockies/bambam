@@ -297,7 +297,7 @@ fn validate_mode_sequences<'a>(
     const STACK_CAP: usize = 16;
     let max_legs = max_trip_legs.get() as usize;
 
-    if max_legs + 1 <= STACK_CAP {
+    if max_legs < STACK_CAP {
         let mut buf: [&'a str; STACK_CAP] = [""; STACK_CAP];
         let mut len = 0usize;
         let mut leg_idx = 0u64;
