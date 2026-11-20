@@ -249,7 +249,7 @@ CNS20 = ["jobs"] # 92 (Public Administration)
 
 [system]
 parallelism = 8
-response_persistence_policy = "persist_response_in_memory"
+response_persistence_policy = "discard_response_from_memory"
 
 [system.response_output_policy]
 type = "combined"
