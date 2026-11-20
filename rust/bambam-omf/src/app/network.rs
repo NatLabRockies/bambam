@@ -1,14 +1,11 @@
-use std::{collections::HashSet, path::Path, sync::Arc};
+use std::path::Path;
 
 pub use bambam_network::NetworkEdgeListConfiguration;
-use geo::{BoundingRect, Geometry, Intersects};
-use rayon::prelude::*;
 
 use crate::{
-    app::CliBoundingBox,
     collection::{
-        ObjectStoreSource, OvertureMapsCollectionError, OvertureMapsCollectorConfig,
-        ReleaseVersion, TransportationCollection,
+        Bbox, ObjectStoreSource, OvertureMapsCollectionError, OvertureMapsCollectorConfig,
+        OvertureSpatialFilter, ReleaseVersion, RowFilterConfig, TransportationCollection,
     },
     graph::{
         island_detection::IslandDetectionAlgorithm, NetworkGraphSource, NetworkGraphStats,
@@ -20,23 +17,22 @@ use crate::{
 /// runs an OMF network import using the provided configuration.
 #[allow(clippy::too_many_arguments)]
 pub fn run(
-    bbox: Option<&CliBoundingBox>,
+    spatial_filter: Option<&OvertureSpatialFilter>,
     modes: &[NetworkEdgeListConfiguration],
     output_directory: &Path,
     local_source: Option<&Path>,
     island_detection_configuration: Option<IslandDetectionAlgorithm>,
-    extent: Option<Geometry<f32>>,
     infrastructure_match_distance_meters: Option<f64>,
 ) -> Result<(), OvertureMapsCollectionError> {
     let collection: TransportationCollection = match local_source {
         Some(src_path) => read_local(src_path),
-        None => run_collector(bbox),
+        None => run_collector(spatial_filter.map(|f| f.bbox())),
     }?;
 
     util::fs::create_dirs(output_directory)?;
 
-    let collection = if let Some(ext_geom) = extent {
-        apply_extent_to_collection(collection, ext_geom)
+    let collection = if let Some(filter) = spatial_filter {
+        filter.filter_transportation_collection(collection)
     } else {
         collection
     };
@@ -65,7 +61,8 @@ pub fn run(
     };
     let study_region = output_directory.to_string_lossy();
     let stats = NetworkGraphStats::try_from(&vectorized_graph)?;
-    let source = NetworkGraphSource::new(&release, &study_region, bbox);
+    let cli_bbox = spatial_filter.map(|f| f.cli_bbox());
+    let source = NetworkGraphSource::new(&release, &study_region, cli_bbox.as_ref());
     let summary = NetworkGraphSummary { source, stats };
 
     vectorized_graph.write_compass(&summary, output_directory, true)?;
@@ -79,7 +76,7 @@ fn read_local(path: &Path) -> Result<TransportationCollection, OvertureMapsColle
 
 /// retrieve a TransportationCollection from a URL.
 fn run_collector(
-    bbox_arg: Option<&CliBoundingBox>,
+    bbox_arg: Option<Bbox>,
 ) -> Result<TransportationCollection, OvertureMapsCollectionError> {
     let object_store = ObjectStoreSource::AmazonS3;
     let rg_chunk_size = 4;
@@ -92,7 +89,7 @@ fn run_collector(
     .build()?;
     let release = ReleaseVersion::Latest;
     let bbox = bbox_arg.ok_or_else(|| {
-        let msg = String::from("must provide bbox argument for download");
+        let msg = String::from("must provide spatial filter / extent for download");
         OvertureMapsCollectionError::InvalidUserInput(msg)
     })?;
     log::info!(
@@ -101,81 +98,12 @@ fn run_collector(
         rg_chunk_size {rg_chunk_size}
         file_concurrency_limit {file_concurrency_limit}
         release {release}
-        (xmin,xmax,ymin,ymax): {bbox}"
+        bbox: {bbox:?}"
     );
 
-    TransportationCollection::try_from_collector(collector, release, Some(bbox.into()))
-}
-
-/// filters segments and connectors in a transportation collection
-/// using an arbitrary extent with the `intersect` predicate over the segments collection.
-/// a second pass is performed over the connectors collection to reomve all connectors not referenced
-/// by the remaining segments.
-/// empty geometries are ignored (filtered out).
-fn apply_extent_to_collection(
-    collection: TransportationCollection,
-    extent: Geometry<f32>,
-) -> TransportationCollection {
-    log::info!("Started applying extent to segments");
-    let extent_arc = Arc::new(extent);
-    let filtered_segments: Vec<crate::collection::TransportationSegmentRecord> = collection
-        .segments
-        .into_par_iter()
-        .filter(|segment| match segment.get_linestring() {
-            Ok(ls) => {
-                let Some(bbox) = ls.bounding_rect() else {
-                    return false;
-                };
-
-                // Short-circuit condition for bbox
-                extent_arc.intersects(&bbox) && extent_arc.intersects(ls)
-            }
-            Err(_) => false,
-        })
-        .collect();
-
-    log::info!("Collecting all connector IDs");
-    let connector_ids = filtered_segments
-        .par_iter()
-        .flat_map(|segment| {
-            segment
-                .connectors
-                .as_ref()
-                .unwrap_or(&vec![])
-                .iter()
-                .map(|con_ref| con_ref.connector_id.clone())
-                .collect::<Vec<String>>()
-        })
-        .collect::<HashSet<String>>();
-
-    let arc_ids = Arc::new(connector_ids);
-
-    log::info!("Started applying extent to connectors");
-    let filtered_connectors = collection
-        .connectors
-        .into_par_iter()
-        .filter(|connector| arc_ids.contains(&connector.id))
-        .collect();
-
-    log::info!("Started applying extent to infrastructure");
-    let filtered_infrastructure = collection
-        .infrastructure
-        .into_par_iter()
-        .filter(|infra| match infra.get_geometry() {
-            Some(geom) => {
-                let Some(bbox) = geom.bounding_rect() else {
-                    return false;
-                };
-                extent_arc.intersects(&bbox) && extent_arc.intersects(geom)
-            }
-            None => false,
-        })
-        .collect();
-
-    TransportationCollection {
-        release: collection.release.clone(),
-        connectors: filtered_connectors,
-        segments: filtered_segments,
-        infrastructure: filtered_infrastructure,
-    }
+    TransportationCollection::try_from_collector(
+        collector,
+        release,
+        Some(RowFilterConfig::from(bbox)),
+    )
 }

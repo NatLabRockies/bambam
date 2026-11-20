@@ -1,18 +1,38 @@
 use crate::model::output_plugin::opportunity::{GeoActivityMask, OpportunityDataset};
 use bambam_omf::collection::{
-    Bbox, BuildingsRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
-    PlacesRecord,
+    BuildingsRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
+    OvertureSpatialFilter, PlacesRecord,
 };
 use bambam_omf::collection::{
     OvertureMapsCollectorConfig, ReleaseVersion, RowFilterConfig, TaxonomyModel,
     TaxonomyModelBuilder,
 };
-use geo::{centroid, Centroid, Geometry};
+use geo::{Centroid, Geometry};
 use rayon::prelude::*;
 use routee_compass_core::util::geo::PolygonalRTree;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
+
+/// Validates that when `buildings_activity_mappings` is provided, its set of activity keys
+/// matches `places_activity_mappings` exactly.
+pub fn validate_overture_activity_keys(
+    places_activity_mappings: &HashMap<String, Vec<String>>,
+    buildings_activity_mappings: Option<&HashMap<String, Vec<String>>>,
+) -> Result<(), OvertureMapsCollectionError> {
+    if let Some(buildings_map) = buildings_activity_mappings {
+        let places_keys: BTreeSet<&str> = places_activity_mappings
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let buildings_keys: BTreeSet<&str> = buildings_map.keys().map(String::as_str).collect();
+        if places_keys != buildings_keys {
+            return Err(OvertureMapsCollectionError::InvalidUserInput(format!(
+                "places_activity_mapping and buildings_activity_mapping must define the same activity keys; places={places_keys:?}, buildings={buildings_keys:?}"
+            )));
+        }
+    }
+    Ok(())
+}
 
 /// Model object that encapsulates the logic of
 /// retrieving Places and Buildings data according
@@ -26,6 +46,7 @@ use std::sync::Arc;
 pub struct OvertureOpportunityCollectionModel {
     collector: OvertureMapsCollector,
     release_version: ReleaseVersion,
+    spatial_filter: OvertureSpatialFilter,
     places_row_filter_config: Option<RowFilterConfig>,
     buildings_row_filter_config: Option<RowFilterConfig>,
     places_taxonomy_model: Arc<TaxonomyModel>,
@@ -39,7 +60,7 @@ impl OvertureOpportunityCollectionModel {
     ///
     /// * collector_config - Configuration of the [`bambam_overturemaps::collection::OvertureMapsCollector`] to be used
     /// * release_version - OvertureMaps Release version (<https://docs.overturemaps.org/release/>),
-    /// * bbox_boundary - Bounding box boundary for query,
+    /// * spatial_filter - Two-stage [`OvertureSpatialFilter`] providing a Stage 1 `Bbox` for Parquet pushdown and Stage 2 geometry refinement,
     /// * places_activity_mappings - Mapping from MEP activity types to OvertureMaps categories for places dataset,
     /// * buildings_activity_mappings - Mapping from MEP activity types to OvertureMaps classes for buildings dataset. If `None`, buildings data is not used.
     ///
@@ -49,15 +70,20 @@ impl OvertureOpportunityCollectionModel {
     pub fn new(
         collector_config: OvertureMapsCollectorConfig,
         release_version: ReleaseVersion,
-        bbox_boundary: Bbox,
+        spatial_filter: OvertureSpatialFilter,
         places_activity_mappings: HashMap<String, Vec<String>>,
         buildings_activity_mappings: Option<HashMap<String, Vec<String>>>,
     ) -> Result<Self, OvertureMapsCollectionError> {
+        validate_overture_activity_keys(
+            &places_activity_mappings,
+            buildings_activity_mappings.as_ref(),
+        )?;
+        let bbox = spatial_filter.bbox();
         let taxonomy_model =
             Arc::new(TaxonomyModelBuilder::new(places_activity_mappings.clone(), None).build()?);
         let places_row_filter_config = RowFilterConfig::Combined {
             filters: vec![
-                Box::new(RowFilterConfig::from(bbox_boundary)),
+                Box::new(RowFilterConfig::from(bbox)),
                 Box::new(RowFilterConfig::from(places_activity_mappings)),
             ],
         };
@@ -66,7 +92,7 @@ impl OvertureOpportunityCollectionModel {
                 .clone()
                 .map(|mappings| RowFilterConfig::Combined {
                     filters: vec![
-                        Box::new(RowFilterConfig::from(bbox_boundary)),
+                        Box::new(RowFilterConfig::from(bbox)),
                         Box::new(RowFilterConfig::HasClassIn {
                             classes: HashSet::from_iter(mappings.values().flatten().cloned()),
                         }),
@@ -76,6 +102,7 @@ impl OvertureOpportunityCollectionModel {
         Ok(Self {
             collector: OvertureMapsCollector::try_from(collector_config)?,
             release_version,
+            spatial_filter,
             places_row_filter_config: Some(places_row_filter_config),
             buildings_row_filter_config,
             places_taxonomy_model: taxonomy_model,
@@ -89,12 +116,21 @@ impl OvertureOpportunityCollectionModel {
         &self,
         activity_types: &[String],
     ) -> Result<OpportunityDataset, OvertureMapsCollectionError> {
+        let release_uri = match self.release_version {
+            ReleaseVersion::Latest => self.collector.get_latest_release()?,
+            ReleaseVersion::Monthly { .. } => self.release_version.to_string(),
+        };
+
         // Collect raw opportunities
-        let mut places_opportunities = self.collect_places_opportunities(activity_types)?;
+        let mut places_opportunities =
+            self.collect_places_opportunities(activity_types, &release_uri)?;
 
         if let Some(building_mappings) = &self.buildings_activity_mappings {
-            let buildings_opportunities =
-                self.collect_building_opportunities(activity_types, building_mappings)?;
+            let buildings_opportunities = self.collect_building_opportunities(
+                activity_types,
+                building_mappings,
+                &release_uri,
+            )?;
 
             // Build RTree for places
             let rtree = PolygonalRTree::new(
@@ -169,15 +205,12 @@ impl OvertureOpportunityCollectionModel {
     fn collect_places_opportunities(
         &self,
         activity_types: &[String],
+        release_uri: &str,
     ) -> Result<GeoActivityMask, OvertureMapsCollectionError> {
-        let uri = match self.release_version {
-            ReleaseVersion::Latest => self.collector.get_latest_release()?,
-            ReleaseVersion::Monthly { .. } => self.release_version.to_string(),
-        };
         let places_records = self
             .collector
             .collect_from_release(
-                &uri,
+                release_uri,
                 &OvertureRecordType::Places,
                 self.places_row_filter_config.clone(),
             )?
@@ -218,20 +251,14 @@ impl OvertureOpportunityCollectionModel {
                 .len()
         );
 
-        // Zip geometries and vectors (Filtering Empty geometries in the process)
-        Ok(mep_geometries
-            .into_iter()
-            .zip(mep_vectors)
-            .filter_map(|(maybe_geometry, vector)| {
-                maybe_geometry.map(|geometry| (geometry, vector))
-            })
-            .collect::<Vec<(Geometry<f32>, Vec<bool>)>>())
+        Ok(self.filter_geometries(mep_geometries, mep_vectors))
     }
 
     fn collect_building_opportunities(
         &self,
         activity_types: &[String],
         buildings_activity_mappings: &HashMap<String, Vec<String>>,
+        release_uri: &str,
     ) -> Result<GeoActivityMask, OvertureMapsCollectionError> {
         // Build the taxonomy model from the mapping by transforming the vectors into HashSets
         let buildings_taxonomy_model = TaxonomyModel::from_mapping(
@@ -244,11 +271,10 @@ impl OvertureOpportunityCollectionModel {
         let arc_buildings_taxonomy = Arc::new(buildings_taxonomy_model);
 
         // Use the collector to retrieve buildings data
-        let uri = self.release_version.to_string();
         let buildings_records = self
             .collector
             .collect_from_release(
-                &uri,
+                release_uri,
                 &OvertureRecordType::Buildings,
                 self.buildings_row_filter_config.clone(),
             )?
@@ -283,14 +309,27 @@ impl OvertureOpportunityCollectionModel {
             .map(|record| record.get_geometry())
             .collect();
 
-        // Zip geometries and vectors (Filtering Empty geometries in the process)
-        Ok(mep_geometries
-            .into_iter()
-            .zip(mep_vectors)
+        Ok(self.filter_geometries(mep_geometries, mep_vectors))
+    }
+
+    /// Zips candidate geometries with their MEP vectors, discarding `None` geometries
+    /// and any geometry that does not pass the Stage 2 [`OvertureSpatialFilter`].
+    fn filter_geometries(
+        &self,
+        geometries: Vec<Option<Geometry<f32>>>,
+        vectors: Vec<Vec<bool>>,
+    ) -> GeoActivityMask {
+        geometries
+            .into_par_iter()
+            .zip(vectors)
             .filter_map(|(maybe_geometry, vector)| {
-                maybe_geometry.map(|geometry| (geometry, vector))
+                maybe_geometry.and_then(|geometry| {
+                    self.spatial_filter
+                        .matches_geometry(&geometry)
+                        .then_some((geometry, vector))
+                })
             })
-            .collect::<Vec<(Geometry<f32>, Vec<bool>)>>())
+            .collect()
     }
 }
 
@@ -319,4 +358,27 @@ fn map_taxonomy_model(
             )
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_overture_activity_keys_rejects_mismatched_keys() {
+        let places = HashMap::from([
+            ("food".to_string(), vec!["restaurant".to_string()]),
+            ("retail".to_string(), vec!["shopping".to_string()]),
+        ]);
+        let matching_buildings = HashMap::from([
+            ("food".to_string(), vec![]),
+            ("retail".to_string(), vec!["commercial".to_string()]),
+        ]);
+        let mismatched_buildings =
+            HashMap::from([("healthcare".to_string(), vec!["medical".to_string()])]);
+
+        assert!(validate_overture_activity_keys(&places, None).is_ok());
+        assert!(validate_overture_activity_keys(&places, Some(&matching_buildings)).is_ok());
+        assert!(validate_overture_activity_keys(&places, Some(&mismatched_buildings)).is_err());
+    }
 }

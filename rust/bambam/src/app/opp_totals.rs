@@ -34,25 +34,60 @@ pub fn run(
     let totals_map = model.opportunity_totals()?;
     let sorted_totals: BTreeMap<String, f64> = totals_map.into_iter().collect();
 
-    let is_json = output_file
+    let is_json = is_json_path(output_file);
+    let serialized = format_opportunity_totals(&sorted_totals, namespace, is_json)?;
+    write_or_print_config_fragment(&serialized, output_file, "opportunity totals")
+}
+
+/// Checks whether an optional output path has a `.json` extension.
+pub fn is_json_path(output_file: Option<&str>) -> bool {
+    output_file
         .and_then(|f| Path::new(f).extension())
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("json"))
-        .unwrap_or(false);
+        .unwrap_or(false)
+}
 
-    let serialized = format_opportunity_totals(&sorted_totals, namespace, is_json)?;
+/// Serializes a configuration fragment [`serde_json::Value`] as pretty JSON or TOML.
+pub fn serialize_config_fragment(
+    value: &serde_json::Value,
+    as_json: bool,
+) -> Result<String, String> {
+    if as_json {
+        serde_json::to_string_pretty(value)
+            .map_err(|e| format!("failed to serialize configuration fragment as JSON: {e}"))
+    } else {
+        toml::to_string_pretty(value)
+            .map_err(|e| format!("failed to serialize configuration fragment as TOML: {e}"))
+    }
+}
 
+/// Writes `serialized` to `output_file` (creating parent directories if needed) or prints it to stdout.
+pub fn write_or_print_config_fragment(
+    serialized: &str,
+    output_file: Option<&str>,
+    description: &str,
+) -> Result<(), String> {
     match output_file {
         Some(path) => {
-            std::fs::write(path, &serialized)
-                .map_err(|e| format!("failed to write opportunity totals to '{path}': {e}"))?;
-            log::info!("wrote opportunity totals to {path}");
+            if let Some(parent) = Path::new(path).parent() {
+                if !parent.as_os_str().is_empty() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        format!(
+                            "failed to create parent directory '{}' for {description}: {e}",
+                            parent.display()
+                        )
+                    })?;
+                }
+            }
+            std::fs::write(path, serialized)
+                .map_err(|e| format!("failed to write {description} to '{path}': {e}"))?;
+            log::info!("wrote {description} to {path}");
         }
         None => {
             print!("{serialized}");
         }
     }
-
     Ok(())
 }
 
@@ -75,13 +110,7 @@ pub fn format_opportunity_totals(
         }),
     };
 
-    if as_json {
-        serde_json::to_string_pretty(&value)
-            .map_err(|e| format!("failed to serialize opportunity totals as JSON: {e}"))
-    } else {
-        toml::to_string_pretty(&value)
-            .map_err(|e| format!("failed to serialize opportunity totals as TOML: {e}"))
-    }
+    serialize_config_fragment(&value, as_json)
 }
 
 #[cfg(test)]

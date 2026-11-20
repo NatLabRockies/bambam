@@ -1,0 +1,11 @@
+type = "file"
+opportunity_input_file = "boulder_co/opportunities.csv.gz"
+activity_column_names = [
+    "entertainment",
+    "food",
+    "healthcare",
+    "jobs",
+    "retail",
+    "services",
+]
+table_orientation = "destination_vertex_oriented"

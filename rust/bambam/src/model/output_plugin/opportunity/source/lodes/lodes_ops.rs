@@ -9,7 +9,35 @@ use bamcensus_lehd::model::{
 use geo::{Geometry, MapCoords};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// Filters a LODES WAC segment-to-activity mapping to retain only targets present in
+/// `activity_types`, removing any [`WacSegment`] with no remaining targets.
+pub fn filter_activity_mapping(
+    activity_mapping: &HashMap<WacSegment, Vec<String>>,
+    activity_types: &[String],
+) -> Result<HashMap<WacSegment, Vec<String>>, String> {
+    let requested: HashSet<&str> = activity_types.iter().map(String::as_str).collect();
+    let filtered: HashMap<WacSegment, Vec<String>> = activity_mapping
+        .iter()
+        .filter_map(|(segment, targets)| {
+            let retained: Vec<String> = targets
+                .iter()
+                .filter(|target| requested.contains(target.as_str()))
+                .cloned()
+                .collect();
+            (!retained.is_empty()).then_some((*segment, retained))
+        })
+        .collect();
+
+    if filtered.is_empty() {
+        return Err(format!(
+            "no LODES WAC segments match the requested activity types: {activity_types:?}"
+        ));
+    }
+
+    Ok(filtered)
+}
 
 /// downloads LODES workplace statistics and applies a WAC segment to activity
 /// type mapping.
@@ -90,4 +118,47 @@ pub fn collect_lodes_opportunities(
         result.push((geometry, out_row));
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_filter_activity_mapping_retains_requested_and_drops_empty_segments() {
+        let mapping = HashMap::from([
+            (WacSegment::CNS01, vec!["jobs".to_string()]),
+            (
+                WacSegment::CNS07,
+                vec!["jobs".to_string(), "retail".to_string()],
+            ),
+            (
+                WacSegment::CNS18,
+                vec!["jobs".to_string(), "food".to_string()],
+            ),
+        ]);
+
+        // Requesting only "jobs" keeps all three segments, stripping "retail" and "food"
+        let jobs_only = filter_activity_mapping(&mapping, &["jobs".to_string()]).unwrap();
+        assert_eq!(jobs_only.len(), 3);
+        assert_eq!(
+            jobs_only.get(&WacSegment::CNS07),
+            Some(&vec!["jobs".to_string()])
+        );
+        assert_eq!(
+            jobs_only.get(&WacSegment::CNS18),
+            Some(&vec!["jobs".to_string()])
+        );
+
+        // Requesting only "retail" keeps only CNS07 with ["retail"] and drops CNS01 and CNS18
+        let retail_only = filter_activity_mapping(&mapping, &["retail".to_string()]).unwrap();
+        assert_eq!(retail_only.len(), 1);
+        assert_eq!(
+            retail_only.get(&WacSegment::CNS07),
+            Some(&vec!["retail".to_string()])
+        );
+
+        // Requesting an unmapped activity returns an error
+        assert!(filter_activity_mapping(&mapping, &["healthcare".to_string()]).is_err());
+    }
 }

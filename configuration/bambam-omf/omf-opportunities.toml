@@ -1,0 +1,26 @@
+# example configuration assigning OMF Buildings/Places to MEP activity categories.
+# for more information, see https://docs.overturemaps.org/guides/places/.
+#
+# for this example, jobs are assumed to be provided via a separate model (LODES).
+#
+[plugin.output_plugins.model.opportunity_source]
+type = "overture"
+release_version = "Latest"
+extent = { type = "bbox", xmin = -124.7844079, xmax = -66.9513812, ymin = 24.7433195, ymax = 49.3457868 }
+collector_config = { "obj_store_type" = "s3" }
+
+[plugin.output_plugins.model.opportunity_source.places_activity_mapping]
+food = ["restaurant", "bar"]
+healthcare = ["health_care"]
+entertainment = ["sports_and_recreation", "arts_and_entertainment"]
+retail = ["shopping"]
+services =  ["education", "financial_service", "animal_or_pet_service", "home_service"]
+# jobs = ["restaurant", "bar", "health_care", "sports_and_recreation", "arts_and_entertainment", "shopping", "education", "financial_service", "animal_or_pet_service", "home_service"]
+
+[plugin.output_plugins.model.opportunity_source.buildings_activity_mapping]
+food = []
+healthcare = ["medical"]
+entertainment = ["entertainment", "civic"]
+retail = ["commercial"]
+services =  ["education", "religion"]
+# jobs = []

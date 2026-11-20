@@ -1,0 +1,30 @@
+type = "lodes"
+study_region = { type = "census", geoids = ["08"] }
+data_granularity = "census_tract"
+edition = "LODES8"
+job_type = "JT00"
+segment = "S000"
+year = 2022
+
+[activity_mapping]
+# see https://lehd.ces.census.gov/data/lodes/LODES8/LODESTechDoc8.0.pdf
+CNS01 = ["jobs"] # 11 (Agriculture, Forestry, Fishing and Hunting)
+CNS02 = ["jobs"] # 21 (Mining, Quarrying, and Oil and Gas Extraction)
+CNS03 = ["jobs"] # 22 (Utilities)
+CNS04 = ["jobs"] # 23 (Construction)
+CNS05 = ["jobs"] # 31-33 (Manufacturing)
+CNS06 = ["jobs"] # 42 (Wholesale Trade)
+CNS07 = ["jobs", "retail"] # 44-45 (Retail Trade)
+CNS08 = ["jobs"] # 48-49 (Transportation and Warehousing)
+CNS09 = ["jobs"] # 51 (Information)
+CNS10 = ["jobs"] # 52 (Finance and Insurance)
+CNS11 = ["jobs"] # 53 (Real Estate and Rental and Leasing)
+CNS12 = ["jobs", "services"] # 54 (Professional, Scientific, and Technical Services)
+CNS13 = ["jobs"] # 55 (Management of Companies and Enterprises)
+CNS14 = ["jobs"] # 56 (Admin/Support/Waste Mgmt/Remediation Services)
+CNS15 = ["jobs"] # 61 (Educational Services)
+CNS16 = ["jobs", "healthcare"] # 62 (Health Care and Social Assistance)
+CNS17 = ["jobs", "entertainment"] # 71 (Arts, Entertainment, and Recreation)
+CNS18 = ["jobs", "food"] # 72 (Accommodation and Food Services)
+CNS19 = ["jobs"] # 81 (Other Services [except Public Administration])
+CNS20 = ["jobs"] # 92 (Public Administration)

@@ -441,16 +441,7 @@ mod tests {
             filter: vec![],
             island_algorithm_config: None,
         }];
-        crate::app::network::run(
-            None,
-            &modes,
-            &out_dir,
-            Some(&tmp_dir),
-            None,
-            None,
-            Some(15.0),
-        )
-        .unwrap();
+        crate::app::network::run(None, &modes, &out_dir, Some(&tmp_dir), None, Some(15.0)).unwrap();
 
         // Raw Parquet files must be retained in out_dir/raw
         assert!(out_dir.join("raw").join("segments.parquet").exists());

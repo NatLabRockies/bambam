@@ -1,5 +1,6 @@
 use super::opportunity_model::OpportunityModel;
 use super::opportunity_source::OpportunitySource;
+use super::OpportunityDataset;
 use bambam_core::model::output_plugin::opportunity::OpportunityOrientation;
 use csv::{ReaderBuilder, StringRecord};
 use flate2::read::GzDecoder;
@@ -147,120 +148,15 @@ impl OpportunityModelConfig {
                 activity_column_names,
                 table_orientation,
             } => {
+                let vertices = load_vertices(vertex_input_file)?;
                 let raw_dataset = opportunity_source
-                    .generate_dataset(activity_column_names)
+                    .generate_dataset_with_context(activity_column_names, Some(&vertices), None)
                     .map_err(OutputPluginError::OutputPluginFailed)?;
-                let rtree_dataset = raw_dataset
-                    .iter()
-                    .enumerate()
-                    .map(|(index, (g, _))| match g {
-                        geo::Geometry::Point(p) => Ok(GeomWithData::new(*p, index)),
-                        geo::Geometry::Polygon(p) => match p.centroid() {
-                            Some(centroid) => Ok(GeomWithData::new(centroid, index)),
-                            None => Err(OutputPluginError::OutputPluginFailed(format!(
-                                "opportunity source geometries must have centroids, failed with {}",
-                                {
-                                    let g: geo::Geometry<f64> = p.convert().into();
-                                    g.to_wkt().unwrap_or_default()
-                                }
-                            ))),
-                        },
-                        geo::Geometry::MultiPolygon(p) => match p.centroid() {
-                            Some(centroid) => Ok(GeomWithData::new(centroid, index)),
-                            None => Err(OutputPluginError::OutputPluginFailed(format!(
-                                "opportunity source geometries must have centroids, failed with {}",
-                                {
-                                    let g: geo::Geometry<f64> = p.convert().into();
-                                    g.to_wkt().unwrap_or_default()
-                                }
-                            ))),
-                        },
-                        _ => Err(OutputPluginError::OutputPluginFailed(format!(
-                            "unsupported geometry, must be point, polygon, or multipolygon: {}",
-                            {
-                                let g_f64: geo::Geometry<f64> = g.convert();
-                                g_f64.to_wkt().unwrap_or_default()
-                            }
-                        ))),
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                let rtree = RTree::bulk_load(rtree_dataset.to_vec());
-                let vertices: Box<[Vertex]> = read_utils::from_csv(
-                    &vertex_input_file,
-                    true,
-                    Some(
-                        Bar::builder()
-                            .desc("read vertices file for opportunity map matching")
-                            .animation("fillup"),
-                    ),
-                    None,
-                )
-                .map_err(|e| {
-                    OutputPluginError::BuildFailed(format!(
-                        "failure reading vertices from {vertex_input_file}: {e}"
-                    ))
-                })?;
-
-                // find which data point matches each vertex and record the id (index) of the match
-                let match_iter = tqdm!(
-                    vertices.iter(),
-                    total = vertices.len(),
-                    desc = "map match opportunities"
-                );
-                let match_by_vertex = match_iter
-                    .map(|v| {
-                        let point: Point<f32> = geo::Point(v.coordinate.0).convert();
-                        rtree.nearest_neighbor(&point).map(|o| o.data)
-                    })
-                    .collect_vec();
-
-                // build a lookup used for proportioning data into vertices which stores the counts
-                // of vertices that match each identifier
-                let proportion_groups = match_by_vertex
-                    .iter()
-                    .enumerate()
-                    .sorted_by_key(|(_, match_id)| *match_id)
-                    .chunk_by(|(_, match_id)| *match_id);
-                let proportion_iter = tqdm!(
-                    proportion_groups.into_iter(),
-                    desc = "opportunities areal proportioning"
-                );
-                let mut proportion_lookup = HashMap::new();
-                for (matching_geom_opt, matches) in proportion_iter {
-                    let count = matches.collect_vec().len();
-                    match matching_geom_opt {
-                        None => {}
-                        Some(id) => {
-                            proportion_lookup.insert(id, count);
-                        }
-                    }
-                }
-
-                // ok! we can create our opportunity table now
-                let n_acts = activity_column_names.len();
-                let activity_counts = match_by_vertex
-                    .iter()
-                    .map(|id_option| match id_option {
-                        None => Ok(vec![0.0; n_acts]),
-                        Some(id) => {
-                            let denom = proportion_lookup.get(id).ok_or_else(|| {
-                                OutputPluginError::OutputPluginFailed(String::from(
-                                    "internal error",
-                                ))
-                            })?;
-                            let (_, raw_counts) = raw_dataset.get(*id).ok_or_else(|| {
-                                OutputPluginError::OutputPluginFailed(String::from(
-                                    "internal error",
-                                ))
-                            })?;
-                            let counts = raw_counts
-                                .iter()
-                                .map(|count| *count / *denom as f64)
-                                .collect_vec();
-                            Ok(counts)
-                        }
-                    })
-                    .collect::<Result<Vec<_>, OutputPluginError>>()?;
+                let activity_counts = proportion_dataset_to_vertices(
+                    &raw_dataset,
+                    &vertices,
+                    activity_column_names.len(),
+                )?;
 
                 let result = OpportunityModel::Tabular {
                     activity_types: activity_column_names.clone(),
@@ -280,6 +176,149 @@ impl OpportunityModelConfig {
     }
 }
 
+/// Converts a `geo::Geometry<f32>` to a WKT string.
+pub fn geometry_to_wkt(geometry: &geo::Geometry<f32>) -> Result<String, String> {
+    let g_f64: geo::Geometry<f64> = geometry.convert();
+    g_f64
+        .to_wkt()
+        .map_err(|e| format!("failed to convert geometry to WKT: {e}"))
+}
+
+/// Reads RouteE Compass [`Vertex`] records from `vertex_input_file` (`.csv` or `.csv.gz`).
+pub fn load_vertices(vertex_input_file: &str) -> Result<Box<[Vertex]>, OutputPluginError> {
+    read_utils::from_csv(
+        &vertex_input_file,
+        true,
+        Some(
+            Bar::builder()
+                .desc("read vertices file for opportunity map matching")
+                .animation("fillup"),
+        ),
+        None,
+    )
+    .map_err(|e| {
+        OutputPluginError::BuildFailed(format!(
+            "failure reading vertices from {vertex_input_file}: {e}"
+        ))
+    })
+}
+
+/// Inserts the geometries from `raw_dataset` (by point or polygon/multipolygon centroid) into an
+/// R-tree, matches each vertex in `vertices` to its nearest opportunity geometry, and
+/// proportions each geometry's opportunity counts evenly across its matched vertices.
+pub fn proportion_dataset_to_vertices(
+    raw_dataset: &OpportunityDataset,
+    vertices: &[Vertex],
+    n_acts: usize,
+) -> Result<Vec<Vec<f64>>, OutputPluginError> {
+    let rtree_dataset = raw_dataset
+        .iter()
+        .enumerate()
+        .map(|(index, (g, _))| match g {
+            geo::Geometry::Point(p) => Ok(GeomWithData::new(*p, index)),
+            geo::Geometry::Polygon(p) => match p.centroid() {
+                Some(centroid) => Ok(GeomWithData::new(centroid, index)),
+                None => Err(OutputPluginError::OutputPluginFailed(format!(
+                    "opportunity source geometries must have centroids, failed with {}",
+                    geometry_to_wkt(g).unwrap_or_default()
+                ))),
+            },
+            geo::Geometry::MultiPolygon(p) => match p.centroid() {
+                Some(centroid) => Ok(GeomWithData::new(centroid, index)),
+                None => Err(OutputPluginError::OutputPluginFailed(format!(
+                    "opportunity source geometries must have centroids, failed with {}",
+                    geometry_to_wkt(g).unwrap_or_default()
+                ))),
+            },
+            _ => Err(OutputPluginError::OutputPluginFailed(format!(
+                "unsupported geometry, must be point, polygon, or multipolygon: {}",
+                geometry_to_wkt(g).unwrap_or_default()
+            ))),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let rtree = RTree::bulk_load(rtree_dataset.to_vec());
+
+    // find which data point matches each vertex and record the id (index) of the match
+    let match_iter = tqdm!(
+        vertices.iter(),
+        total = vertices.len(),
+        desc = "map match opportunities"
+    );
+    let match_by_vertex = match_iter
+        .map(|v| {
+            let point: Point<f32> = geo::Point(v.coordinate.0).convert();
+            rtree.nearest_neighbor(&point).map(|o| o.data)
+        })
+        .collect_vec();
+
+    // build a lookup used for proportioning data into vertices which stores the counts
+    // of vertices that match each identifier
+    let proportion_groups = match_by_vertex
+        .iter()
+        .enumerate()
+        .sorted_by_key(|(_, match_id)| *match_id)
+        .chunk_by(|(_, match_id)| *match_id);
+    let proportion_iter = tqdm!(
+        proportion_groups.into_iter(),
+        desc = "opportunities areal proportioning"
+    );
+    let mut proportion_lookup = HashMap::new();
+    for (matching_geom_opt, matches) in proportion_iter {
+        let count = matches.collect_vec().len();
+        match matching_geom_opt {
+            None => {}
+            Some(id) => {
+                proportion_lookup.insert(id, count);
+            }
+        }
+    }
+
+    // create the vertex-oriented opportunity table
+    let activity_counts = match_by_vertex
+        .iter()
+        .map(|id_option| match id_option {
+            None => Ok(vec![0.0; n_acts]),
+            Some(id) => {
+                let denom = proportion_lookup.get(id).ok_or_else(|| {
+                    OutputPluginError::OutputPluginFailed(String::from("internal error"))
+                })?;
+                let (_, raw_counts) = raw_dataset.get(*id).ok_or_else(|| {
+                    OutputPluginError::OutputPluginFailed(String::from("internal error"))
+                })?;
+                let counts = raw_counts
+                    .iter()
+                    .map(|count| *count / *denom as f64)
+                    .collect_vec();
+                Ok(counts)
+            }
+        })
+        .collect::<Result<Vec<_>, OutputPluginError>>()?;
+
+    Ok(activity_counts)
+}
+
+/// Reads a TOML or JSON configuration file from `path` into a [`serde_json::Value`].
+pub fn read_config_value(path: &Path) -> Result<serde_json::Value, String> {
+    let content = std::fs::read_to_string(path).map_err(|e| {
+        format!(
+            "failed to read opportunity config from '{}': {e}",
+            path.display()
+        )
+    })?;
+    let is_json = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("json"))
+        .unwrap_or(false);
+    if is_json {
+        serde_json::from_str(&content)
+            .map_err(|e| format!("failed to parse JSON config from '{}': {e}", path.display()))
+    } else {
+        toml::from_str(&content)
+            .map_err(|e| format!("failed to parse TOML config from '{}': {e}", path.display()))
+    }
+}
+
 impl TryFrom<&Path> for OpportunityModelConfig {
     type Error = String;
 
@@ -290,26 +329,7 @@ impl TryFrom<&Path> for OpportunityModelConfig {
     /// - A free-standing [`super::OpportunityPluginConfig`] containing a `model` key
     /// - A free-standing [`OpportunityModelConfig`] directly at the root
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        let content = std::fs::read_to_string(path).map_err(|e| {
-            format!(
-                "failed to read opportunity model config from '{}': {e}",
-                path.display()
-            )
-        })?;
-        let is_json = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("json"))
-            .unwrap_or(false);
-        let value: serde_json::Value = if is_json {
-            serde_json::from_str(&content).map_err(|e| {
-                format!("failed to parse JSON config from '{}': {e}", path.display())
-            })?
-        } else {
-            toml::from_str(&content).map_err(|e| {
-                format!("failed to parse TOML config from '{}': {e}", path.display())
-            })?
-        };
+        let value = read_config_value(path)?;
         Self::try_from(&value)
     }
 }

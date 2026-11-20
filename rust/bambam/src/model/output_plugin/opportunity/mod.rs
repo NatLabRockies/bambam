@@ -14,8 +14,11 @@ mod opportunity_spatial_row;
 mod study_region;
 
 pub mod source;
-pub use opportunity_model::OpportunityModel;
-pub use opportunity_model_config::OpportunityModelConfig;
+pub use opportunity_model::{activity_totals, OpportunityModel};
+pub use opportunity_model_config::{
+    geometry_to_wkt, load_vertices, proportion_dataset_to_vertices, read_config_value,
+    OpportunityModelConfig,
+};
 pub use opportunity_output_plugin::OpportunityOutputPlugin;
 pub use opportunity_output_plugin_builder::OpportunityOutputPluginBuilder;
 pub use opportunity_plugin_config::OpportunityPluginConfig;
