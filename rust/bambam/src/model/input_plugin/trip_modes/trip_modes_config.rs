@@ -102,7 +102,9 @@ impl TripModesConfig {
     /// Compiles and validates the configured modes into a deterministic list of [`CompiledTripMode`]s.
     pub fn compile(&self) -> Result<Vec<CompiledTripMode>, String> {
         if self.modes.is_empty() {
-            return Err("trip_modes input plugin requires at least one entry in 'modes'".to_string());
+            return Err(
+                "trip_modes input plugin requires at least one entry in 'modes'".to_string(),
+            );
         }
 
         // Sort mode keys deterministically
@@ -140,9 +142,7 @@ impl TripModesConfig {
                     ));
                 }
                 (Some(explicit), _) => explicit,
-                (None, Some(seq_len)) => {
-                    NonZeroU64::new(seq_len as u64).unwrap_or(NonZeroU64::MIN)
-                }
+                (None, Some(seq_len)) => NonZeroU64::new(seq_len as u64).unwrap_or(NonZeroU64::MIN),
                 (None, None) => NonZeroU64::MIN,
             };
 

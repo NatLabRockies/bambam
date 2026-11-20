@@ -296,7 +296,9 @@ impl<'de> Deserialize<'de> for TripLegConstraint {
         #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
         enum TaggedLeg {
             First,
-            LegIndex { index: usize },
+            LegIndex {
+                index: usize,
+            },
             Last,
             Arrival {
                 destination_predicate: DestinationPredicate,

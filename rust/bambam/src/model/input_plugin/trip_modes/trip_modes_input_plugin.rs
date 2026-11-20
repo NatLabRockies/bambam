@@ -121,8 +121,9 @@ mod tests {
             }
             let query_val = serde_json::Value::Object(query_obj);
             let parsed: crate::model::constraint::multimodal::MultimodalConstraintModelQuery =
-                serde_json::from_value(query_val)
-                    .expect("compiled mode fields should round-trip into MultimodalConstraintModelQuery");
+                serde_json::from_value(query_val).expect(
+                    "compiled mode fields should round-trip into MultimodalConstraintModelQuery",
+                );
             let mode_to_state = bambam_core::model::state::CategoricalMapping::new(&[
                 "walk".to_string(),
                 "drive".to_string(),

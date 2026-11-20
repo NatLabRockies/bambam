@@ -3,9 +3,7 @@ use std::sync::Arc;
 use routee_compass::plugin::input::{InputPlugin, InputPluginBuilder};
 use routee_compass_core::config::CompassConfigurationError;
 
-use super::{
-    trip_modes_config::TripModesConfig, trip_modes_input_plugin::TripModesInputPlugin,
-};
+use super::{trip_modes_config::TripModesConfig, trip_modes_input_plugin::TripModesInputPlugin};
 
 pub struct TripModesInputPluginBuilder {}
 

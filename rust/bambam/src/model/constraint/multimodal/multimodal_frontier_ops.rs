@@ -26,13 +26,18 @@ pub fn get_mode_counts(
             "while getting mode counts for this trip: {e}"
         ))
     })? {
-        let mode =
-            state_ops::get_existing_leg_mode(state, leg_idx, state_model, max_trip_legs, mode_to_state)
-                .map_err(|e| {
-                    ConstraintModelError::ConstraintModelError(format!(
-                        "while getting mode counts for this trip: {e}"
-                    ))
-                })?;
+        let mode = state_ops::get_existing_leg_mode(
+            state,
+            leg_idx,
+            state_model,
+            max_trip_legs,
+            mode_to_state,
+        )
+        .map_err(|e| {
+            ConstraintModelError::ConstraintModelError(format!(
+                "while getting mode counts for this trip: {e}"
+            ))
+        })?;
         if let Some(cnt) = counts.get_mut(mode) {
             *cnt += 1;
         } else {

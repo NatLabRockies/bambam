@@ -804,12 +804,8 @@ mod test {
         let max_trip_legs = NonZeroU64::new(3).unwrap();
 
         // 1. Switching from walk (after 1 min) into drive should be allowed
-        let (drive_mtm, drive_mfm, state_model, mut state) = test_setup(
-            vec![constraint],
-            "drive",
-            &["walk", "drive"],
-            max_trip_legs,
-        );
+        let (drive_mtm, drive_mfm, state_model, mut state) =
+            test_setup(vec![constraint], "drive", &["walk", "drive"], max_trip_legs);
         inject_trip_legs(
             &["walk"],
             &mut state,
@@ -942,7 +938,8 @@ mod test {
             ]
         });
         let shorthand_query: MultimodalConstraintModelQuery =
-            serde_json::from_value(shorthand_query_json).expect("should deserialize mode/leg shorthand");
+            serde_json::from_value(shorthand_query_json)
+                .expect("should deserialize mode/leg shorthand");
         assert_eq!(shorthand_query.resolved_max_trip_legs().get(), 2);
         assert!(shorthand_query.build_constraints(&mode_to_state).is_ok());
     }

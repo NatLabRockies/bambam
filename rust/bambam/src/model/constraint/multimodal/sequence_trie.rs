@@ -330,11 +330,7 @@ mod tests {
 
         // Test with &[String] (keeping these to demonstrate the generic capability)
         assert!(trie.contains(&["Hello".to_string(), "World".to_string()]));
-        assert!(trie.contains(&[
-            "Hello".to_string(),
-            "World".to_string(),
-            "Test".to_string()
-        ]));
+        assert!(trie.contains(&["Hello".to_string(), "World".to_string(), "Test".to_string()]));
 
         // Test with &[&str]
         assert!(trie.contains(&["Hello", "World"]));
