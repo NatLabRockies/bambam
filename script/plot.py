@@ -68,6 +68,7 @@ def isochrone_plot(iso_df: pd.DataFrame, grid_id: str, mode: str, timebins: list
         plt.close()
     except Exception as e:
         print(f"failure when running {grid_id} {mode}: {e}")
+        plt.close()
 
 def to_polygon(hex_id: str) -> Polygon:
     pts = h3.cell_to_boundary(hex_id)
