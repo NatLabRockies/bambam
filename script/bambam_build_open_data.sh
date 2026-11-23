@@ -276,9 +276,15 @@ fi
 
 # 4. inject transit mode into config file
 if should_run_stage "gtfs-config"; then
-    RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" gtfs-config \
-        --directory "${TRANSIT_DIR}" \
-        --base-config "${OUTPUT_DIR}/bambam.toml"
+    # Run from OUTPUT_DIR in a subshell so CompassAppConfig path normalization and
+    # gtfs-config both emit paths relative to OUTPUT_DIR (e.g., "walk/...", "transit/...")
+    # rather than baking the OUTPUT_DIR prefix into bambam_gtfs.toml.
+    (
+        cd "${OUTPUT_DIR}" && \
+        RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" gtfs-config \
+            --directory "transit" \
+            --base-config "bambam.toml"
+    )
     mark_stage_completed "gtfs-config"
 fi
 
