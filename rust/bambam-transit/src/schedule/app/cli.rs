@@ -255,9 +255,7 @@ impl GtfsOperation {
                 let input_path = Path::new(input);
                 if input_path.is_dir() {
                     bundle_ops::batch_process(input_path, *parallelism, config, *ignore_bad_gtfs)
-                        .unwrap_or_else(|e| {
-                            log::error!("failure running import: {e}");
-                        })
+                        .expect("failure running import");
                 } else {
                     let bundle_opt = bundle_ops::process_bundle(input, config.clone())
                         .expect("failure processing GTFS bundle");
