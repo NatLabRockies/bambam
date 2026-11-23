@@ -526,11 +526,15 @@ mod tests {
             writeln!(f, "2,10.0,10.0").unwrap();
         }
 
-        // Create an OpportunityDataset with 2 geometries:
+        // Create an OpportunityDataset with polygons and points:
         // - Geometry 0: Polygon centered near (0.0, 0.0) with [20.0 retail, 100.0 jobs]
         //   (matched by vertices 0 and 1 -> 10.0 retail, 50.0 jobs each)
-        // - Geometry 1: MultiPolygon/Point at (10.0, 10.0) with [5.0 retail, 30.0 jobs]
+        // - Geometry 1: MultiPolygon centered at (10.0, 10.0) with [5.0 retail, 30.0 jobs]
         //   (matched by vertex 2 -> 5.0 retail, 30.0 jobs)
+        // - Geometry 2: Point at (10.1, 10.1) with [2.0 retail, 10.0 jobs]
+        //   (assigned to nearest vertex 2)
+        // - Geometry 3: Point at (10.2, 10.2) with [3.0 retail, 15.0 jobs]
+        //   (also assigned to nearest vertex 2 and summed with Geometry 2)
         let poly = polygon![
             (x: -1.0_f32, y: -1.0_f32),
             (x: 1.0_f32, y: -1.0_f32),
@@ -549,8 +553,12 @@ mod tests {
             (Geometry::Polygon(poly), vec![20.0, 100.0]),
             (Geometry::MultiPolygon(mp), vec![5.0, 30.0]),
             (
-                Geometry::Point(Point::new(100.0_f32, 100.0_f32)),
-                vec![99.0, 999.0],
+                Geometry::Point(Point::new(10.1_f32, 10.1_f32)),
+                vec![2.0, 10.0],
+            ),
+            (
+                Geometry::Point(Point::new(10.2_f32, 10.2_f32)),
+                vec![3.0, 15.0],
             ),
         ];
 
@@ -585,7 +593,7 @@ mod tests {
             let headers: Vec<String> = rdr.headers().unwrap().iter().map(String::from).collect();
             assert_eq!(headers, vec!["geometry", "retail", "jobs"]);
             let records: Vec<csv::StringRecord> = rdr.records().map(|r| r.unwrap()).collect();
-            assert_eq!(records.len(), 3);
+            assert_eq!(records.len(), 4);
             assert!(records[0][0].starts_with("POLYGON"));
             assert_eq!(&records[0][1], "20");
             assert_eq!(&records[0][2], "100");
@@ -593,16 +601,19 @@ mod tests {
             assert_eq!(&records[1][1], "5");
             assert_eq!(&records[1][2], "30");
             assert!(records[2][0].starts_with("POINT"));
-            assert_eq!(&records[2][1], "99");
-            assert_eq!(&records[2][2], "999");
+            assert_eq!(&records[2][1], "2");
+            assert_eq!(&records[2][2], "10");
+            assert!(records[3][0].starts_with("POINT"));
+            assert_eq!(&records[3][1], "3");
+            assert_eq!(&records[3][2], "15");
         }
 
         // Verify Output 3 TOML fragment contains proportioned opportunity_totals AND can be
         // parsed back via OpportunityModelConfig::try_from and built via FileSource::build
         let config_str = std::fs::read_to_string(config_path).unwrap();
         assert!(config_str.contains("[plugin.output_plugins.opportunity_totals]"));
-        assert!(config_str.contains("retail = 25.0"));
-        assert!(config_str.contains("jobs = 130.0"));
+        assert!(config_str.contains("retail = 30.0"));
+        assert!(config_str.contains("jobs = 155.0"));
 
         let loaded_cfg = OpportunityModelConfig::try_from(Path::new(config_path)).unwrap();
         assert_eq!(
@@ -620,14 +631,14 @@ mod tests {
                 assert_eq!(activity_types, &activities);
                 assert_eq!(
                     activity_counts,
-                    &vec![vec![10.0, 50.0], vec![10.0, 50.0], vec![5.0, 30.0]]
+                    &vec![vec![10.0, 50.0], vec![10.0, 50.0], vec![10.0, 55.0]]
                 );
             }
             _ => panic!("expected Tabular OpportunityModel"),
         }
         let totals = model.opportunity_totals().unwrap();
-        assert_eq!(totals.get("retail"), Some(&25.0));
-        assert_eq!(totals.get("jobs"), Some(&130.0));
+        assert_eq!(totals.get("retail"), Some(&30.0));
+        assert_eq!(totals.get("jobs"), Some(&155.0));
 
         // Also verify running without vertices_file works when only --geometries-output-file
         // and --config-output-file are provided (without --output-directory or --opportunities-output-file)
@@ -667,7 +678,29 @@ mod tests {
         let no_vert_toml =
             std::fs::read_to_string(no_vert_outputs.config_output_file.unwrap()).unwrap();
         assert!(no_vert_toml.contains("[opportunity_totals]"));
-        assert!(no_vert_toml.contains("retail = 124.0"));
-        assert!(no_vert_toml.contains("jobs = 1129.0"));
+        assert!(no_vert_toml.contains("retail = 30.0"));
+        assert!(no_vert_toml.contains("jobs = 155.0"));
+    }
+
+    #[test]
+    fn test_proportion_point_opportunities_summed_by_nearest_vertex() {
+        let vertices = vec![Vertex::new(0, 0.0, 0.0), Vertex::new(1, 10.0, 10.0)];
+        let raw_dataset: OpportunityDataset = vec![
+            (
+                Geometry::Point(Point::new(0.1_f32, 0.1_f32)),
+                vec![1.0, 0.0],
+            ),
+            (
+                Geometry::Point(Point::new(0.2_f32, 0.2_f32)),
+                vec![2.0, 3.0],
+            ),
+            (
+                Geometry::Point(Point::new(9.9_f32, 9.9_f32)),
+                vec![0.0, 5.0],
+            ),
+        ];
+
+        let counts = proportion_dataset_to_vertices(&raw_dataset, &vertices, 2).unwrap();
+        assert_eq!(counts, vec![vec![3.0, 3.0], vec![0.0, 5.0]]);
     }
 }

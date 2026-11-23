@@ -203,96 +203,143 @@ pub fn load_vertices(vertex_input_file: &str) -> Result<Box<[Vertex]>, OutputPlu
     })
 }
 
-/// Inserts the geometries from `raw_dataset` (by point or polygon/multipolygon centroid) into an
-/// R-tree, matches each vertex in `vertices` to its nearest opportunity geometry, and
-/// proportions each geometry's opportunity counts evenly across its matched vertices.
+/// Assigns opportunity counts from `raw_dataset` to `vertices`:
+/// - **Polygon / MultiPolygon geometries** are areal-proportioned: polygon centroids are inserted
+///   into an R-tree, each vertex matches its nearest polygon centroid, and each polygon's
+///   opportunity counts are divided evenly across the vertices that matched it.
+/// - **Point geometries** are summed onto their nearest vertex: vertices are indexed in an R-tree,
+///   each point opportunity finds its nearest vertex, and its counts are added to that vertex's row.
 pub fn proportion_dataset_to_vertices(
     raw_dataset: &OpportunityDataset,
     vertices: &[Vertex],
     n_acts: usize,
 ) -> Result<Vec<Vec<f64>>, OutputPluginError> {
-    let rtree_dataset = raw_dataset
-        .iter()
-        .enumerate()
-        .map(|(index, (g, _))| match g {
-            geo::Geometry::Point(p) => Ok(GeomWithData::new(*p, index)),
+    // partition the raw dataset into point opportunities (kept as point + counts)
+    // and polygonal opportunities (indexed by their centroids for R-tree lookup)
+    let mut point_dataset = Vec::new();
+    let mut polygon_rtree_dataset = Vec::new();
+
+    for (index, (g, counts)) in raw_dataset.iter().enumerate() {
+        if counts.len() != n_acts {
+            return Err(OutputPluginError::OutputPluginFailed(format!(
+                "opportunity row {index} has {} activity counts, expected {n_acts}",
+                counts.len()
+            )));
+        }
+        match g {
+            geo::Geometry::Point(p) => point_dataset.push((*p, counts)),
             geo::Geometry::Polygon(p) => match p.centroid() {
-                Some(centroid) => Ok(GeomWithData::new(centroid, index)),
-                None => Err(OutputPluginError::OutputPluginFailed(format!(
-                    "opportunity source geometries must have centroids, failed with {}",
-                    geometry_to_wkt(g).unwrap_or_default()
-                ))),
+                Some(centroid) => polygon_rtree_dataset.push(GeomWithData::new(centroid, index)),
+                None => {
+                    return Err(OutputPluginError::OutputPluginFailed(format!(
+                        "opportunity source geometries must have centroids, failed with {}",
+                        geometry_to_wkt(g).unwrap_or_default()
+                    )))
+                }
             },
             geo::Geometry::MultiPolygon(p) => match p.centroid() {
-                Some(centroid) => Ok(GeomWithData::new(centroid, index)),
-                None => Err(OutputPluginError::OutputPluginFailed(format!(
-                    "opportunity source geometries must have centroids, failed with {}",
-                    geometry_to_wkt(g).unwrap_or_default()
-                ))),
+                Some(centroid) => polygon_rtree_dataset.push(GeomWithData::new(centroid, index)),
+                None => {
+                    return Err(OutputPluginError::OutputPluginFailed(format!(
+                        "opportunity source geometries must have centroids, failed with {}",
+                        geometry_to_wkt(g).unwrap_or_default()
+                    )))
+                }
             },
-            _ => Err(OutputPluginError::OutputPluginFailed(format!(
-                "unsupported geometry, must be point, polygon, or multipolygon: {}",
-                geometry_to_wkt(g).unwrap_or_default()
-            ))),
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let rtree = RTree::bulk_load(rtree_dataset.to_vec());
-
-    // find which data point matches each vertex and record the id (index) of the match
-    let match_iter = tqdm!(
-        vertices.iter(),
-        total = vertices.len(),
-        desc = "map match opportunities"
-    );
-    let match_by_vertex = match_iter
-        .map(|v| {
-            let point: Point<f32> = geo::Point(v.coordinate.0).convert();
-            rtree.nearest_neighbor(&point).map(|o| o.data)
-        })
-        .collect_vec();
-
-    // build a lookup used for proportioning data into vertices which stores the counts
-    // of vertices that match each identifier
-    let proportion_groups = match_by_vertex
-        .iter()
-        .enumerate()
-        .sorted_by_key(|(_, match_id)| *match_id)
-        .chunk_by(|(_, match_id)| *match_id);
-    let proportion_iter = tqdm!(
-        proportion_groups.into_iter(),
-        desc = "opportunities areal proportioning"
-    );
-    let mut proportion_lookup = HashMap::new();
-    for (matching_geom_opt, matches) in proportion_iter {
-        let count = matches.collect_vec().len();
-        match matching_geom_opt {
-            None => {}
-            Some(id) => {
-                proportion_lookup.insert(id, count);
+            _ => {
+                return Err(OutputPluginError::OutputPluginFailed(format!(
+                    "unsupported geometry, must be point, polygon, or multipolygon: {}",
+                    geometry_to_wkt(g).unwrap_or_default()
+                )))
             }
         }
     }
 
-    // create the vertex-oriented opportunity table
-    let activity_counts = match_by_vertex
-        .iter()
-        .map(|id_option| match id_option {
-            None => Ok(vec![0.0; n_acts]),
-            Some(id) => {
+    // initialize the vertex-oriented opportunity table with zeros for each vertex
+    let mut activity_counts = vec![vec![0.0; n_acts]; vertices.len()];
+
+    // areal-proportion polygon/multipolygon opportunities across vertices that match each polygon centroid
+    if !polygon_rtree_dataset.is_empty() {
+        let polygon_rtree = RTree::bulk_load(polygon_rtree_dataset);
+
+        // find which polygon centroid matches each vertex and record the dataset index of the match
+        let match_iter = tqdm!(
+            vertices.iter(),
+            total = vertices.len(),
+            desc = "map match opportunities"
+        );
+        let match_by_vertex = match_iter
+            .map(|v| {
+                let point: Point<f32> = geo::Point(v.coordinate.0).convert();
+                polygon_rtree.nearest_neighbor(&point).map(|o| o.data)
+            })
+            .collect_vec();
+
+        // build a lookup used for proportioning data into vertices which stores the counts
+        // of vertices that match each identifier
+        let proportion_groups = match_by_vertex
+            .iter()
+            .enumerate()
+            .sorted_by_key(|(_, match_id)| *match_id)
+            .chunk_by(|(_, match_id)| *match_id);
+        let proportion_iter = tqdm!(
+            proportion_groups.into_iter(),
+            desc = "opportunities areal proportioning"
+        );
+        let mut proportion_lookup = HashMap::new();
+        for (matching_geom_opt, matches) in proportion_iter {
+            let count = matches.collect_vec().len();
+            if let Some(id) = matching_geom_opt {
+                proportion_lookup.insert(id, count);
+            }
+        }
+
+        // divide each matched polygon's opportunity counts evenly across its matched vertices
+        for (vert_idx, id_option) in match_by_vertex.iter().enumerate() {
+            if let Some(id) = id_option {
                 let denom = proportion_lookup.get(id).ok_or_else(|| {
                     OutputPluginError::OutputPluginFailed(String::from("internal error"))
                 })?;
                 let (_, raw_counts) = raw_dataset.get(*id).ok_or_else(|| {
                     OutputPluginError::OutputPluginFailed(String::from("internal error"))
                 })?;
-                let counts = raw_counts
-                    .iter()
-                    .map(|count| *count / *denom as f64)
-                    .collect_vec();
-                Ok(counts)
+                for (acc, count) in activity_counts[vert_idx].iter_mut().zip(raw_counts.iter()) {
+                    *acc += *count / *denom as f64;
+                }
             }
-        })
-        .collect::<Result<Vec<_>, OutputPluginError>>()?;
+        }
+    }
+
+    // assign each point opportunity to its nearest graph vertex and sum its counts onto that vertex
+    if !point_dataset.is_empty() && !vertices.is_empty() {
+        // build an R-tree of graph vertices to query the nearest vertex for each point opportunity
+        let vertex_rtree_nodes = vertices
+            .iter()
+            .enumerate()
+            .map(|(vert_idx, v)| {
+                let point: Point<f32> = geo::Point(v.coordinate.0).convert();
+                GeomWithData::new(point, vert_idx)
+            })
+            .collect_vec();
+        let vertex_rtree = RTree::bulk_load(vertex_rtree_nodes);
+
+        // accumulate each point opportunity's activity counts into its nearest vertex's row
+        let point_iter = tqdm!(
+            point_dataset.iter(),
+            total = point_dataset.len(),
+            desc = "attach point opportunities to vertices"
+        );
+        for (pt, raw_counts) in point_iter {
+            if let Some(nearest_vert) = vertex_rtree.nearest_neighbor(pt) {
+                for (acc, count) in activity_counts[nearest_vert.data]
+                    .iter_mut()
+                    .zip(raw_counts.iter())
+                {
+                    *acc += *count;
+                }
+            }
+        }
+    }
 
     Ok(activity_counts)
 }
