@@ -47,6 +47,11 @@ pub enum CongestionCommand {
     /// Download Census TIGER/Line polygons tagged with ACS population and LEHD LODES employment
     /// via `bamcensus` for an Open Network's bounding box and save them to a CSV (or `.csv.gz`) file.
     ExportCensus(ExportCensusCliArgs),
+
+    /// Collect MEP land-use opportunities (`places` and `buildings` from Overture Maps or OSM PBF)
+    /// for an Open Network's bounding box and save them to a CSV (or `.csv.gz`) file (`x,y,weight`)
+    /// so they can be reused across `calibrate` and `impute` without re-downloading.
+    ExportOpportunities(ExportOpportunitiesCliArgs),
 }
 
 impl CongestionCommand {
@@ -117,8 +122,79 @@ impl CongestionCommand {
                 )?;
                 Ok(())
             }
+            CongestionCommand::ExportOpportunities(args) => {
+                let mut pipeline_cfg = if let Some(ref p) = args.config {
+                    CongestionPipelineConfig::from_file(Path::new(p))?
+                } else {
+                    CongestionPipelineConfig {
+                        open_network: OpenNetworkConfig::default(),
+                        time_bins: TimeBinSpec::default_six_bins(),
+                        spatial_features: SpatialFeaturesConfig::default(),
+                        reference_network: None,
+                        conflation: ConflationConfig::default(),
+                        artifacts: PipelineArtifactsConfig::default(),
+                    }
+                };
+                if let Some(ref open_dir) = args.open_network_dir {
+                    pipeline_cfg.open_network.network_dir = open_dir.clone();
+                }
+                if let Some(ref pbf_path) = args.osm_pbf_path {
+                    pipeline_cfg.spatial_features.opportunities_source =
+                        Some(OpportunitiesSourceConfig::OsmPbf {
+                            pbf_path: pbf_path.clone(),
+                        });
+                }
+                if let Some(ref omf_dir) = args.omf_local_source_dir {
+                    match pipeline_cfg.spatial_features.opportunities_source {
+                        Some(OpportunitiesSourceConfig::OvertureMaps {
+                            ref mut local_source_dir,
+                            ..
+                        }) => {
+                            *local_source_dir = Some(omf_dir.clone());
+                        }
+                        _ => {
+                            pipeline_cfg.spatial_features.opportunities_source =
+                                Some(OpportunitiesSourceConfig::OvertureMaps {
+                                    local_source_dir: Some(omf_dir.clone()),
+                                    include_buildings: true,
+                                });
+                        }
+                    }
+                }
+                let open_net = LoadedOpenNetwork::load(&pipeline_cfg.open_network)?;
+                crate::features::poi_traffic::export_opportunities_to_csv(
+                    &open_net,
+                    &pipeline_cfg.spatial_features,
+                    Path::new(&args.output_csv),
+                )?;
+                Ok(())
+            }
         }
     }
+}
+
+/// CLI arguments for `bambam-congestion export-opportunities`.
+#[derive(Debug, Clone, Args, Serialize, Deserialize, JsonSchema)]
+pub struct ExportOpportunitiesCliArgs {
+    /// Optional path to a `congestion.toml` configuration file.
+    #[arg(short, long)]
+    pub config: Option<String>,
+
+    /// Optional override: path to the Open Network directory (used to determine the study bounding box).
+    #[arg(long)]
+    pub open_network_dir: Option<String>,
+
+    /// Optional `.osm.pbf` path for extracting MEP land-use opportunities instead of Overture Maps.
+    #[arg(long)]
+    pub osm_pbf_path: Option<String>,
+
+    /// Optional local Overture Maps Parquet directory (`places` / `buildings`) instead of S3.
+    #[arg(long)]
+    pub omf_local_source_dir: Option<String>,
+
+    /// Output CSV (or `.csv.gz`) file path to write the MEP opportunity points (`x,y,weight`).
+    #[arg(short, long)]
+    pub output_csv: String,
 }
 
 /// CLI arguments for `bambam-congestion export-census`.
@@ -188,6 +264,11 @@ pub struct CalibrateCliArgs {
     /// when `opportunities_source.type = "overture_maps"`.
     #[arg(long)]
     pub omf_local_source_dir: Option<String>,
+
+    /// Optional CSV (or `.csv.gz`) path of point opportunities (`x,y,weight`, such as the file
+    /// produced by `bambam-congestion export-opportunities`) for computing MEP opportunity density.
+    #[arg(long)]
+    pub opportunities_csv: Option<String>,
 
     /// Optional CSV (or `.csv.gz`) path of Census polygons (`geoid,population,jobs,geometry`,
     /// such as the file produced by `bambam-congestion export-census`) for computing population and employment densities.
@@ -295,6 +376,15 @@ impl CalibrateCliArgs {
                 }
             }
         }
+        if let Some(ref opp_csv_path) = self.opportunities_csv {
+            cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::CsvPoints {
+                path: opp_csv_path.clone(),
+                x_column: "x".to_string(),
+                y_column: "y".to_string(),
+                wkt_column: None,
+                weight_column: Some("weight".to_string()),
+            });
+        }
         if let Some(ref census_csv_path) = self.census_csv {
             cfg.spatial_features.census_source = Some(CensusSourceConfig::CsvPolygons {
                 polygons_csv_path: census_csv_path.clone(),
@@ -390,6 +480,11 @@ pub struct ImputeCliArgs {
     /// when `opportunities_source.type = "overture_maps"`.
     #[arg(long)]
     pub omf_local_source_dir: Option<String>,
+
+    /// Optional CSV (or `.csv.gz`) path of point opportunities (`x,y,weight`, such as the file
+    /// produced by `bambam-congestion export-opportunities`) for computing MEP opportunity density.
+    #[arg(long)]
+    pub opportunities_csv: Option<String>,
 
     /// Optional CSV (or `.csv.gz`) path of Census polygons (`geoid,population,jobs,geometry`,
     /// such as the file produced by `bambam-congestion export-census`) for computing population and employment densities.
@@ -515,6 +610,15 @@ impl ImputeCliArgs {
                 }
             }
         }
+        if let Some(ref opp_csv_path) = self.opportunities_csv {
+            cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::CsvPoints {
+                path: opp_csv_path.clone(),
+                x_column: "x".to_string(),
+                y_column: "y".to_string(),
+                wkt_column: None,
+                weight_column: Some("weight".to_string()),
+            });
+        }
         if let Some(ref census_csv_path) = self.census_csv {
             cfg.spatial_features.census_source = Some(CensusSourceConfig::CsvPolygons {
                 polygons_csv_path: census_csv_path.clone(),
@@ -589,6 +693,7 @@ mod tests {
             output_dir: None,
             osm_pbf_path: None,
             omf_local_source_dir: None,
+            opportunities_csv: None,
             census_csv: None,
             save_bamcensus_csv: None,
         };
@@ -605,6 +710,7 @@ mod tests {
             output_dir: Some("output/calib_us".to_string()),
             osm_pbf_path: None,
             omf_local_source_dir: None,
+            opportunities_csv: Some("us_network/opportunities_omf.csv.gz".to_string()),
             census_csv: Some("us_network/census_tracts_bamcensus.csv.gz".to_string()),
             save_bamcensus_csv: None,
         };
@@ -623,6 +729,21 @@ mod tests {
             Some("tomtom-natl")
         );
         assert_eq!(cfg.output.output_dir, "output/calib_us");
+        match cfg.spatial_features.opportunities_source {
+            Some(OpportunitiesSourceConfig::CsvPoints {
+                ref path,
+                ref x_column,
+                ref y_column,
+                ref weight_column,
+                ..
+            }) => {
+                assert_eq!(path, "us_network/opportunities_omf.csv.gz");
+                assert_eq!(x_column, "x");
+                assert_eq!(y_column, "y");
+                assert_eq!(weight_column.as_deref(), Some("weight"));
+            }
+            other => panic!("expected CsvPoints opportunities_source, got {other:?}"),
+        }
         match cfg.spatial_features.census_source {
             Some(CensusSourceConfig::CsvPolygons {
                 ref polygons_csv_path,
@@ -659,6 +780,7 @@ mod tests {
             output_dir: Some("us_network/drive".to_string()),
             osm_pbf_path: None,
             omf_local_source_dir: None,
+            opportunities_csv: Some("us_network/opportunities_omf.csv.gz".to_string()),
             census_csv: Some("us_network/census_tracts_bamcensus.csv.gz".to_string()),
             save_bamcensus_csv: None,
         };
@@ -673,5 +795,20 @@ mod tests {
             cfg.models.model_without_speedlimit_path,
             "my_models_dir/xgboost_model_without_speedlimit.json"
         );
+        match cfg.spatial_features.opportunities_source {
+            Some(OpportunitiesSourceConfig::CsvPoints {
+                ref path,
+                ref x_column,
+                ref y_column,
+                ref weight_column,
+                ..
+            }) => {
+                assert_eq!(path, "us_network/opportunities_omf.csv.gz");
+                assert_eq!(x_column, "x");
+                assert_eq!(y_column, "y");
+                assert_eq!(weight_column.as_deref(), Some("weight"));
+            }
+            other => panic!("expected CsvPoints opportunities_source, got {other:?}"),
+        }
     }
 }

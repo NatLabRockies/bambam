@@ -23,11 +23,13 @@ GTFS_MANIFEST="${GTFS_MANIFEST:-}"
 GTFS_SUBDIVISION="${GTFS_SUBDIVISION:-}"
 REF_NETWORK_DIR="${REF_NETWORK_DIR:-}"
 REF_SPEEDS_DIR="${REF_SPEEDS_DIR:-}"
+LOCAL_OMF_DIR="${LOCAL_OMF_DIR:-}"
 DEFAULT_CPUS="${SLURM_CPUS_PER_TASK:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 16)}"
 PARALLELISM="${PARALLELISM:-${DEFAULT_CPUS}}"
 DOWNLOAD_PARALLELISM="${DOWNLOAD_PARALLELISM:-16}"
 FROM_STAGE="${FROM_STAGE:-}"
 AFTER_STAGE="${AFTER_STAGE:-}"
+TO_STAGE="${TO_STAGE:-}"
 FORCE_RERUN=0
 
 STAGES=(
@@ -36,6 +38,7 @@ STAGES=(
     "gtfs-import"
     "gtfs-config"
     "census"
+    "opportunities"
     "calibrate"
     "train"
     "impute"
@@ -64,6 +67,7 @@ Required arguments:
 Optional arguments:
   -s, --ref-speeds-dir <DIR>      Directory with reference time-bin speed files (defaults to --ref-network-dir)
   -d, --subdivision-name <NAME>   Optional state/subdivision filter for GTFS download (e.g., "Colorado")
+      --local-omf-dir <DIR>       Optional local Overture Maps Parquet directory to avoid S3 downloads
       --repo-root <DIR>           Path to bambam repository root (default: ${REPO_ROOT})
   -n, --network-config <FILE>     Network import config (default: <REPO_ROOT>/configuration/bambam-network/bambam-network-config.json)
   -c, --congestion-config <FILE>  Congestion pipeline config (default: <REPO_ROOT>/configuration/bambam-congestion/congestion.toml)
@@ -71,6 +75,7 @@ Optional arguments:
       --download-parallelism <N>  Parallelism for GTFS HTTP downloads (default: ${DOWNLOAD_PARALLELISM})
   -f, --from-stage <STAGE>        Start/resume at <STAGE> (skips earlier stages, re-runs from <STAGE> onward)
       --after-stage <STAGE>       Resume immediately after <STAGE> (treats <STAGE> and earlier as completed)
+  -t, --to-stage <STAGE>          Stop after completing <STAGE> (useful for splitting download vs. compute stages)
       --force                     Re-run all stages from the beginning, ignoring previously completed stages
   -h, --help                      Show this help message
 
@@ -117,6 +122,10 @@ while [[ $# -gt 0 ]]; do
             REF_SPEEDS_DIR="$2"
             shift 2
             ;;
+        --local-omf-dir|--omf-local-source-dir)
+            LOCAL_OMF_DIR="$2"
+            shift 2
+            ;;
         --repo-root)
             REPO_ROOT="$2"
             shift 2
@@ -143,6 +152,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --after-stage|--completed-stage)
             AFTER_STAGE="$2"
+            shift 2
+            ;;
+        -t|--to-stage)
+            TO_STAGE="$2"
             shift 2
             ;;
         --force)
@@ -206,6 +219,19 @@ elif [[ -n "${AFTER_STAGE}" ]]; then
     START_STAGE_IDX=$((AFTER_IDX + 1))
 fi
 
+END_STAGE_IDX=$((${#STAGES[@]} - 1))
+if [[ -n "${TO_STAGE}" ]]; then
+    if ! END_STAGE_IDX="$(stage_index "${TO_STAGE}")"; then
+        echo "Error: Invalid stage '${TO_STAGE}'. Valid stages are: ${STAGES[*]}" >&2
+        exit 1
+    fi
+fi
+
+if [[ "${START_STAGE_IDX}" -gt "${END_STAGE_IDX}" ]]; then
+    echo "Error: Start stage comes after --to-stage '${TO_STAGE}'" >&2
+    exit 1
+fi
+
 # Validate input files/directories exist before resolving to absolute paths
 for file_var in EXTENT_FILE GTFS_MANIFEST NETWORK_CONFIG CONGESTION_CONFIG; do
     if [[ ! -f "${!file_var}" ]]; then
@@ -219,6 +245,10 @@ for dir_var in REF_NETWORK_DIR REF_SPEEDS_DIR; do
         exit 1
     fi
 done
+if [[ -n "${LOCAL_OMF_DIR}" && ! -d "${LOCAL_OMF_DIR}" ]]; then
+    echo "Error: LOCAL_OMF_DIR directory not found: '${LOCAL_OMF_DIR}'" >&2
+    exit 1
+fi
 
 # Validate compiled Rust release binaries exist under REPO_ROOT
 BIN_DIR="${REPO_ROOT}/rust/target/release"
@@ -239,6 +269,9 @@ REF_NETWORK_DIR="$(resolve_abs_path "${REF_NETWORK_DIR}")"
 REF_SPEEDS_DIR="$(resolve_abs_path "${REF_SPEEDS_DIR}")"
 NETWORK_CONFIG="$(resolve_abs_path "${NETWORK_CONFIG}")"
 CONGESTION_CONFIG="$(resolve_abs_path "${CONGESTION_CONFIG}")"
+if [[ -n "${LOCAL_OMF_DIR}" ]]; then
+    LOCAL_OMF_DIR="$(resolve_abs_path "${LOCAL_OMF_DIR}")"
+fi
 
 # Configure Rayon thread pool to match Slurm / CLI parallelism
 export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-${PARALLELISM}}"
@@ -246,6 +279,7 @@ STATE_FILE="${OUTPUT_DIR}/.completed_stages"
 GTFS_RAW_DIR="${OUTPUT_DIR}/gtfs"
 TRANSIT_DIR="${OUTPUT_DIR}/transit"
 CENSUS_CSV="${OUTPUT_DIR}/census_tracts_bamcensus.csv.gz"
+OPPORTUNITIES_CSV="${OUTPUT_DIR}/opportunities_omf.csv.gz"
 CALIBRATION_DIR="${OUTPUT_DIR}/congestion_calibration"
 MODELS_DIR="${OUTPUT_DIR}/congestion_models"
 
@@ -275,6 +309,10 @@ should_run_stage() {
         echo "[${stage}] Skipping (prior to start stage)"
         return 1
     fi
+    if [[ "${idx}" -gt "${END_STAGE_IDX}" ]]; then
+        echo "[${stage}] Skipping (after --to-stage '${TO_STAGE}')"
+        return 1
+    fi
     if is_stage_completed "${stage}"; then
         echo "[${stage}] Skipping (already completed in ${STATE_FILE})"
         return 1
@@ -293,10 +331,15 @@ mark_stage_completed() {
 
 # 1. download OvertureMaps network dataset
 if should_run_stage "network"; then
-    RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-omf" network \
-        --configuration-file "${NETWORK_CONFIG}" \
-        --extent-file "${EXTENT_FILE}" \
+    NETWORK_ARGS=(
+        --configuration-file "${NETWORK_CONFIG}"
+        --extent-file "${EXTENT_FILE}"
         --output-directory "${OUTPUT_DIR}"
+    )
+    if [[ -n "${LOCAL_OMF_DIR}" ]]; then
+        NETWORK_ARGS+=(--local-source "${LOCAL_OMF_DIR}")
+    fi
+    RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-omf" network "${NETWORK_ARGS[@]}"
     mark_stage_completed "network"
 fi
 
@@ -361,20 +404,35 @@ if should_run_stage "census"; then
     mark_stage_completed "census"
 fi
 
-# 6. calibrate reference network to routing network
+# 6. collect MEP land-use opportunities once so calibrate and impute do not re-download from S3
+if should_run_stage "opportunities"; then
+    OPP_ARGS=(
+        --config "${CONGESTION_CONFIG}"
+        --open-network-dir "${OUTPUT_DIR}"
+        --output-csv "${OPPORTUNITIES_CSV}"
+    )
+    if [[ -n "${LOCAL_OMF_DIR}" ]]; then
+        OPP_ARGS+=(--omf-local-source-dir "${LOCAL_OMF_DIR}")
+    fi
+    RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-congestion" export-opportunities "${OPP_ARGS[@]}"
+    mark_stage_completed "opportunities"
+fi
+
+# 7. calibrate reference network to routing network
 if should_run_stage "calibrate"; then
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-congestion" calibrate \
         --config "${CONGESTION_CONFIG}" \
         --open-network-dir "${OUTPUT_DIR}" \
         --mode drive \
         --census-csv "${CENSUS_CSV}" \
+        --opportunities-csv "${OPPORTUNITIES_CSV}" \
         --reference-network-dir "${REF_NETWORK_DIR}" \
         --reference-speeds-dir "${REF_SPEEDS_DIR}" \
         --output-dir "${CALIBRATION_DIR}"
     mark_stage_completed "calibrate"
 fi
 
-# 7. train xgboost model on reference network
+# 8. train xgboost model on reference network
 if should_run_stage "train"; then
     TRAIN_SCRIPT="${REPO_ROOT}/python/nlr/bambam/congestion/train_congestion_models.py"
     if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
@@ -392,19 +450,20 @@ if should_run_stage "train"; then
     mark_stage_completed "train"
 fi
 
-# 8. impute speeds from xgboost model into routing network representation
+# 9. impute speeds from xgboost model into routing network representation
 if should_run_stage "impute"; then
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-congestion" impute \
         --config "${CONGESTION_CONFIG}" \
         --open-network-dir "${OUTPUT_DIR}" \
         --mode drive \
         --census-csv "${CENSUS_CSV}" \
+        --opportunities-csv "${OPPORTUNITIES_CSV}" \
         --models-dir "${MODELS_DIR}" \
         --output-dir "${OUTPUT_DIR}/drive"
     mark_stage_completed "impute"
 fi
 
-# 9. calculate WCI for walk mode and LTS for bike mode
+# 10. calculate WCI for walk mode and LTS for bike mode
 if should_run_stage "modal-metrics"; then
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" modal_metric \
         --modal-metric WCI \

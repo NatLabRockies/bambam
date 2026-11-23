@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use object_store::{aws::AmazonS3Builder, ObjectStore};
+use object_store::{aws::AmazonS3Builder, local::LocalFileSystem, ObjectStore};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -29,7 +29,10 @@ impl ObjectStoreSource {
                 Ok(Arc::new(object_store))
             }
             ObjectStoreSource::Azure => todo!(),
-            ObjectStoreSource::FileSystem => todo!(),
+            ObjectStoreSource::FileSystem => {
+                let object_store = LocalFileSystem::new();
+                Ok(Arc::new(object_store))
+            }
         }
     }
 }
