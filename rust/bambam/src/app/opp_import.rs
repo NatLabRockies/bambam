@@ -354,15 +354,33 @@ fn write_csv_records(
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("gz"))
         .unwrap_or(false);
-    let writer_stream: Box<dyn Write> = if is_gz {
-        Box::new(GzEncoder::new(file, Compression::default()))
+    if is_gz {
+        let encoder = GzEncoder::new(file, Compression::default());
+        let encoder = write_records_to_writer(encoder, output_file, header, rows, progress_desc)?;
+        encoder
+            .finish()
+            .map_err(|e| format!("failed finishing gzip stream for '{output_file}': {e}"))?;
     } else {
-        Box::new(BufWriter::new(file))
-    };
+        let writer = BufWriter::new(file);
+        let mut writer = write_records_to_writer(writer, output_file, header, rows, progress_desc)?;
+        writer
+            .flush()
+            .map_err(|e| format!("failed flushing writer for '{output_file}': {e}"))?;
+    }
 
+    Ok(())
+}
+
+fn write_records_to_writer<W: Write>(
+    writer: W,
+    output_file: &str,
+    header: &[String],
+    rows: Vec<Vec<String>>,
+    progress_desc: &str,
+) -> Result<W, String> {
     let mut csv_writer = csv::WriterBuilder::new()
         .has_headers(false)
-        .from_writer(writer_stream);
+        .from_writer(writer);
 
     csv_writer
         .write_record(header)
@@ -380,10 +398,8 @@ fn write_csv_records(
             .map_err(|e| format!("failed writing row {idx} to '{output_file}': {e}"))?;
     }
     csv_writer
-        .flush()
-        .map_err(|e| format!("failed flushing CSV writer for '{output_file}': {e}"))?;
-
-    Ok(())
+        .into_inner()
+        .map_err(|e| format!("failed flushing CSV writer for '{output_file}': {e}"))
 }
 
 /// Formats `opportunity_totals` and an optional [`OpportunityModelConfig::FileSource`] as a TOML or JSON configuration fragment.
