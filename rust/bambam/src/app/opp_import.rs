@@ -484,6 +484,7 @@ mod tests {
                 "entertainment".to_string(),
                 "food".to_string(),
                 "healthcare".to_string(),
+                "jobs".to_string(),
                 "retail".to_string(),
                 "services".to_string(),
             ]
@@ -520,7 +521,6 @@ mod tests {
                 "entertainment".to_string(),
                 "food".to_string(),
                 "healthcare".to_string(),
-                "jobs".to_string(),
                 "retail".to_string(),
                 "services".to_string(),
             ]
