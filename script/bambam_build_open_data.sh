@@ -12,15 +12,20 @@
 set -euo pipefail
 
 # Defaults (can be overridden via CLI flags or environment variables)
-REPO_ROOT="$(pwd)"
-NETWORK_CONFIG="${NETWORK_CONFIG:-configuration/bambam-network/bambam-network-config.json}"
-CONGESTION_CONFIG="${CONGESTION_CONFIG:-configuration/bambam-congestion/congestion.toml}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_ROOT="${REPO_ROOT:-${DEFAULT_REPO_ROOT}}"
+NETWORK_CONFIG="${NETWORK_CONFIG:-}"
+CONGESTION_CONFIG="${CONGESTION_CONFIG:-}"
 EXTENT_FILE="${EXTENT_FILE:-}"
 OUTPUT_DIR="${OUTPUT_DIR:-}"
 GTFS_MANIFEST="${GTFS_MANIFEST:-}"
 GTFS_SUBDIVISION="${GTFS_SUBDIVISION:-}"
 REF_NETWORK_DIR="${REF_NETWORK_DIR:-}"
 REF_SPEEDS_DIR="${REF_SPEEDS_DIR:-}"
+DEFAULT_CPUS="${SLURM_CPUS_PER_TASK:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 16)}"
+PARALLELISM="${PARALLELISM:-${DEFAULT_CPUS}}"
+DOWNLOAD_PARALLELISM="${DOWNLOAD_PARALLELISM:-16}"
 FROM_STAGE="${FROM_STAGE:-}"
 AFTER_STAGE="${AFTER_STAGE:-}"
 FORCE_RERUN=0
@@ -37,21 +42,33 @@ STAGES=(
     "modal-metrics"
 )
 
+resolve_abs_path() {
+    local target="$1"
+    if [[ -d "${target}" ]]; then
+        (cd "${target}" && pwd)
+    else
+        (cd "$(dirname "${target}")" && echo "$(pwd)/$(basename "${target}")")
+    fi
+}
+
 usage() {
     cat <<EOF
 Usage: $(basename "$0") [OPTIONS]
 
 Required arguments:
   -e, --extent-file <FILE>        WKT extent file (e.g., us-all-wkt.txt)
-  -o, --output-dir <DIR>          Output network directory (e.g., us_network)
+  -o, --output-dir <DIR>          Output network directory (e.g., /scratch/\$USER/us_network)
   -m, --gtfs-manifest <FILE>      Mobility Data Catalog CSV file for GTFS download
   -r, --ref-network-dir <DIR>     Reference road network directory (e.g., TomTom Compass dataset)
 
 Optional arguments:
   -s, --ref-speeds-dir <DIR>      Directory with reference time-bin speed files (defaults to --ref-network-dir)
   -d, --subdivision-name <NAME>   Optional state/subdivision filter for GTFS download (e.g., "Colorado")
-  -n, --network-config <FILE>     Network import config (default: ${NETWORK_CONFIG})
-  -c, --congestion-config <FILE>  Congestion pipeline config (default: ${CONGESTION_CONFIG})
+      --repo-root <DIR>           Path to bambam repository root (default: ${REPO_ROOT})
+  -n, --network-config <FILE>     Network import config (default: <REPO_ROOT>/configuration/bambam-network/bambam-network-config.json)
+  -c, --congestion-config <FILE>  Congestion pipeline config (default: <REPO_ROOT>/configuration/bambam-congestion/congestion.toml)
+  -p, --parallelism <N>           CPU parallelism for import, Rust Rayon, and model training (default: ${PARALLELISM})
+      --download-parallelism <N>  Parallelism for GTFS HTTP downloads (default: ${DOWNLOAD_PARALLELISM})
   -f, --from-stage <STAGE>        Start/resume at <STAGE> (skips earlier stages, re-runs from <STAGE> onward)
       --after-stage <STAGE>       Resume immediately after <STAGE> (treats <STAGE> and earlier as completed)
       --force                     Re-run all stages from the beginning, ignoring previously completed stages
@@ -100,12 +117,24 @@ while [[ $# -gt 0 ]]; do
             REF_SPEEDS_DIR="$2"
             shift 2
             ;;
+        --repo-root)
+            REPO_ROOT="$2"
+            shift 2
+            ;;
         -n|--network-config)
             NETWORK_CONFIG="$2"
             shift 2
             ;;
         -c|--congestion-config)
             CONGESTION_CONFIG="$2"
+            shift 2
+            ;;
+        -p|--parallelism)
+            PARALLELISM="$2"
+            shift 2
+            ;;
+        --download-parallelism)
+            DOWNLOAD_PARALLELISM="$2"
             shift 2
             ;;
         -f|--from-stage)
@@ -131,6 +160,15 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Resolve REPO_ROOT and default config files anchored to REPO_ROOT
+if [[ ! -d "${REPO_ROOT}" ]]; then
+    echo "Error: Repository root directory '${REPO_ROOT}' does not exist." >&2
+    exit 1
+fi
+REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+NETWORK_CONFIG="${NETWORK_CONFIG:-${REPO_ROOT}/configuration/bambam-network/bambam-network-config.json}"
+CONGESTION_CONFIG="${CONGESTION_CONFIG:-${REPO_ROOT}/configuration/bambam-congestion/congestion.toml}"
 
 # Default REF_SPEEDS_DIR to REF_NETWORK_DIR if not separately provided
 REF_SPEEDS_DIR="${REF_SPEEDS_DIR:-${REF_NETWORK_DIR}}"
@@ -168,11 +206,42 @@ elif [[ -n "${AFTER_STAGE}" ]]; then
     START_STAGE_IDX=$((AFTER_IDX + 1))
 fi
 
-# Resolve GTFS_MANIFEST to an absolute path so subshells that `cd` can read it
-GTFS_MANIFEST="$(cd "$(dirname "${GTFS_MANIFEST}")" && pwd)/$(basename "${GTFS_MANIFEST}")"
+# Validate input files/directories exist before resolving to absolute paths
+for file_var in EXTENT_FILE GTFS_MANIFEST NETWORK_CONFIG CONGESTION_CONFIG; do
+    if [[ ! -f "${!file_var}" ]]; then
+        echo "Error: ${file_var} file not found: '${!file_var}'" >&2
+        exit 1
+    fi
+done
+for dir_var in REF_NETWORK_DIR REF_SPEEDS_DIR; do
+    if [[ ! -d "${!dir_var}" ]]; then
+        echo "Error: ${dir_var} directory not found: '${!dir_var}'" >&2
+        exit 1
+    fi
+done
 
-# Derived paths inside OUTPUT_DIR
+# Validate compiled Rust release binaries exist under REPO_ROOT
+BIN_DIR="${REPO_ROOT}/rust/target/release"
+for bin_name in bambam-omf bambam-transit bambam_util bambam-congestion; do
+    if [[ ! -x "${BIN_DIR}/${bin_name}" ]]; then
+        echo "Error: Required binary '${BIN_DIR}/${bin_name}' not found or not executable." >&2
+        echo "Hint: Build release binaries first with: cargo build --release --manifest-path \"${REPO_ROOT}/rust/Cargo.toml\"" >&2
+        exit 1
+    fi
+done
+
+# Normalize paths to absolute so subshells or working directories in /scratch work reliably
 mkdir -p "${OUTPUT_DIR}"
+OUTPUT_DIR="$(resolve_abs_path "${OUTPUT_DIR}")"
+EXTENT_FILE="$(resolve_abs_path "${EXTENT_FILE}")"
+GTFS_MANIFEST="$(resolve_abs_path "${GTFS_MANIFEST}")"
+REF_NETWORK_DIR="$(resolve_abs_path "${REF_NETWORK_DIR}")"
+REF_SPEEDS_DIR="$(resolve_abs_path "${REF_SPEEDS_DIR}")"
+NETWORK_CONFIG="$(resolve_abs_path "${NETWORK_CONFIG}")"
+CONGESTION_CONFIG="$(resolve_abs_path "${CONGESTION_CONFIG}")"
+
+# Configure Rayon thread pool to match Slurm / CLI parallelism
+export RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-${PARALLELISM}}"
 STATE_FILE="${OUTPUT_DIR}/.completed_stages"
 GTFS_RAW_DIR="${OUTPUT_DIR}/gtfs"
 TRANSIT_DIR="${OUTPUT_DIR}/transit"
@@ -238,7 +307,7 @@ if should_run_stage "gtfs-download"; then
         --manifest-file "${GTFS_MANIFEST}"
         --country-code US
         --data-type gtfs
-        --parallelism 16
+        --parallelism "${DOWNLOAD_PARALLELISM}"
     )
     if [[ -n "${GTFS_SUBDIVISION}" ]]; then
         DOWNLOAD_ARGS+=(--subdivision-name "${GTFS_SUBDIVISION}")
@@ -254,7 +323,7 @@ fi
 if should_run_stage "gtfs-import"; then
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-transit" import \
         --input "${GTFS_RAW_DIR}" \
-        --parallelism 32 \
+        --parallelism "${PARALLELISM}" \
         --output-directory "${TRANSIT_DIR}" \
         --vertices-compass-filename "${OUTPUT_DIR}/vertices-compass.csv.gz" \
         --extent-file "${EXTENT_FILE}" \
@@ -307,9 +376,19 @@ fi
 
 # 7. train xgboost model on reference network
 if should_run_stage "train"; then
-    uv run python python/nlr/bambam/congestion/train_congestion_models.py \
-        --calibration-dir "${CALIBRATION_DIR}" \
-        --output-dir "${MODELS_DIR}"
+    TRAIN_SCRIPT="${REPO_ROOT}/python/nlr/bambam/congestion/train_congestion_models.py"
+    if [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
+        "${REPO_ROOT}/.venv/bin/python" "${TRAIN_SCRIPT}" \
+            --calibration-dir "${CALIBRATION_DIR}" \
+            --output-dir "${MODELS_DIR}" \
+            --n-jobs "${PARALLELISM}"
+    else
+        UV_CACHE_DIR="${UV_CACHE_DIR:-${OUTPUT_DIR}/.uv-cache}" \
+            uv run --project "${REPO_ROOT}" --no-sync python "${TRAIN_SCRIPT}" \
+            --calibration-dir "${CALIBRATION_DIR}" \
+            --output-dir "${MODELS_DIR}" \
+            --n-jobs "${PARALLELISM}"
+    fi
     mark_stage_completed "train"
 fi
 

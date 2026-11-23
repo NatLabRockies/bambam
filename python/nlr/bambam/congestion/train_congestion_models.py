@@ -7,6 +7,7 @@ and export portable `.json` (for Rust `bambam-congestion impute`) and `.joblib` 
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import time
 import tomllib
@@ -64,6 +65,14 @@ def load_table(path: Path) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
+def default_n_jobs() -> int:
+    for env_var in ("SLURM_CPUS_PER_TASK", "RAYON_NUM_THREADS"):
+        val = os.environ.get(env_var)
+        if val and val.isdigit() and int(val) > 0:
+            return int(val)
+    return os.cpu_count() or 1
+
+
 def fit_and_export_model(
     df: pd.DataFrame,
     predictors: Sequence[str],
@@ -72,8 +81,10 @@ def fit_and_export_model(
     n_iter: int = 25,
     cv: int = 5,
     max_search_rows: int = 2_000_000,
+    n_jobs: int | None = None,
     random_state: int = 42,
 ) -> dict[str, float]:
+    resolved_jobs = n_jobs if (n_jobs is not None and n_jobs > 0) else default_n_jobs()
     output_dir.mkdir(parents=True, exist_ok=True)
     df = df.dropna(subset=["Speed"]).reset_index(drop=True)
 
@@ -113,19 +124,29 @@ def fit_and_export_model(
             "reg_lambda": uniform(0, 1),
             "min_child_weight": randint(1, 10),
         }
+        # Run CV folds sequentially (n_jobs=1) while giving XGBRegressor all allocated
+        # threads (n_jobs=resolved_jobs) to avoid N*N thread oversubscription and
+        # multi-process memory duplication on large national datasets.
         search = RandomizedSearchCV(
-            estimator=xgb.XGBRegressor(tree_method="hist", random_state=random_state),
+            estimator=xgb.XGBRegressor(
+                tree_method="hist",
+                n_jobs=resolved_jobs,
+                random_state=random_state,
+            ),
             param_distributions=param_grid,
             n_iter=n_iter,
             cv=cv,
-            n_jobs=-1,
+            n_jobs=1,
             scoring="neg_mean_squared_error",
             random_state=random_state,
         )
         search.fit(X_search, y_search)
         best_params = search.best_params_
         best_model = xgb.XGBRegressor(
-            tree_method="hist", random_state=random_state, **best_params
+            tree_method="hist",
+            n_jobs=resolved_jobs,
+            random_state=random_state,
+            **best_params,
         )
         best_model.fit(X_train, y_train)
     else:
@@ -134,6 +155,7 @@ def fit_and_export_model(
             max_depth=8,
             learning_rate=0.08,
             tree_method="hist",
+            n_jobs=resolved_jobs,
             random_state=random_state,
         )
         best_model.fit(X_train, y_train)
@@ -197,6 +219,13 @@ def main() -> None:
         default=25,
         help="Number of RandomizedSearchCV iterations (set to 1 for fast single-fit training)",
     )
+    parser.add_argument(
+        "-j",
+        "--n-jobs",
+        type=int,
+        default=None,
+        help="Number of CPU threads for XGBoost training (defaults to SLURM_CPUS_PER_TASK / RAYON_NUM_THREADS / cpu_count)",
+    )
     args = parser.parse_args()
 
     cfg_calib_dir: Path | None = None
@@ -234,6 +263,7 @@ def main() -> None:
             output_dir,
             "xgboost_model_with_speedlimit",
             n_iter=args.n_iter,
+            n_jobs=args.n_jobs,
         )
         print(f"Trained with_speedlimit model: {m_with}")
 
@@ -245,6 +275,7 @@ def main() -> None:
             output_dir,
             "xgboost_model_without_speedlimit",
             n_iter=args.n_iter,
+            n_jobs=args.n_jobs,
         )
         print(f"Trained without_speedlimit model: {m_without}")
 
