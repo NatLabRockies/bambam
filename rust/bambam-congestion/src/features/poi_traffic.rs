@@ -682,9 +682,7 @@ pub fn extract_overture_maps_opportunities(
     };
     let collector_cfg = OvertureMapsCollectorConfig::new(store_source, Some(4), Some(64));
     let collector = OvertureMapsCollector::try_from(collector_cfg).map_err(|e| {
-        CongestionError::SpatialFeature(format!(
-            "failed initializing OvertureMapsCollector: {e}"
-        ))
+        CongestionError::SpatialFeature(format!("failed initializing OvertureMapsCollector: {e}"))
     })?;
 
     let release = if local_source_dir.is_none() {
@@ -711,12 +709,13 @@ pub fn extract_overture_maps_opportunities(
         } else {
             abs_dir
         };
-        let obj_path = object_store::path::Path::from_filesystem_path(&places_dir).map_err(|e| {
-            CongestionError::SpatialFeature(format!(
-                "invalid local Overture directory path '{}': {e}",
-                places_dir.display()
-            ))
-        })?;
+        let obj_path =
+            object_store::path::Path::from_filesystem_path(&places_dir).map_err(|e| {
+                CongestionError::SpatialFeature(format!(
+                    "invalid local Overture directory path '{}': {e}",
+                    places_dir.display()
+                ))
+            })?;
         collector.collect_from_path(obj_path, &OvertureRecordType::Places, Some(places_filter))
     } else {
         let rel = release.as_deref().unwrap_or_default();
@@ -910,12 +909,13 @@ pub fn export_opportunities_to_csv(
     let radius_m = cfg.density_radius_miles * METERS_PER_MILE;
     let search_bbox = expand_bbox_by_meters(open_net.bbox, radius_m * 1.5 + 200.0);
 
-    let opp_src = cfg.opportunities_source.clone().unwrap_or(
-        OpportunitiesSourceConfig::OvertureMaps {
-            local_source_dir: None,
-            include_buildings: true,
-        },
-    );
+    let opp_src =
+        cfg.opportunities_source
+            .clone()
+            .unwrap_or(OpportunitiesSourceConfig::OvertureMaps {
+                local_source_dir: None,
+                include_buildings: true,
+            });
 
     let points = match &opp_src {
         OpportunitiesSourceConfig::OvertureMaps {
@@ -1368,16 +1368,7 @@ mod tests {
 
         write_opportunities_csv(&csv_gz_path, &pts).unwrap();
 
-        let search_bbox = Rect::new(
-            Coord {
-                x: -106.0,
-                y: 39.5,
-            },
-            Coord {
-                x: -104.5,
-                y: 40.5,
-            },
-        );
+        let search_bbox = Rect::new(Coord { x: -106.0, y: 39.5 }, Coord { x: -104.5, y: 40.5 });
         let loaded = load_csv_feature_points(
             &csv_gz_path,
             "x",

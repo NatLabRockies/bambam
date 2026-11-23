@@ -377,13 +377,14 @@ impl CalibrateCliArgs {
             }
         }
         if let Some(ref opp_csv_path) = self.opportunities_csv {
-            cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::CsvPoints {
-                path: opp_csv_path.clone(),
-                x_column: "x".to_string(),
-                y_column: "y".to_string(),
-                wkt_column: None,
-                weight_column: Some("weight".to_string()),
-            });
+            cfg.spatial_features.opportunities_source =
+                Some(OpportunitiesSourceConfig::CsvPoints {
+                    path: opp_csv_path.clone(),
+                    x_column: "x".to_string(),
+                    y_column: "y".to_string(),
+                    wkt_column: None,
+                    weight_column: Some("weight".to_string()),
+                });
         }
         if let Some(ref census_csv_path) = self.census_csv {
             cfg.spatial_features.census_source = Some(CensusSourceConfig::CsvPolygons {
@@ -611,13 +612,14 @@ impl ImputeCliArgs {
             }
         }
         if let Some(ref opp_csv_path) = self.opportunities_csv {
-            cfg.spatial_features.opportunities_source = Some(OpportunitiesSourceConfig::CsvPoints {
-                path: opp_csv_path.clone(),
-                x_column: "x".to_string(),
-                y_column: "y".to_string(),
-                wkt_column: None,
-                weight_column: Some("weight".to_string()),
-            });
+            cfg.spatial_features.opportunities_source =
+                Some(OpportunitiesSourceConfig::CsvPoints {
+                    path: opp_csv_path.clone(),
+                    x_column: "x".to_string(),
+                    y_column: "y".to_string(),
+                    wkt_column: None,
+                    weight_column: Some("weight".to_string()),
+                });
         }
         if let Some(ref census_csv_path) = self.census_csv {
             cfg.spatial_features.census_source = Some(CensusSourceConfig::CsvPolygons {
