@@ -3,7 +3,10 @@ use std::{collections::HashSet, fmt, sync::Arc};
 use bambam_network::{CliBoundingBox, GeographicExtent};
 use geo::{BoundingRect, Centroid, Geometry, Intersects, LineString};
 use rayon::prelude::*;
-use routee_compass_core::model::{map::SpatialIndex, network::Vertex};
+use routee_compass_core::{
+    model::{map::SpatialIndex, network::Vertex},
+    util::geo::haversine::APPROX_EARTH_RADIUS_M,
+};
 
 use super::Bbox;
 use crate::collection::{
@@ -13,9 +16,6 @@ use crate::collection::{
 /// Default Haversine distance tolerance (in meters) when matching Overture geometries
 /// to road network vertices.
 pub const DEFAULT_VERTEX_MATCH_TOLERANCE_METERS: f64 = 200.0;
-
-/// Approximate meters per degree of latitude (WGS84).
-const METERS_PER_DEGREE_LAT: f64 = 111_320.0;
 
 /// Two-stage spatial filter for Overture Maps datasets (both Transportation networks
 /// and Places/Buildings opportunities):
@@ -82,6 +82,10 @@ impl OvertureSpatialFilter {
     /// Builds an [`OvertureSpatialFilter::Graph`] from a slice of RouteE Compass [`Vertex`]
     /// records, an optional Haversine distance tolerance in meters (defaults to
     /// [`DEFAULT_VERTEX_MATCH_TOLERANCE_METERS`]), and an optional [`GeographicExtent`].
+    ///
+    /// Since a Graph filter includes both a lat/lon bbox and an rtree of points, we ensure
+    /// that, from the arguments, we have full agreement with the resulting rtree and bbox
+    /// including some padding so that vertices are included within the extent.
     pub fn from_vertices(
         vertices: &[Vertex],
         tolerance_meters: Option<f64>,
@@ -101,35 +105,72 @@ impl OvertureSpatialFilter {
             )));
         }
 
-        let mut min_x = f32::INFINITY;
-        let mut max_x = f32::NEG_INFINITY;
-        let mut min_y = f32::INFINITY;
-        let mut max_y = f32::NEG_INFINITY;
+        // Convert the distance to an angular radius using the same Earth radius as
+        // the matcher. Add a margin for its f32 Haversine arithmetic; cap at half
+        // the circumference, beyond which every point on Earth is in range.
+        let angular_radius = (tol_m / f64::from(APPROX_EARTH_RADIUS_M)
+            + 8.0 * f64::from(f32::EPSILON))
+        .min(std::f64::consts::PI);
+        let lat_pad = angular_radius.to_degrees();
+        let mut bounds = Bbox::new(180.0, -180.0, 90.0, -90.0);
 
         for v in vertices {
             let coord = v.coordinate.0;
-            min_x = min_x.min(coord.x);
-            max_x = max_x.max(coord.x);
-            min_y = min_y.min(coord.y);
-            max_y = max_y.max(coord.y);
+            if !(-180.0..=180.0).contains(&coord.x) || !(-90.0..=90.0).contains(&coord.y) {
+                return Err(OvertureMapsCollectionError::InvalidUserInput(format!(
+                    "vertex has invalid longitude or latitude: {coord:?}"
+                )));
+            }
+            bounds.xmin = bounds.xmin.min(coord.x);
+            bounds.xmax = bounds.xmax.max(coord.x);
+            bounds.ymin = bounds.ymin.min(coord.y);
+            bounds.ymax = bounds.ymax.max(coord.y);
         }
 
-        let lat_pad = (tol_m / METERS_PER_DEGREE_LAT) as f32;
-        let mid_lat_rad = (((min_y + max_y) * 0.5) as f64).to_radians();
-        let cos_lat = mid_lat_rad.cos().abs().max(0.01);
-        let lon_pad = (tol_m / (METERS_PER_DEGREE_LAT * cos_lat)) as f32;
-
-        let mut bbox = Bbox {
-            xmin: (min_x - lon_pad).max(-180.0),
-            xmax: (max_x + lon_pad).min(180.0),
-            ymin: (min_y - lat_pad).max(-90.0),
-            ymax: (max_y + lat_pad).min(90.0),
+        // Longitude degrees get narrower toward the poles. Use the most poleward
+        // vertex for the padding of every vertex, rather than the graph's midpoint.
+        let poleward_lat = f64::from(bounds.ymin.abs().max(bounds.ymax.abs()));
+        let (xmin, xmax) = if poleward_lat + lat_pad >= 90.0 {
+            // A tolerance region reaching a pole can include any longitude.
+            (-180.0, 180.0)
+        } else {
+            // Maximum longitude displacement of a spherical cap that misses the poles.
+            let lon_pad = (angular_radius.sin() / poleward_lat.to_radians().cos())
+                .clamp(-1.0, 1.0)
+                .asin()
+                .to_degrees();
+            let xmin = f64::from(bounds.xmin) - lon_pad;
+            let xmax = f64::from(bounds.xmax) + lon_pad;
+            if xmin <= -180.0 || xmax >= 180.0 {
+                // A single Bbox cannot represent a wrapped interval. Keep both
+                // sides of the antimeridian by allowing all longitudes.
+                (-180.0, 180.0)
+            } else {
+                // Round outward so conversion to f32 cannot shrink the envelope.
+                (
+                    (xmin as f32).next_down().max(-180.0),
+                    (xmax as f32).next_up().min(180.0),
+                )
+            }
         };
+        // Apply the same outward rounding to latitude, clamped to valid coordinates.
+        let mut bbox = Bbox::new(
+            xmin,
+            xmax,
+            ((f64::from(bounds.ymin) - lat_pad) as f32)
+                .next_down()
+                .max(-90.0),
+            ((f64::from(bounds.ymax) + lat_pad) as f32)
+                .next_up()
+                .min(90.0),
+        );
 
         let parsed_extent = if let Some(ext_cfg) = extent {
             let (ext_geom, ext_bbox) = ext_cfg
                 .to_geometry_and_bbox()
                 .map_err(OvertureMapsCollectionError::InvalidUserInput)?;
+            // Both the extent and vertex proximity must match; their bbox
+            // intersection is a coarse prefilter before the geometry checks.
             bbox.xmin = bbox.xmin.max(ext_bbox.xmin);
             bbox.xmax = bbox.xmax.min(ext_bbox.xmax);
             bbox.ymin = bbox.ymin.max(ext_bbox.ymin);
@@ -319,5 +360,112 @@ mod tests {
         assert!(filter.matches_geometry(&Geometry::Point(Point::new(-105.2705, 40.0150))));
         // Point far from both vertices (even if inside their axis-aligned bounding box corner if spaced apart) fails Stage 2
         assert!(!filter.matches_geometry(&Geometry::Point(Point::new(-105.2600, 40.0150))));
+    }
+
+    #[test]
+    fn graph_bbox_contains_poleward_vertex_matches() {
+        for latitude in [49.0_f32, -49.0] {
+            let vertices = vec![
+                Vertex::new(0, -100.0, latitude.signum() * 25.0),
+                Vertex::new(1, -100.0, latitude),
+            ];
+            let filter =
+                OvertureSpatialFilter::from_vertices(&vertices, Some(200.0), None).unwrap();
+            let point = Point::new(-99.9974, latitude);
+            assert!(filter.matches_geometry(&Geometry::Point(point)));
+            let bbox = filter.bbox();
+            assert!(bbox.xmin <= point.x() && point.x() <= bbox.xmax);
+            assert!(bbox.ymin <= point.y() && point.y() <= bbox.ymax);
+        }
+    }
+
+    #[test]
+    fn graph_bbox_wraps_antimeridian_and_covers_poles() {
+        for (lon, lat, point) in [
+            (179.999, 0.0, Point::new(-179.9995, 0.0)),
+            (-179.999, 0.0, Point::new(179.9995, 0.0)),
+            (10.0, 89.999, Point::new(-170.0, 89.999)),
+            (10.0, -89.999, Point::new(-170.0, -89.999)),
+        ] {
+            let filter = OvertureSpatialFilter::from_vertices(
+                &[Vertex::new(0, lon, lat)],
+                Some(300.0),
+                None,
+            )
+            .unwrap();
+            let bbox = filter.bbox();
+            assert_eq!((bbox.xmin, bbox.xmax), (-180.0, 180.0));
+            assert!(bbox.ymin <= point.y() && point.y() <= bbox.ymax);
+            assert!(filter.matches_geometry(&Geometry::Point(point)));
+        }
+    }
+
+    #[test]
+    fn graph_bbox_rounds_spherical_limits_outward() {
+        let tolerance = 200.0;
+        let lat = 40.0_f64;
+        let lon = -105.0_f64;
+        let radius = tolerance / f64::from(APPROX_EARTH_RADIUS_M);
+        let lat_pad = radius.to_degrees();
+        let lon_pad = (radius.sin() / lat.to_radians().cos()).asin().to_degrees();
+        let filter = OvertureSpatialFilter::from_vertices(
+            &[Vertex::new(0, lon as f32, lat as f32)],
+            Some(tolerance),
+            None,
+        )
+        .unwrap();
+        let bbox = filter.bbox();
+        assert!(f64::from(bbox.xmin) <= lon - lon_pad);
+        assert!(f64::from(bbox.xmax) >= lon + lon_pad);
+        assert!(f64::from(bbox.ymin) <= lat - lat_pad);
+        assert!(f64::from(bbox.ymax) >= lat + lat_pad);
+    }
+
+    #[test]
+    fn graph_bbox_contains_spherical_tolerance_boundaries() {
+        for lat in [-89.999_f32, -49.0, 0.0, 49.0, 89.999] {
+            for lon in [-179.999_f32, -100.0, 179.999] {
+                for tolerance in [0.0, 200.0, 100_000.0] {
+                    let filter = OvertureSpatialFilter::from_vertices(
+                        &[Vertex::new(0, lon, lat)],
+                        Some(tolerance),
+                        None,
+                    )
+                    .unwrap();
+                    let bbox = filter.bbox();
+                    let radius = tolerance / f64::from(APPROX_EARTH_RADIUS_M);
+                    let lat1 = f64::from(lat).to_radians();
+                    let lon1 = f64::from(lon).to_radians();
+                    for bearing in (0..360).step_by(15) {
+                        let bearing = f64::from(bearing).to_radians();
+                        let lat2 = (lat1.sin() * radius.cos()
+                            + lat1.cos() * radius.sin() * bearing.cos())
+                        .asin();
+                        let lon2 = lon1
+                            + (bearing.sin() * radius.sin() * lat1.cos())
+                                .atan2(radius.cos() - lat1.sin() * lat2.sin());
+                        let x = (lon2.to_degrees() + 180.0).rem_euclid(360.0) - 180.0;
+                        let y = lat2.to_degrees();
+                        assert!(
+                            f64::from(bbox.xmin) <= x
+                                && x <= f64::from(bbox.xmax)
+                                && f64::from(bbox.ymin) <= y
+                                && y <= f64::from(bbox.ymax),
+                            "vertex=({lon}, {lat}), tolerance={tolerance}, point=({x}, {y}), bbox={bbox:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn graph_bbox_rejects_invalid_vertex_coordinates() {
+        for (lon, lat) in [(181.0, 0.0), (0.0, -91.0), (f32::NAN, 0.0)] {
+            assert!(
+                OvertureSpatialFilter::from_vertices(&[Vertex::new(0, lon, lat)], None, None)
+                    .is_err()
+            );
+        }
     }
 }
