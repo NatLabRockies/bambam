@@ -57,11 +57,18 @@ projection_mode = "geodesic"
 
 # Opportunities source defaults to Overture Maps (`places` + `buildings`) over the network's bounding box.
 # Can be overridden on the CLI via `--osm-pbf-path <path>` or `--omf-local-source-dir <dir>`.
-# Census polygons can be supplied on the CLI via `--census-csv <path>` (exported by `bambam-congestion export-census`).
 # Traffic controls default automatically to `<open_network.network_dir>/vertices-complete.csv.gz`.
 [spatial_features.opportunities_source]
 type = "overture_maps"
 include_buildings = true
+
+# Census source defaults to `bamcensus` (ACS population + LEHD LODES employment paired with TIGER/Line polygons).
+# Can be overridden on the CLI via `--census-csv <path>` (exported by `bambam-congestion export-census`).
+[spatial_features.census_source]
+type = "bamcensus"
+
+[spatial_features.census_source.employment_source]
+fallback = { TryPreviousYears = 10 }
 
 [reference_network]
 speed_unit = "kph"

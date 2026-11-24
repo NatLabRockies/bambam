@@ -684,6 +684,21 @@ mod tests {
     fn test_calibrate_cli_resolves_pathless_congestion_toml() {
         let toml_path = repo_congestion_toml();
 
+        let pipeline_cfg = CongestionPipelineConfig::from_file(Path::new(&toml_path))
+            .expect("congestion.toml should deserialize into CongestionPipelineConfig");
+        match pipeline_cfg.spatial_features.census_source {
+            Some(CensusSourceConfig::Bamcensus {
+                ref employment_source,
+                ..
+            }) => {
+                assert_eq!(
+                    employment_source.fallback.0,
+                    bamcensus_lehd::model::FallbackPolicy::TryPreviousYears(10)
+                );
+            }
+            other => panic!("expected Bamcensus census_source in congestion.toml, got {other:?}"),
+        }
+
         // Missing required paths when only pathless congestion.toml is given should fail cleanly
         let missing_args = CalibrateCliArgs {
             config: Some(toml_path.clone()),
