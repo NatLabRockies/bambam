@@ -2,16 +2,12 @@ use geo::{Coord, Geometry, Haversine, InterpolatableLine, Length, LineString};
 use serde::{Deserialize, Serialize};
 
 use crate::collection::{
-    record::{geometry_wkb_codec, OvertureMapsBbox, OvertureMapsNames, OvertureMapsSource},
+    record::{geometry_wkb_codec, OvertureMapsBbox},
     OvertureMapsCollectionError, OvertureRecord,
 };
 
 use super::{
-    destination::{SegmentDestination, SegmentProhibitedTransitions},
-    flags::{SegmentRailFlags, SegmentRoadFlags, SegmentRoadSurfaceType},
-    route::{ConnectorReference, SegmentRoute},
-    speed_limit::SegmentSpeedLimit,
-    value_between::SegmentValueBetween,
+    route::ConnectorReference, speed_limit::SegmentSpeedLimit, value_between::SegmentValueBetween,
     SegmentAccessRestriction, SegmentClass, SegmentFullType, SegmentSubclass, SegmentSubtype,
 };
 
@@ -19,6 +15,11 @@ use super::{
 /// This struct contains information about a segment of transportation infrastructure,
 /// such as roads or railways, including geometry, metadata, access restrictions,
 /// and other attributes relevant to routing and mapping.
+///
+/// NOTE: The fields defined on this struct directly drive the Parquet [`ProjectionMask`]
+/// used when reading Overture GeoParquet files (`FieldRef::from_type::<TransportationSegmentRecord>()`).
+/// Only columns corresponding to fields present on this struct are fetched from S3 / disk.
+/// To collect additional Overture segment columns in the future, uncomment or add the field below.
 ///
 /// see <https://docs.overturemaps.org/schema/reference/transportation/segment/>
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
@@ -31,6 +32,7 @@ pub struct TransportationSegmentRecord {
         with = "geometry_wkb_codec"
     )]
     pub geometry: Option<Geometry<f32>>,
+    #[serde(default)]
     pub bbox: OvertureMapsBbox,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub subtype: Option<SegmentSubtype>,
@@ -38,35 +40,28 @@ pub struct TransportationSegmentRecord {
     pub class: Option<SegmentClass>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub subclass: Option<SegmentSubclass>,
+    #[serde(default)]
     pub version: i32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub sources: Option<Vec<Option<OvertureMapsSource>>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub names: Option<OvertureMapsNames>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub connectors: Option<Vec<ConnectorReference>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub routes: Option<Vec<SegmentRoute>>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub subclass_rules: Option<Vec<SegmentValueBetween<SegmentSubclass>>>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub access_restrictions: Option<Vec<SegmentAccessRestriction>>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub level_rules: Option<Vec<SegmentValueBetween<i32>>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub destinations: Option<Vec<SegmentDestination>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub prohibited_transitions: Option<Vec<SegmentProhibitedTransitions>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub road_surface: Option<Vec<SegmentValueBetween<SegmentRoadSurfaceType>>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub road_flags: Option<Vec<SegmentValueBetween<Vec<SegmentRoadFlags>>>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub speed_limits: Option<Vec<SegmentSpeedLimit>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub width_rules: Option<Vec<SegmentValueBetween<f64>>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub rail_flags: Option<Vec<SegmentValueBetween<Vec<SegmentRailFlags>>>>,
+    // Unused Overture Segment columns omitted to avoid downloading and holding
+    // multi-hundred-GB nested lists/maps across national-scale imports:
+    // pub sources: Option<Vec<Option<OvertureMapsSource>>>,
+    // pub names: Option<OvertureMapsNames>,
+    // pub routes: Option<Vec<SegmentRoute>>,
+    // pub level_rules: Option<Vec<SegmentValueBetween<i32>>>,
+    // pub destinations: Option<Vec<SegmentDestination>>,
+    // pub prohibited_transitions: Option<Vec<SegmentProhibitedTransitions>>,
+    // pub road_surface: Option<Vec<SegmentValueBetween<SegmentRoadSurfaceType>>>,
+    // pub road_flags: Option<Vec<SegmentValueBetween<Vec<SegmentRoadFlags>>>>,
+    // pub width_rules: Option<Vec<SegmentValueBetween<f64>>>,
+    // pub rail_flags: Option<Vec<SegmentValueBetween<Vec<SegmentRailFlags>>>>,
 }
 
 impl TryFrom<OvertureRecord> for TransportationSegmentRecord {

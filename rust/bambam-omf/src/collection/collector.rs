@@ -13,8 +13,7 @@ use crate::collection::record::TransportationSegmentRecord;
 use crate::collection::BuildingsRecord;
 use crate::collection::PlacesRecord;
 
-use super::record::OvertureRecord;
-use super::record::OvertureRecordType;
+use super::record::{projected_columns_for_record, OvertureRecord, OvertureRecordType};
 use super::OvertureMapsCollectionError;
 use super::OvertureMapsCollectorConfig;
 use super::RowFilter;
@@ -235,7 +234,14 @@ impl OvertureMapsCollector {
             None
         };
 
-        log::info!("Started collection");
+        // Derive Parquet column projection directly from the target Rust record type `R`
+        let projected_cols = projected_columns_for_record::<R>()?;
+        log::info!(
+            "Started collection for {} (projecting {} columns: {:?})",
+            std::any::type_name::<R>(),
+            projected_cols.len(),
+            projected_cols
+        );
         let start_collection = Instant::now();
         // Process each metadata object into a flat vector of tasks that
         // each take a small number of row_groups. Inside `process_meta_obj_into_tasks`
@@ -261,12 +267,13 @@ impl OvertureMapsCollector {
             )
         })?;
 
-        // Build row-group streams
+        // Build row-group streams with column projection
         let streams = row_group_tasks
             .into_iter()
             .map(|rgt| {
                 rgt.build_stream(
                     row_filter.as_ref(),
+                    Some(projected_cols.as_slice()),
                     self.obj_store.clone(),
                     io_runtime.handle().clone(),
                 )

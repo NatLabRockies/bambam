@@ -1,18 +1,18 @@
 use std::{collections::HashSet, fs::File, path::Path, sync::Arc};
 
-use arrow::datatypes::FieldRef;
+use arrow::datatypes::{FieldRef, Schema};
 use parquet::{
     arrow::{arrow_reader::ParquetRecordBatchReaderBuilder, ArrowWriter},
     basic::Compression,
     file::{metadata::KeyValue, properties::WriterProperties},
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_arrow::schema::{SchemaLike, TracingOptions};
+use serde_arrow::schema::SchemaLike;
 
 use crate::collection::{
-    InfrastructureRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
-    OvertureSpatialFilter, ReleaseVersion, RowFilterConfig, TransportationConnectorRecord,
-    TransportationSegmentRecord,
+    record::record_schema_tracing_options, InfrastructureRecord, OvertureMapsCollectionError,
+    OvertureMapsCollector, OvertureRecordType, OvertureSpatialFilter, ReleaseVersion,
+    RowFilterConfig, TransportationConnectorRecord, TransportationSegmentRecord,
 };
 
 pub const RAW_DIRNAME: &str = "raw";
@@ -20,6 +20,7 @@ pub const RAW_SEGMENTS_PARQUET: &str = "segments.parquet";
 pub const RAW_CONNECTORS_PARQUET: &str = "connectors.parquet";
 pub const RAW_INFRASTRUCTURE_PARQUET: &str = "infrastructure.parquet";
 pub const PARQUET_RELEASE_METADATA_KEY: &str = "overture_release";
+pub const RAW_PARQUET_WRITE_CHUNK_SIZE: usize = 200_000;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct TransportationCollection {
@@ -238,13 +239,6 @@ fn build_infrastructure_row_filter(
     }
 }
 
-fn raw_parquet_tracing_options() -> TracingOptions {
-    TracingOptions::default()
-        .allow_null_fields(true)
-        .enums_without_data_as_strings(true)
-        .map_as_struct(false)
-}
-
 fn write_records_to_parquet<T>(
     records: &[T],
     filepath: &Path,
@@ -253,18 +247,13 @@ fn write_records_to_parquet<T>(
 where
     T: Serialize + DeserializeOwned,
 {
-    let fields = Vec::<FieldRef>::from_type::<T>(raw_parquet_tracing_options()).map_err(|e| {
+    let fields = Vec::<FieldRef>::from_type::<T>(record_schema_tracing_options()).map_err(|e| {
         OvertureMapsCollectionError::SerializationError(format!(
             "failed to trace Arrow schema for '{}': {e}",
             filepath.display()
         ))
     })?;
-    let batch = serde_arrow::to_record_batch::<&[T]>(&fields, &records).map_err(|e| {
-        OvertureMapsCollectionError::SerializationError(format!(
-            "failed to serialize records into Arrow RecordBatch for '{}': {e}",
-            filepath.display()
-        ))
-    })?;
+    let schema = Arc::new(Schema::new(fields.clone()));
 
     let file = File::create(filepath).map_err(|e| OvertureMapsCollectionError::WriteError {
         path: filepath.to_path_buf(),
@@ -279,19 +268,42 @@ where
         )]))
         .build();
 
-    let mut writer = ArrowWriter::try_new(file, batch.schema(), Some(props)).map_err(|e| {
+    let mut writer = ArrowWriter::try_new(file, schema, Some(props)).map_err(|e| {
         OvertureMapsCollectionError::WriteError {
             path: filepath.to_path_buf(),
             message: format!("failed to initialize Parquet writer: {e}"),
         }
     })?;
 
-    writer
-        .write(&batch)
-        .map_err(|e| OvertureMapsCollectionError::WriteError {
-            path: filepath.to_path_buf(),
-            message: format!("failed to write Parquet batch: {e}"),
+    if records.is_empty() {
+        let empty_batch = serde_arrow::to_record_batch::<&[T]>(&fields, &records).map_err(|e| {
+            OvertureMapsCollectionError::SerializationError(format!(
+                "failed to serialize empty Arrow RecordBatch for '{}': {e}",
+                filepath.display()
+            ))
         })?;
+        writer.write(&empty_batch).map_err(|e| {
+            OvertureMapsCollectionError::WriteError {
+                path: filepath.to_path_buf(),
+                message: format!("failed to write empty Parquet batch: {e}"),
+            }
+        })?;
+    } else {
+        for chunk in records.chunks(RAW_PARQUET_WRITE_CHUNK_SIZE) {
+            let batch = serde_arrow::to_record_batch::<&[T]>(&fields, &chunk).map_err(|e| {
+                OvertureMapsCollectionError::SerializationError(format!(
+                    "failed to serialize records into Arrow RecordBatch for '{}': {e}",
+                    filepath.display()
+                ))
+            })?;
+            writer
+                .write(&batch)
+                .map_err(|e| OvertureMapsCollectionError::WriteError {
+                    path: filepath.to_path_buf(),
+                    message: format!("failed to write Parquet batch: {e}"),
+                })?;
+        }
+    }
 
     writer
         .close()

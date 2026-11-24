@@ -3,14 +3,16 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt};
 
 use super::geometry_wkb_codec;
-use super::{OvertureMapsBbox, OvertureMapsNames, OvertureMapsSource, OvertureRecord};
+use super::{OvertureMapsBbox, OvertureRecord};
 use crate::collection::OvertureMapsCollectionError;
 
-/// OvertureMaps Places record schema according to schema of example parquet
-/// The schema online does not mention some of the fields are nullable
+/// OvertureMaps Places record schema.
+///
+/// NOTE: The fields defined on this struct directly drive the Parquet [`ProjectionMask`]
+/// used when reading Overture GeoParquet files (`FieldRef::from_type::<PlacesRecord>()`).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PlacesRecord {
-    #[serde(with = "geometry_wkb_codec")]
+    #[serde(with = "geometry_wkb_codec", default)]
     geometry: Option<Geometry<f32>>,
     #[serde(default)]
     categories: Option<OvertureMapsPlacesCategories>,
@@ -20,18 +22,22 @@ pub struct PlacesRecord {
     taxonomy: Option<OvertureMapsPlacesTaxonomy>,
     #[serde(default)]
     operating_status: Option<String>,
+    #[serde(default)]
     id: Option<String>,
+    #[serde(default)]
     bbox: OvertureMapsBbox,
+    #[serde(default)]
     version: i32,
-    sources: Option<Vec<Option<OvertureMapsSource>>>,
-    names: OvertureMapsNames,
-    confidence: Option<f32>,
-    websites: Option<Vec<String>>,
-    socials: Option<Vec<String>>,
-    emails: Option<Vec<String>>,
-    phones: Option<Vec<String>>,
-    brand: Option<OvertureMapsPlacesBrand>,
-    addresses: Option<Vec<OvertureMapsPlacesAddresses>>,
+    // Unused Overture Places columns omitted from projection:
+    // sources: Option<Vec<Option<OvertureMapsSource>>>,
+    // names: OvertureMapsNames,
+    // confidence: Option<f32>,
+    // websites: Option<Vec<String>>,
+    // socials: Option<Vec<String>>,
+    // emails: Option<Vec<String>>,
+    // phones: Option<Vec<String>>,
+    // brand: Option<OvertureMapsPlacesBrand>,
+    // addresses: Option<Vec<OvertureMapsPlacesAddresses>>,
 }
 
 impl TryFrom<OvertureRecord> for PlacesRecord {
@@ -136,12 +142,14 @@ impl OvertureMapsPlacesTaxonomy {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct OvertureMapsPlacesBrand {
     wikidata: Option<String>,
     names: Option<OvertureMapsPlacesBrandName>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct OvertureMapsPlacesBrandName {
     primary: Option<String>,
@@ -149,6 +157,7 @@ struct OvertureMapsPlacesBrandName {
     rules: Option<Vec<OvertureMapsPlacesBrandNameRule>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct OvertureMapsPlacesBrandNameRule {
     variant: Option<String>,
@@ -158,6 +167,7 @@ struct OvertureMapsPlacesBrandNameRule {
     side: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 struct OvertureMapsPlacesAddresses {
     freeform: Option<String>,
