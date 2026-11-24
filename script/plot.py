@@ -40,10 +40,14 @@ def act_plot(gdf: gpd.GeoDataFrame, mode: str, act: str, timebin: int, outdir: P
     plt.close()
     return
 
-def runtimes_plot(df: pd.DataFrame, outdir: Path, runtime_col: str) -> None:
+def runtimes_plots(df: pd.DataFrame, outdir: Path, runtime_col: str) -> None:
     ax = sns.scatterplot(df, x="iterations", y=runtime_col, hue="mode")
     ax.figure.savefig(outdir / "plot_runtime_per_iteration.png", dpi=300, bbox_inches="tight")
     plt.close()
+
+    g = sns.FacetGrid(df, col="mode")
+    g.map_dataframe(sns.scatterplot, x="iterations", y=runtime_col)
+    g.figure.savefig(outdir / f"plot_facet_runtime_per_iteration.png", dpi=300, bbox_inches="tight")
     return
 
 def isochrone_plot(iso_df: pd.DataFrame, grid_id: str, mode: str, timebins: list[int]) -> None:
@@ -64,6 +68,7 @@ def isochrone_plot(iso_df: pd.DataFrame, grid_id: str, mode: str, timebins: list
         plt.close()
     except Exception as e:
         print(f"failure when running {grid_id} {mode}: {e}")
+        plt.close()
 
 def to_polygon(hex_id: str) -> Polygon:
     pts = h3.cell_to_boundary(hex_id)
@@ -83,7 +88,7 @@ if __name__ == "__main__":
     df["geometry"] = df.grid_id.apply(to_polygon)
     gdf = gpd.GeoDataFrame(df, crs="EPSG:4326")
 
-    runtimes_plot(df, outdir, args.runtimes_column)
+    runtimes_plots(df, outdir, args.runtimes_column)
 
     if args.plot_activities:
 

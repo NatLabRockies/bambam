@@ -2,8 +2,8 @@ use crate::model::label::multimodal::{MultimodalLabelConfig, MultimodalLabelMode
 use bambam_core::model::state::{CategoricalMapping, LegIdx};
 use routee_compass_core::model::{
     label::{
-        label_model_error::LabelModelError, label_model_service::LabelModelService, Label,
-        LabelModel,
+        default::vertex_label_model::VertexLabelModel, label_model_error::LabelModelError,
+        label_model_service::LabelModelService, Label, LabelModel,
     },
     network::VertexId,
     state::{StateModel, StateVariable},
@@ -27,6 +27,14 @@ impl LabelModelService for MultimodalLabelService {
                     "internal error: MultimodalLabelConfig must only have optional fields",
                 ))
             })?;
+        let use_multimodal_label = optional_conf
+            .multimodal_label
+            .or(self.config.multimodal_label)
+            .unwrap_or(true);
+        if !use_multimodal_label {
+            return Ok(Arc::new(VertexLabelModel {}));
+        }
+
         let max_trip_legs = self.get_max_trip_legs(&optional_conf)?;
         let modes = self.get_modes(&optional_conf)?;
         let mapping = CategoricalMapping::new(modes)?;

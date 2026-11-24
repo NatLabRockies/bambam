@@ -1,18 +1,22 @@
 use std::{
     collections::{HashMap, HashSet},
+    fs::File,
+    io::{BufWriter, Write},
     path::Path,
 };
 
 use bambam_network::{consts::COMPLETE_VERTEX_FILENAME, VertexCompassRecord, VertexCompleteRecord};
 use bambam_omf::collection::{
-    Bbox, BuildingsRecord, OvertureMapsCollector, OvertureMapsCollectorConfig, OvertureRecordType,
-    PlacesRecord, RowFilterConfig, TaxonomyModelBuilder,
+    Bbox, BuildingsRecord, ObjectStoreSource, OvertureMapsCollector, OvertureMapsCollectorConfig,
+    OvertureRecordType, PlacesRecord, RowFilterConfig, TaxonomyModelBuilder,
 };
+use flate2::{write::GzEncoder, Compression};
 use geo::{BoundingRect, Centroid, Coord, Euclidean, Length, LineString, Rect};
 use geozero::{wkt::Wkt as WktReader, ToGeo};
 use osmpbf::{Element, ElementReader};
 use routee_compass_core::util::fs::read_utils;
 use rstar::{RTree, RTreeObject, AABB};
+use serde::Serialize;
 
 use crate::{
     config::{
@@ -671,18 +675,25 @@ pub fn extract_overture_maps_opportunities(
             CongestionError::SpatialFeature(format!("failed building Overture taxonomy model: {e}"))
         })?;
 
-    let collector = OvertureMapsCollector::try_from(OvertureMapsCollectorConfig::default())
-        .map_err(|e| {
-            CongestionError::SpatialFeature(format!(
-                "failed initializing OvertureMapsCollector: {e}"
-            ))
-        })?;
-
-    let release = collector.get_latest_release().map_err(|e| {
-        CongestionError::SpatialFeature(format!(
-            "failed resolving latest Overture Maps release: {e}"
-        ))
+    let store_source = if local_source_dir.is_some() {
+        ObjectStoreSource::FileSystem
+    } else {
+        ObjectStoreSource::AmazonS3
+    };
+    let collector_cfg = OvertureMapsCollectorConfig::new(store_source, Some(4), Some(64));
+    let collector = OvertureMapsCollector::try_from(collector_cfg).map_err(|e| {
+        CongestionError::SpatialFeature(format!("failed initializing OvertureMapsCollector: {e}"))
     })?;
+
+    let release = if local_source_dir.is_none() {
+        Some(collector.get_latest_release().map_err(|e| {
+            CongestionError::SpatialFeature(format!(
+                "failed resolving latest Overture Maps release: {e}"
+            ))
+        })?)
+    } else {
+        None
+    };
 
     let places_filter = RowFilterConfig::Combined {
         filters: vec![
@@ -692,10 +703,23 @@ pub fn extract_overture_maps_opportunities(
     };
 
     let raw_places = if let Some(dir) = local_source_dir {
-        let obj_path = object_store::path::Path::from(dir.to_string_lossy().as_ref());
+        let abs_dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+        let places_dir = if abs_dir.join("places").is_dir() {
+            abs_dir.join("places")
+        } else {
+            abs_dir
+        };
+        let obj_path =
+            object_store::path::Path::from_filesystem_path(&places_dir).map_err(|e| {
+                CongestionError::SpatialFeature(format!(
+                    "invalid local Overture directory path '{}': {e}",
+                    places_dir.display()
+                ))
+            })?;
         collector.collect_from_path(obj_path, &OvertureRecordType::Places, Some(places_filter))
     } else {
-        collector.collect_from_release(&release, &OvertureRecordType::Places, Some(places_filter))
+        let rel = release.as_deref().unwrap_or_default();
+        collector.collect_from_release(rel, &OvertureRecordType::Places, Some(places_filter))
     }
     .map_err(|e| {
         CongestionError::SpatialFeature(format!("failed collecting Overture Places: {e}"))
@@ -765,14 +789,23 @@ pub fn extract_overture_maps_opportunities(
             ],
         };
         let raw_bldgs = if let Some(dir) = local_source_dir {
-            let obj_path = object_store::path::Path::from(dir.to_string_lossy().as_ref());
+            let abs_dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+            let bldgs_dir = if abs_dir.join("buildings").is_dir() {
+                abs_dir.join("buildings")
+            } else {
+                abs_dir
+            };
+            let obj_path =
+                object_store::path::Path::from_filesystem_path(&bldgs_dir).map_err(|e| {
+                    CongestionError::SpatialFeature(format!(
+                        "invalid local Overture directory path '{}': {e}",
+                        bldgs_dir.display()
+                    ))
+                })?;
             collector.collect_from_path(obj_path, &OvertureRecordType::Buildings, Some(bldg_filter))
         } else {
-            collector.collect_from_release(
-                &release,
-                &OvertureRecordType::Buildings,
-                Some(bldg_filter),
-            )
+            let rel = release.as_deref().unwrap_or_default();
+            collector.collect_from_release(rel, &OvertureRecordType::Buildings, Some(bldg_filter))
         }
         .map_err(|e| {
             CongestionError::SpatialFeature(format!("failed collecting Overture Buildings: {e}"))
@@ -798,6 +831,132 @@ pub fn extract_overture_maps_opportunities(
     }
 
     Ok(out)
+}
+
+#[derive(Debug, Serialize)]
+struct SavedOpportunityRow {
+    x: f64,
+    y: f64,
+    weight: f64,
+}
+
+/// Writes extracted MEP opportunity points (`x,y,weight`) to a CSV or `.csv.gz` file on disk
+/// so they can be reused across `calibrate` and `impute` without re-downloading Overture Maps.
+pub fn write_opportunities_csv(
+    path: &Path,
+    points: &[SpatialFeaturePoint],
+) -> Result<(), CongestionError> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|source| CongestionError::Io {
+                path: parent.to_path_buf(),
+                source,
+            })?;
+        }
+    }
+    let file = File::create(path).map_err(|source| CongestionError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let is_gz = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("gz"));
+    let writer: Box<dyn Write> = if is_gz {
+        Box::new(GzEncoder::new(BufWriter::new(file), Compression::default()))
+    } else {
+        Box::new(BufWriter::new(file))
+    };
+
+    let mut csv_writer = csv::WriterBuilder::new()
+        .has_headers(true)
+        .from_writer(writer);
+    let mut count = 0usize;
+    for pt in points {
+        if pt.kind == FeatureKind::Opportunity {
+            csv_writer
+                .serialize(SavedOpportunityRow {
+                    x: pt.lon,
+                    y: pt.lat,
+                    weight: pt.weight,
+                })
+                .map_err(|e| CongestionError::Csv {
+                    path: path.to_path_buf(),
+                    message: e.to_string(),
+                })?;
+            count += 1;
+        }
+    }
+    csv_writer.flush().map_err(|source| CongestionError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    log::info!(
+        "Saved {} opportunity points (x, y, weight) to '{}'",
+        count,
+        path.display()
+    );
+    Ok(())
+}
+
+/// Extracts MEP land-use opportunities for an Open Network's expanded study bounding box
+/// according to `SpatialFeaturesConfig` and writes them to `output_csv` (`x,y,weight`).
+pub fn export_opportunities_to_csv(
+    open_net: &LoadedOpenNetwork,
+    cfg: &SpatialFeaturesConfig,
+    output_csv: &Path,
+) -> Result<usize, CongestionError> {
+    let radius_m = cfg.density_radius_miles * METERS_PER_MILE;
+    let search_bbox = expand_bbox_by_meters(open_net.bbox, radius_m * 1.5 + 200.0);
+
+    let opp_src =
+        cfg.opportunities_source
+            .clone()
+            .unwrap_or(OpportunitiesSourceConfig::OvertureMaps {
+                local_source_dir: None,
+                include_buildings: true,
+            });
+
+    let points = match &opp_src {
+        OpportunitiesSourceConfig::OvertureMaps {
+            local_source_dir,
+            include_buildings,
+        } => extract_overture_maps_opportunities(
+            local_source_dir.as_deref().map(Path::new),
+            *include_buildings,
+            search_bbox,
+        )?,
+        OpportunitiesSourceConfig::OsmPbf { pbf_path } => {
+            extract_osm_pbf_features(Path::new(pbf_path), search_bbox, true, false)?
+        }
+        OpportunitiesSourceConfig::CsvPoints {
+            path,
+            x_column,
+            y_column,
+            wkt_column,
+            weight_column,
+        } => load_csv_feature_points(
+            Path::new(path),
+            x_column,
+            y_column,
+            wkt_column.as_deref(),
+            weight_column.as_deref(),
+            FeatureKind::Opportunity,
+            search_bbox,
+        )?,
+        OpportunitiesSourceConfig::VertexOpportunitiesCsv {
+            opportunities_csv_path,
+            columns,
+        } => load_vertex_opportunities_csv(
+            &open_net.root_dir,
+            Path::new(opportunities_csv_path),
+            columns.as_deref(),
+            search_bbox,
+        )?,
+    };
+
+    write_opportunities_csv(output_csv, &points)?;
+    Ok(points.len())
 }
 
 /// Extracts MEP land-use opportunities and/or traffic control points directly from a `.osm.pbf`
@@ -1176,5 +1335,57 @@ mod tests {
 
         assert!((opp_den - expected_opp).abs() < 1e-4);
         assert!((tc_den - expected_tc).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_write_and_load_opportunities_csv_gz_roundtrip() {
+        let tmp_dir =
+            std::env::temp_dir().join(format!("bambam_opp_csv_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let csv_gz_path = tmp_dir.join("opportunities_omf.csv.gz");
+
+        let pts = vec![
+            SpatialFeaturePoint {
+                lon: -105.260,
+                lat: 40.015,
+                kind: FeatureKind::Opportunity,
+                weight: 3.0,
+            },
+            SpatialFeaturePoint {
+                lon: -105.258,
+                lat: 40.016,
+                kind: FeatureKind::TrafficControl, // should be ignored by write_opportunities_csv
+                weight: 2.0,
+            },
+            SpatialFeaturePoint {
+                lon: -105.255,
+                lat: 40.017,
+                kind: FeatureKind::Opportunity,
+                weight: 1.0,
+            },
+        ];
+
+        write_opportunities_csv(&csv_gz_path, &pts).unwrap();
+
+        let search_bbox = Rect::new(Coord { x: -106.0, y: 39.5 }, Coord { x: -104.5, y: 40.5 });
+        let loaded = load_csv_feature_points(
+            &csv_gz_path,
+            "x",
+            "y",
+            None,
+            Some("weight"),
+            FeatureKind::Opportunity,
+            search_bbox,
+        )
+        .unwrap();
+
+        assert_eq!(loaded.len(), 2);
+        assert!((loaded[0].lon - (-105.260)).abs() < 1e-6);
+        assert!((loaded[0].weight - 3.0).abs() < 1e-6);
+        assert!((loaded[1].lon - (-105.255)).abs() < 1e-6);
+        assert!((loaded[1].weight - 1.0).abs() < 1e-6);
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

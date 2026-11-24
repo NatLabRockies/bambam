@@ -34,7 +34,7 @@ pub fn active_leg_variable_config() -> StateVariableConfig {
 
 pub fn leg_mode_input_feature(leg_idx: LegIdx) -> InputFeature {
     InputFeature::Custom {
-        name: fieldname::leg_mode_fieldname(leg_idx),
+        name: fieldname::leg_mode_fieldname(leg_idx).into_owned(),
         unit: "signed_integer".to_string(),
     }
 }

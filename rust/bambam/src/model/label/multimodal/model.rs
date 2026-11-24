@@ -41,19 +41,34 @@ impl LabelModel for MultimodalLabelModel {
         state: &[StateVariable],
         state_model: &StateModel,
     ) -> Result<Label, LabelModelError> {
-        let mode_labels: Vec<u8> =
-            ops::get_mode_label_sequence(state, state_model, self.max_trip_legs)?
-                .into_iter()
-                .map(|mode_label| {
-                    mode_label.try_into().map_err(|e| {
+        const MAX_LABEL_LEGS: usize = 16;
+        let mut buf = [0u8; MAX_LABEL_LEGS];
+        let mut len = 0usize;
+        let max_legs = self.max_trip_legs.get();
+
+        for leg_idx in 0..max_legs {
+            let mode_label_opt =
+                ops::get_leg_mode_label(state, leg_idx, state_model, self.max_trip_legs)?;
+            match mode_label_opt {
+                None => break,
+                Some(mode_label) => {
+                    if len >= MAX_LABEL_LEGS {
+                        return Err(LabelModelError::LabelModelError(format!(
+                            "mode sequence length exceeds stack buffer capacity ({MAX_LABEL_LEGS})"
+                        )));
+                    }
+                    buf[len] = mode_label.try_into().map_err(|e| {
                         LabelModelError::LabelModelError(format!(
                             "mode label {mode_label} cannot be expressed as u8: {e}"
                         ))
-                    })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+                    })?;
+                    len += 1;
+                }
+            }
+        }
 
-        let label = Label::new_u8_state(vertex_id, &mode_labels)?;
+        let mode_labels = &buf[..len];
+        let label = Label::new_u8_state(vertex_id, mode_labels)?;
 
         log::debug!(
             "multimodal label model at vertex {} produced label [{}] for state at time: {:.2} minutes",

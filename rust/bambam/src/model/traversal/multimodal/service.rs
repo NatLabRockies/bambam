@@ -34,7 +34,7 @@ impl TraversalModelService for MultimodalTraversalService {
         let query_config: MultimodalTraversalQuery = serde::Deserialize::deserialize(query).map_err(|e| TraversalModelError::BuildError(format!("failure while deserializing query in MultimodalTraversalService for {}-mode: {e}", self.config.this_mode)))?;
         let model = MultimodalTraversalModel::new(
             self.config.this_mode.clone(),
-            query_config.max_trip_legs,
+            query_config.resolved_max_trip_legs(),
             self.mode_enumeration.clone(),
         );
         Ok(Arc::new(model))

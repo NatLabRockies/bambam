@@ -49,12 +49,12 @@ impl ConstraintModelService for MultimodalConstraintService {
                     "while reading query for multimodal constraint model, {e}"
                 ))
             })?;
-        let constraints = model_config.build_constraints()?;
+        let constraints = model_config.build_constraints(&self.engine.mode_to_state)?;
 
         let model = MultimodalConstraintModel::new(
             self.engine.clone(),
             constraints,
-            model_config.max_trip_legs,
+            model_config.resolved_max_trip_legs(),
         );
         Ok(Arc::new(model))
     }

@@ -68,31 +68,23 @@ grid = { type = "h3", resolution = 8 }
 type = "inject"
 format = "key_value"
 write_mode = "overwrite"
-key = "trip_mode"
-value = "transit"
-
-[[plugin.input_plugins]]
-type = "inject"
-format = "key_value"
-write_mode = "overwrite"
-key = "max_trip_legs"
-value = 5
-
-[[plugin.input_plugins]]
-type = "inject"
-format = "key_value"
-write_mode = "overwrite"
 key = "start_datetime"
 value = "2025-08-15 09:00:00"
 
 [[plugin.input_plugins]]
-type = "inject"
-format = "key_value"
-write_mode = "overwrite"
-key = "constraints"
-value = [
-    { type = "time_limit", limit = 40, unit = "minutes" },
-    { type = "mode_time_limit", values.walk = { limit = 5, unit = "minutes"}},
+type = "trip_modes"
+
+[plugin.input_plugins.defaults]
+constraints = [
+    { type = "time_limit", max = 40.0, unit = "minutes" },
+]
+
+[plugin.input_plugins.modes.transit]
+max_trip_legs = 4
+constraints = [
+    { type = "mode_time_limit", mode = "walk", max = 10.0, unit = "minutes" },
+    { type = "mode_leg_time_limit", mode = "transit", min = 3.0, unit = "minutes" },
+    { type = "allowed_modes", values = ["walk", "transit"] },
 ]
 
 [[plugin.output_plugins]]
