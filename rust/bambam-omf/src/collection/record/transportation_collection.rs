@@ -282,12 +282,12 @@ where
                 filepath.display()
             ))
         })?;
-        writer.write(&empty_batch).map_err(|e| {
-            OvertureMapsCollectionError::WriteError {
+        writer
+            .write(&empty_batch)
+            .map_err(|e| OvertureMapsCollectionError::WriteError {
                 path: filepath.to_path_buf(),
                 message: format!("failed to write empty Parquet batch: {e}"),
-            }
-        })?;
+            })?;
     } else {
         for chunk in records.chunks(RAW_PARQUET_WRITE_CHUNK_SIZE) {
             let batch = serde_arrow::to_record_batch::<&[T]>(&fields, &chunk).map_err(|e| {

@@ -42,7 +42,10 @@ impl RowGroupTask {
             .unwrap_or(Ok(vec![]))?;
 
         let projection_mask = projected_columns.map(|cols| {
-            ProjectionMask::columns(file_metadata.schema_descr(), cols.iter().map(|s| s.as_str()))
+            ProjectionMask::columns(
+                file_metadata.schema_descr(),
+                cols.iter().map(|s| s.as_str()),
+            )
         });
 
         let reader = ParquetObjectReader::new(obj_store, self.obj_meta.location.clone())
