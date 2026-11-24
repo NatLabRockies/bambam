@@ -66,9 +66,7 @@ include_buildings = true
 # Can be overridden on the CLI via `--census-csv <path>` (exported by `bambam-congestion export-census`).
 [spatial_features.census_source]
 type = "bamcensus"
-
-[spatial_features.census_source.employment_source]
-fallback = { TryPreviousYears = 10 }
+employment_source.fallback = { TryPreviousYears = 10 }
 
 [reference_network]
 speed_unit = "kph"
