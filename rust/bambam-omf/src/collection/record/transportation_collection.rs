@@ -1,4 +1,4 @@
-use std::{fs::File, path::Path};
+use std::{collections::HashSet, fs::File, path::Path, sync::Arc};
 
 use arrow::datatypes::FieldRef;
 use parquet::{
@@ -10,8 +10,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_arrow::schema::{SchemaLike, TracingOptions};
 
 use crate::collection::{
-    InfrastructureRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecord,
-    OvertureRecordType, ReleaseVersion, RowFilterConfig, TransportationConnectorRecord,
+    InfrastructureRecord, OvertureMapsCollectionError, OvertureMapsCollector, OvertureRecordType,
+    OvertureSpatialFilter, ReleaseVersion, RowFilterConfig, TransportationConnectorRecord,
     TransportationSegmentRecord,
 };
 
@@ -38,59 +38,76 @@ impl TransportationCollection {
         release: ReleaseVersion,
         row_filter_config: Option<RowFilterConfig>,
     ) -> Result<Self, OvertureMapsCollectionError> {
+        Self::try_from_collector_with_spatial_filter(collector, release, row_filter_config, None)
+    }
+
+    /// Streams segments, connectors, and infrastructure from `collector`, applying the optional
+    /// Stage 2 [`OvertureSpatialFilter`] (and connector-ID pruning) in-flight as each `RecordBatch`
+    /// is deserialized so out-of-extent records and unreferenced connectors never accumulate in RAM.
+    pub fn try_from_collector_with_spatial_filter(
+        collector: OvertureMapsCollector,
+        release: ReleaseVersion,
+        row_filter_config: Option<RowFilterConfig>,
+        spatial_filter: Option<OvertureSpatialFilter>,
+    ) -> Result<Self, OvertureMapsCollectionError> {
         let uri = match &release {
             ReleaseVersion::Latest => collector.get_latest_release()?,
             other => String::from(other),
         };
-        let connectors = collector
-            .collect_from_release(
-                &uri,
-                &OvertureRecordType::Connector,
-                row_filter_config.clone(),
-            )?
-            .into_iter()
-            .map(|record| match record {
-                OvertureRecord::Connector(transportation_connector_record) => {
-                    Ok(transportation_connector_record)
-                }
-                _ => Err(OvertureMapsCollectionError::DeserializeTypeError(format!(
-                    "expected connector type, got {record:?}"
-                ))),
-            })
-            .collect::<Result<Vec<TransportationConnectorRecord>, OvertureMapsCollectionError>>()?;
 
-        let segments = collector
-            .collect_from_release(
+        let seg_spatial = spatial_filter.clone();
+        let segments: Vec<TransportationSegmentRecord> = collector
+            .collect_typed_from_release_filtered(
                 &uri,
                 &OvertureRecordType::Segment,
                 row_filter_config.clone(),
-            )?
-            .into_iter()
-            .map(|record| match record {
-                OvertureRecord::Segment(transportation_segment_record) => {
-                    Ok(transportation_segment_record)
-                }
-                _ => Err(OvertureMapsCollectionError::DeserializeTypeError(format!(
-                    "expected segment type, got {record:?}"
-                ))),
-            })
-            .collect::<Result<Vec<TransportationSegmentRecord>, OvertureMapsCollectionError>>()?;
+                move |seg: &TransportationSegmentRecord| match &seg_spatial {
+                    Some(sf) => seg
+                        .get_linestring()
+                        .map(|ls| sf.matches_linestring(ls))
+                        .unwrap_or(false),
+                    None => true,
+                },
+            )?;
+
+        // When a spatial filter is active, retain only connectors referenced by surviving segments
+        let referenced_connector_ids: Option<Arc<HashSet<String>>> =
+            spatial_filter.as_ref().map(|_| {
+                let ids: HashSet<String> = segments
+                    .iter()
+                    .filter_map(|s| s.connectors.as_ref())
+                    .flatten()
+                    .map(|c| c.connector_id.clone())
+                    .collect();
+                Arc::new(ids)
+            });
+
+        let connectors: Vec<TransportationConnectorRecord> = collector
+            .collect_typed_from_release_filtered(
+                &uri,
+                &OvertureRecordType::Connector,
+                row_filter_config.clone(),
+                move |conn: &TransportationConnectorRecord| match &referenced_connector_ids {
+                    Some(ids) => ids.contains(&conn.id),
+                    None => true,
+                },
+            )?;
 
         let infra_filter_config = build_infrastructure_row_filter(row_filter_config);
-        let infrastructure = collector
-            .collect_from_release(
+        let infra_spatial = spatial_filter;
+        let infrastructure: Vec<InfrastructureRecord> = collector
+            .collect_typed_from_release_filtered(
                 &uri,
                 &OvertureRecordType::Infrastructure,
                 infra_filter_config,
-            )?
-            .into_iter()
-            .map(|record| match record {
-                OvertureRecord::Infrastructure(infra_record) => Ok(infra_record),
-                _ => Err(OvertureMapsCollectionError::DeserializeTypeError(format!(
-                    "expected infrastructure type, got {record:?}"
-                ))),
-            })
-            .collect::<Result<Vec<InfrastructureRecord>, OvertureMapsCollectionError>>()?;
+                move |infra: &InfrastructureRecord| match &infra_spatial {
+                    Some(sf) => infra
+                        .get_geometry()
+                        .map(|g| sf.matches_geometry(g))
+                        .unwrap_or(false),
+                    None => true,
+                },
+            )?;
 
         Ok(Self {
             release: uri,

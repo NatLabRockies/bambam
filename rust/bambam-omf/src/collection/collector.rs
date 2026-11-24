@@ -1,12 +1,10 @@
 use arrow::array::RecordBatch;
 use chrono::NaiveDate;
-use futures::stream::{self, StreamExt};
-use futures::{TryFutureExt, TryStreamExt};
-use itertools::Itertools;
+use futures::stream::{self, StreamExt, TryStreamExt};
 use object_store::{path::Path, ListResult, ObjectMeta, ObjectStore};
-use rayon::prelude::*;
+use serde::de::DeserializeOwned;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::collection::collector_ops::{process_meta_obj_into_tasks, RowGroupTask};
 use crate::collection::record::InfrastructureRecord;
@@ -102,6 +100,103 @@ impl OvertureMapsCollector {
         record_type: &OvertureRecordType,
         row_filter_config: Option<RowFilterConfig>,
     ) -> Result<Vec<OvertureRecord>, OvertureMapsCollectionError> {
+        match record_type {
+            OvertureRecordType::Places => self
+                .collect_records_from_path_filtered::<PlacesRecord, _, _, _>(
+                    path,
+                    record_type,
+                    row_filter_config,
+                    |_| true,
+                    OvertureRecord::from,
+                ),
+            OvertureRecordType::Buildings => self
+                .collect_records_from_path_filtered::<BuildingsRecord, _, _, _>(
+                    path,
+                    record_type,
+                    row_filter_config,
+                    |_| true,
+                    OvertureRecord::from,
+                ),
+            OvertureRecordType::Segment => self
+                .collect_records_from_path_filtered::<TransportationSegmentRecord, _, _, _>(
+                    path,
+                    record_type,
+                    row_filter_config,
+                    |_| true,
+                    OvertureRecord::from,
+                ),
+            OvertureRecordType::Connector => self
+                .collect_records_from_path_filtered::<TransportationConnectorRecord, _, _, _>(
+                    path,
+                    record_type,
+                    row_filter_config,
+                    |_| true,
+                    OvertureRecord::from,
+                ),
+            OvertureRecordType::Infrastructure => self
+                .collect_records_from_path_filtered::<InfrastructureRecord, _, _, _>(
+                    path,
+                    record_type,
+                    row_filter_config,
+                    |_| true,
+                    OvertureRecord::from,
+                ),
+        }
+    }
+
+    pub fn collect_from_release(
+        &self,
+        release_uri: &str,
+        record_type: &OvertureRecordType,
+        row_filter_config: Option<RowFilterConfig>,
+    ) -> Result<Vec<OvertureRecord>, OvertureMapsCollectionError> {
+        log::info!("Collecting OvertureMaps {record_type} records from release {release_uri}");
+        let path = Path::from(record_type.format_url(release_uri));
+        self.collect_from_path(path, record_type, row_filter_config)
+    }
+
+    /// Streams Arrow `RecordBatch`es from `release_uri`, deserializing each batch immediately
+    /// into `R`, retaining only records matching `predicate`, and dropping the `RecordBatch`
+    /// before reading subsequent batches so raw Arrow buffers never accumulate in RAM.
+    pub fn collect_typed_from_release_filtered<R, P>(
+        &self,
+        release_uri: &str,
+        record_type: &OvertureRecordType,
+        row_filter_config: Option<RowFilterConfig>,
+        predicate: P,
+    ) -> Result<Vec<R>, OvertureMapsCollectionError>
+    where
+        R: DeserializeOwned + Send + 'static,
+        P: Fn(&R) -> bool + Send + Sync + 'static,
+    {
+        log::info!("Collecting OvertureMaps {record_type} records from release {release_uri}");
+        let path = Path::from(record_type.format_url(release_uri));
+        self.collect_records_from_path_filtered(
+            path,
+            record_type,
+            row_filter_config,
+            predicate,
+            std::convert::identity,
+        )
+    }
+
+    /// Core streaming collection pipeline: fetches Parquet row-group streams, deserializes each
+    /// `RecordBatch` on the blocking/Rayon pool as soon as it arrives, applies `predicate`
+    /// in-flight, and drops the `RecordBatch` immediately.
+    pub fn collect_records_from_path_filtered<R, T, P, M>(
+        &self,
+        path: Path,
+        _record_type: &OvertureRecordType,
+        row_filter_config: Option<RowFilterConfig>,
+        predicate: P,
+        mapper: M,
+    ) -> Result<Vec<T>, OvertureMapsCollectionError>
+    where
+        R: DeserializeOwned + Send + 'static,
+        T: Send + 'static,
+        P: Fn(&R) -> bool + Send + Sync + 'static,
+        M: Fn(R) -> T + Send + Sync + 'static,
+    {
         let filemeta_stream = self.obj_store.list(Some(&path));
 
         let io_runtime = tokio::runtime::Runtime::new()
@@ -142,9 +237,9 @@ impl OvertureMapsCollector {
 
         log::info!("Started collection");
         let start_collection = Instant::now();
-        // Process each all metadata object into a flat vector of tasks that
-        // each take a small number of row_groups. Inside the `process_meta_obj_into_tasks`
-        // function we also prune based on the bounding box
+        // Process each metadata object into a flat vector of tasks that
+        // each take a small number of row_groups. Inside `process_meta_obj_into_tasks`
+        // we also prune based on the bounding box.
         let row_group_tasks: Vec<RowGroupTask> = runtime.block_on(async {
             Ok::<Vec<RowGroupTask>, OvertureMapsCollectionError>(
                 stream::iter(meta_objects)
@@ -166,7 +261,7 @@ impl OvertureMapsCollector {
             )
         })?;
 
-        // Build and collect streams
+        // Build row-group streams
         let streams = row_group_tasks
             .into_iter()
             .map(|rgt| {
@@ -178,52 +273,72 @@ impl OvertureMapsCollector {
             })
             .collect::<Result<Vec<_>, OvertureMapsCollectionError>>()?;
 
-        let record_batches = runtime.block_on(
-            stream::iter(streams)
+        let predicate = Arc::new(predicate);
+        let mapper = Arc::new(mapper);
+        let io_handle = io_runtime.handle().clone();
+        let deser_concurrency = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(16)
+            .max(1);
+
+        // Stream batches with bounded concurrency, deserializing and filtering each batch
+        // immediately so `RecordBatch` buffers are freed as soon as they are processed.
+        let (records, total_deser_time) = runtime.block_on(async {
+            let mut batch_result_stream = stream::iter(streams)
                 .flatten_unordered(self.file_concurrency_limit)
-                .try_collect::<Vec<RecordBatch>>()
-                .map_err(|e| OvertureMapsCollectionError::RecordBatchRetrievalError { source: e }),
-        )?;
-        log::info!("Collection time {:?}", start_collection.elapsed());
+                .map_err(|e| OvertureMapsCollectionError::RecordBatchRetrievalError { source: e })
+                .map_ok(|batch: RecordBatch| {
+                    let pred = Arc::clone(&predicate);
+                    let map_fn = Arc::clone(&mapper);
+                    let handle = io_handle.clone();
+                    async move {
+                        handle
+                            .spawn_blocking(move || {
+                                let t0 = Instant::now();
+                                let rows: Vec<R> =
+                                    serde_arrow::from_record_batch(&batch).map_err(|e| {
+                                        OvertureMapsCollectionError::DeserializeError(format!(
+                                            "Serde error: {e}"
+                                        ))
+                                    })?;
+                                // Drop `batch` immediately to release Arrow buffers before filtering/mapping
+                                drop(batch);
+                                let kept: Vec<T> = rows
+                                    .into_iter()
+                                    .filter(|r| pred(r))
+                                    .map(|r| map_fn(r))
+                                    .collect();
+                                Ok::<(Vec<T>, Duration), OvertureMapsCollectionError>((
+                                    kept,
+                                    t0.elapsed(),
+                                ))
+                            })
+                            .await
+                            .map_err(|e| {
+                                OvertureMapsCollectionError::TokioError(format!(
+                                    "blocking deserialization task failed: {e}"
+                                ))
+                            })?
+                    }
+                })
+                .try_buffer_unordered(deser_concurrency);
 
-        // Deserialize the batches into Records
-        let start_deserialization = Instant::now();
-        let records: Vec<OvertureRecord> = record_batches
-            .par_iter()
-            .map(|batch| match record_type {
-                OvertureRecordType::Places => record_type.process_batch::<PlacesRecord>(batch),
-                OvertureRecordType::Buildings => {
-                    record_type.process_batch::<BuildingsRecord>(batch)
-                }
-                OvertureRecordType::Segment => {
-                    record_type.process_batch::<TransportationSegmentRecord>(batch)
-                }
-                OvertureRecordType::Connector => {
-                    record_type.process_batch::<TransportationConnectorRecord>(batch)
-                }
-                OvertureRecordType::Infrastructure => {
-                    record_type.process_batch::<InfrastructureRecord>(batch)
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect_vec();
+            let mut out: Vec<T> = Vec::new();
+            let mut deser_elapsed = Duration::ZERO;
+            while let Some((mut batch_records, dt)) = batch_result_stream.try_next().await? {
+                out.append(&mut batch_records);
+                deser_elapsed += dt;
+            }
+            Ok::<(Vec<T>, Duration), OvertureMapsCollectionError>((out, deser_elapsed))
+        })?;
 
-        log::info!("Deserialization time {:?}", start_deserialization.elapsed());
-        log::info!("Total time {:?}", start_collection.elapsed());
+        log::info!(
+            "Streaming collection + deserialization completed in {:?} (cumulative CPU deserialization time {:?}, retained {} records)",
+            start_collection.elapsed(),
+            total_deser_time,
+            records.len()
+        );
         Ok(records)
-    }
-
-    pub fn collect_from_release(
-        &self,
-        release_uri: &str,
-        record_type: &OvertureRecordType,
-        row_filter_config: Option<RowFilterConfig>,
-    ) -> Result<Vec<OvertureRecord>, OvertureMapsCollectionError> {
-        log::info!("Collecting OvertureMaps {record_type} records from release {release_uri}");
-        let path = Path::from(record_type.format_url(release_uri));
-        self.collect_from_path(path, record_type, row_filter_config)
     }
 }
 

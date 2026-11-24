@@ -25,17 +25,18 @@ pub fn run(
     infrastructure_match_distance_meters: Option<f64>,
 ) -> Result<(), OvertureMapsCollectionError> {
     let collection: TransportationCollection = match local_source {
-        Some(src_path) => read_local(src_path),
-        None => run_collector(spatial_filter.map(|f| f.bbox())),
-    }?;
+        Some(src_path) => {
+            let loaded = read_local(src_path)?;
+            if let Some(filter) = spatial_filter {
+                filter.filter_transportation_collection(loaded)
+            } else {
+                loaded
+            }
+        }
+        None => run_collector(spatial_filter)?,
+    };
 
     util::fs::create_dirs(output_directory)?;
-
-    let collection = if let Some(filter) = spatial_filter {
-        filter.filter_transportation_collection(collection)
-    } else {
-        collection
-    };
 
     // Always retain the raw OMF dataset in `<output_directory>/raw/*.parquet`
     // unless `local_source` is already reading from that exact directory.
@@ -76,7 +77,7 @@ fn read_local(path: &Path) -> Result<TransportationCollection, OvertureMapsColle
 
 /// retrieve a TransportationCollection from a URL.
 fn run_collector(
-    bbox_arg: Option<Bbox>,
+    spatial_filter: Option<&OvertureSpatialFilter>,
 ) -> Result<TransportationCollection, OvertureMapsCollectionError> {
     let object_store = ObjectStoreSource::AmazonS3;
     let rg_chunk_size = 4;
@@ -88,10 +89,11 @@ fn run_collector(
     )
     .build()?;
     let release = ReleaseVersion::Latest;
-    let bbox = bbox_arg.ok_or_else(|| {
+    let filter = spatial_filter.ok_or_else(|| {
         let msg = String::from("must provide spatial filter / extent for download");
         OvertureMapsCollectionError::InvalidUserInput(msg)
     })?;
+    let bbox: Bbox = filter.bbox();
     log::info!(
         "running OMF import with
         object store {object_store:?}
@@ -101,9 +103,10 @@ fn run_collector(
         bbox: {bbox:?}"
     );
 
-    TransportationCollection::try_from_collector(
+    TransportationCollection::try_from_collector_with_spatial_filter(
         collector,
         release,
         Some(RowFilterConfig::from(bbox)),
+        Some(filter.clone()),
     )
 }

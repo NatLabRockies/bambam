@@ -41,11 +41,22 @@ impl OvertureRecordType {
     where
         R: DeserializeOwned + Into<OvertureRecord>,
     {
-        let as_rows: Vec<R> = serde_arrow::from_record_batch(record_batch).map_err(|e| {
-            OvertureMapsCollectionError::DeserializeError(format!("Serde error: {e}"))
-        })?;
+        let as_rows: Vec<R> = self.deserialize_batch(record_batch)?;
         let as_result: Vec<OvertureRecord> = as_rows.into_iter().map(Into::into).collect();
         Ok(as_result)
+    }
+
+    /// deserializes an arrow [RecordBatch] directly into a typed `Vec<R>` without
+    /// wrapping each element in [OvertureRecord].
+    pub fn deserialize_batch<R>(
+        &self,
+        record_batch: &RecordBatch,
+    ) -> Result<Vec<R>, OvertureMapsCollectionError>
+    where
+        R: DeserializeOwned,
+    {
+        serde_arrow::from_record_batch(record_batch)
+            .map_err(|e| OvertureMapsCollectionError::DeserializeError(format!("Serde error: {e}")))
     }
 }
 
