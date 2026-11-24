@@ -17,10 +17,10 @@ bambam-core = { workspace = true }
 bambam-network = { workspace = true }
 bambam-omf = { workspace = true }
 bambam-osm = { workspace = true }
-bamcensus = { workspace = true }
-bamcensus-acs = { workspace = true }
-bamcensus-core = { workspace = true }
-bamcensus-lehd = { workspace = true }
+bamcensus = { workspace = true, features = ["schemars"] }
+bamcensus-acs = { workspace = true, features = ["schemars"] }
+bamcensus-core = { workspace = true, features = ["schemars"] }
+bamcensus-lehd = { workspace = true, features = ["schemars"] }
 chrono = { workspace = true }
 clap = { workspace = true }
 config = { workspace = true }

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use bamcensus_acs::model::AcsType;
-use bamcensus_core::model::identifier::GeoidType;
+use bamcensus_core::model::identifier::{Geoid, GeoidType, StateCode};
 use bamcensus_lehd::model::{
-    FallbackPolicy, LodesEdition, LodesJobType, WacSegment, WorkplaceSegment,
+    FallbackPolicy, LodesDataset, LodesEdition, LodesJobType, WacSegment, WorkplaceSegment,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -82,15 +82,13 @@ pub struct BamcensusPopulationConfig {
     #[serde(default)]
     pub r#type: Option<String>,
     /// ACS survey type (`"five_year"` or `"one_year"`).
-    #[serde(default = "default_acs_type")]
-    #[schemars(with = "String")]
+    #[serde(default)]
     pub acs_type: AcsType,
     /// ACS survey year (e.g. `2022`).
     #[serde(default = "default_acs_year")]
     pub acs_year: u64,
     /// Geographic resolution for ACS & TIGER polygons (e.g. `"census_tract"`, `"block_group"`).
     #[serde(default = "default_acs_resolution")]
-    #[schemars(with = "Option<String>")]
     pub acs_resolution: Option<GeoidType>,
     /// ACS table variables to sum as total population (defaults to `["B01001_001E"]`).
     #[serde(default)]
@@ -104,7 +102,7 @@ impl Default for BamcensusPopulationConfig {
     fn default() -> Self {
         Self {
             r#type: Some("acs".to_string()),
-            acs_type: default_acs_type(),
+            acs_type: AcsType::default(),
             acs_year: default_acs_year(),
             acs_resolution: default_acs_resolution(),
             acs_categories: None,
@@ -132,13 +130,23 @@ impl BamcensusPopulationConfig {
 }
 
 /// Study region specification for `bamcensus` LODES / ACS queries (matches `StudyRegion` in `bambam`).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CensusStudyRegion {
     /// Query all US states.
     National,
     /// Query specific state or county FIPS GEOIDs (e.g. `{ type = "census", geoids = ["08013"] }`).
-    Census { geoids: Vec<String> },
+    Census { geoids: Vec<Geoid> },
+}
+
+impl CensusStudyRegion {
+    /// Returns the collection of [`Geoid`]s describing this study region.
+    pub fn get_geoids(&self) -> Vec<Geoid> {
+        match self {
+            CensusStudyRegion::National => StateCode::all_state_geoids(),
+            CensusStudyRegion::Census { geoids } => geoids.clone(),
+        }
+    }
 }
 
 /// Configuration for downloading LEHD LODES Workplace Area Characteristics (WAC) employment counts
@@ -154,63 +162,30 @@ pub struct BamcensusLodesConfig {
     pub study_region: Option<CensusStudyRegion>,
     /// Geographic granularity to aggregate LODES employment counts to (defaults to `"census_tract"`).
     #[serde(default = "default_acs_resolution")]
-    #[schemars(with = "Option<String>")]
     pub data_granularity: Option<GeoidType>,
     /// LODES edition (defaults to `"LODES8"`).
     #[serde(default)]
-    #[schemars(with = "String")]
     pub edition: LodesEdition,
     /// LODES job type (defaults to `"JT00"` for All Jobs).
     #[serde(default)]
-    #[schemars(with = "String")]
     pub job_type: LodesJobType,
     /// LODES workforce segment (defaults to `"S000"` for Total Jobs).
     #[serde(default)]
-    #[schemars(with = "String")]
     pub segment: WorkplaceSegment,
     /// LODES dataset year (defaults to `2022`).
     #[serde(default = "default_acs_year")]
     pub year: u64,
     /// Optional explicit WAC segments to sum for total employment (defaults to `[C000]`).
     #[serde(default)]
-    #[schemars(with = "Option<Vec<String>>")]
     pub wac_segments: Option<Vec<WacSegment>>,
     /// Optional `activity_mapping` table (as in `bambam.toml`); if provided and `wac_segments` is `None`,
     /// all WAC segments mapped to `"jobs"` (or all keys if `"jobs"` is absent) are summed.
     #[serde(default)]
-    #[schemars(with = "Option<HashMap<String, Vec<String>>>")]
     pub activity_mapping: Option<HashMap<WacSegment, Vec<String>>>,
-
+    /// Fallback policy when a state/year combination is unavailable
+    /// (defaults to `FallbackPolicy::TryPreviousYears(10)`).
     #[serde(default)]
-    pub fallback: FallbackPolicyConfig,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct FallbackPolicyConfig(pub FallbackPolicy);
-
-impl JsonSchema for FallbackPolicyConfig {
-    fn schema_name() -> std::borrow::Cow<'static, str> {
-        FallbackPolicySchema::schema_name()
-    }
-
-    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-        FallbackPolicySchema::json_schema(generator)
-    }
-}
-
-/// Schema mirror for [`FallbackPolicy`] (`bamcensus_lehd::model::FallbackPolicy`).
-#[derive(JsonSchema)]
-#[schemars(rename = "FallbackPolicyConfig")]
-#[allow(dead_code)]
-enum FallbackPolicySchema {
-    /// Do not retry; fail immediately if the requested state/year is unavailable
-    FailAlways,
-    /// If the requested year fails, try N years earlier
-    TryPreviousYears(u64),
-    /// If the requested year fails, try N years later
-    TryNextYears(u64),
-    /// If the requested year fails, try up to N years earlier or M years later
-    BiDirectional { past: u64, future: u64 },
+    pub fallback: FallbackPolicy,
 }
 
 impl Default for BamcensusLodesConfig {
@@ -225,12 +200,22 @@ impl Default for BamcensusLodesConfig {
             year: default_acs_year(),
             wac_segments: None,
             activity_mapping: None,
-            fallback: FallbackPolicyConfig::default(),
+            fallback: FallbackPolicy::default(),
         }
     }
 }
 
 impl BamcensusLodesConfig {
+    /// Assembles a [`LodesDataset::WAC`] from this configuration.
+    pub fn to_dataset(&self) -> LodesDataset {
+        LodesDataset::WAC {
+            edition: self.edition,
+            job_type: self.job_type,
+            segment: self.segment,
+            year: self.year,
+        }
+    }
+
     /// Resolves the list of `WacSegment`s whose values should be summed to compute total employment.
     ///
     /// - If `wac_segments` is explicitly provided, uses those segments.
@@ -279,10 +264,6 @@ fn default_geoid_col() -> String {
 
 fn default_geom_col() -> String {
     "geometry".to_string()
-}
-
-fn default_acs_type() -> AcsType {
-    AcsType::FiveYear
 }
 
 fn default_acs_year() -> u64 {

@@ -1,11 +1,15 @@
 use std::collections::HashSet;
 
-use bamcensus::app::acs_tiger::{self, AcsTigerResponse};
-use bamcensus_acs::model::{AcsApiQueryParams, AcsGeoidQuery, AcsType};
-use bamcensus_core::model::identifier::{Geoid, GeoidType};
+use bamcensus::app::acs_tiger::{self, AcsRegionQueryParams, AcsTigerResponse};
+use bamcensus::config::default_acs_categories;
+use bamcensus_acs::model::AcsType;
+use bamcensus_core::model::{
+    identifier::{Geoid, GeoidType},
+    spatial::RegionFilter,
+};
 use geo::Geometry;
 use itertools::Itertools;
-use kdam::{tqdm, Bar, BarExt};
+use kdam::{Bar, BarExt};
 use routee_compass_core::util::geo::PolygonalRTree;
 
 pub enum PopulationSource {
@@ -39,47 +43,35 @@ impl PopulationSource {
             } => {
                 // find the list of US states (by GEOID) that intersect the incoming query dataset.
                 // we will only request ACS data for those states.
-                // let mut unique_state_geoids: HashSet<Geoid> = HashSet::new();
-                let state_geoids = states
+                let state_geoids: Vec<Geoid> = states
                     .intersection(extent)?
                     .map(|s| s.data.clone())
-                    .collect::<HashSet<_>>();
-
-                let acs_get_query = match acs_categories {
-                    Some(cats) => cats.to_vec(),
-                    None => vec![String::from("B01001_001E")],
-                };
-
-                let n_acs_categories = match acs_categories {
-                    Some(cats) => cats.len(),
-                    None => 1,
-                };
-
-                let queries = state_geoids
+                    .collect::<HashSet<_>>()
                     .into_iter()
-                    .map(|geoid| {
-                        let acs_geoid_query: AcsGeoidQuery =
-                            AcsGeoidQuery::new(Some(geoid.clone()), *acs_resolution)?;
-                        let params = AcsApiQueryParams::new(
-                            None,
-                            *acs_year,
-                            *acs_type,
-                            acs_get_query.to_vec(),
-                            acs_geoid_query,
-                            Some(api_token.clone()),
-                        );
-                        Ok(params)
-                    })
-                    .collect::<Result<Vec<_>, String>>()?;
+                    .collect();
+
+                let acs_get_query = acs_categories
+                    .clone()
+                    .unwrap_or_else(default_acs_categories);
+                let n_acs_categories = acs_get_query.len();
+
+                let params = AcsRegionQueryParams {
+                    base_url: None,
+                    year: *acs_year,
+                    acs_type: *acs_type,
+                    acs_get_query,
+                    region: RegionFilter::Geoids(state_geoids),
+                    output_resolution: *acs_resolution,
+                    acs_token: Some(api_token.clone()),
+                };
 
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                     .map_err(|e| format!("failure creating async rust tokio runtime: {e}"))?;
 
-                let future = acs_tiger::run_batch(&queries);
                 let res = runtime
-                    .block_on(future)
+                    .block_on(acs_tiger::run_region(&params))
                     .map_err(|e| format!("failure downloading ACS data: {e}"))?;
                 if !res.join_errors.is_empty() || !res.tiger_errors.is_empty() {
                     let msg = format!("failures downloading ACS data.\nTIGER ERRORS (top 5):\n  {}\nJOIN ERRORS (top 5):\n  {}",
