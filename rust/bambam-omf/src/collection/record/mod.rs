@@ -13,7 +13,9 @@ pub use building::BuildingsRecord;
 pub use infrastructure::{InfrastructureRecord, DEFAULT_TRANSPORTATION_INFRASTRUCTURE_CLASSES};
 pub use overture_record::OvertureRecord;
 pub use place::PlacesRecord;
-pub use record_type::OvertureRecordType;
+pub use record_type::{
+    projected_columns_for_record, record_schema_tracing_options, OvertureRecordType,
+};
 pub use segment::{
     SegmentAccessRestriction, SegmentAccessRestrictionWhen, SegmentAccessRestrictionWhenVehicle,
     SegmentAccessType, SegmentClass, SegmentDestination, SegmentFullType, SegmentHeading,

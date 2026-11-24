@@ -3,7 +3,7 @@ use parquet::{
     arrow::{
         arrow_reader::{ArrowReaderMetadata, ArrowReaderOptions},
         async_reader::{ParquetObjectReader, ParquetRecordBatchStream},
-        ParquetRecordBatchStreamBuilder,
+        ParquetRecordBatchStreamBuilder, ProjectionMask,
     },
     file::{
         metadata::{PageIndexPolicy, RowGroupMetaData},
@@ -32,21 +32,37 @@ impl RowGroupTask {
     pub fn build_stream(
         self,
         row_filter: Option<&RowFilter>,
+        projected_columns: Option<&[String]>,
         obj_store: Arc<dyn ObjectStore>,
         io_handle: Handle,
     ) -> Result<ParquetRecordBatchStream<ParquetObjectReader>, OvertureMapsCollectionError> {
+        let file_metadata = self.parquet_metadata.metadata().file_metadata();
         let built_predicates = row_filter
-            .map(|f| f.build(self.parquet_metadata.metadata().file_metadata()))
+            .map(|f| f.build(file_metadata))
             .unwrap_or(Ok(vec![]))?;
+
+        let projection_mask = projected_columns.map(|cols| {
+            ProjectionMask::columns(
+                file_metadata.schema_descr(),
+                cols.iter().map(|s| s.as_str()),
+            )
+        });
 
         let reader = ParquetObjectReader::new(obj_store, self.obj_meta.location.clone())
             .with_runtime(io_handle);
 
-        ParquetRecordBatchStreamBuilder::new_with_metadata(reader, self.parquet_metadata)
-            .with_row_groups(self.row_groups)
-            .with_row_filter(parquet::arrow::arrow_reader::RowFilter::new(
-                built_predicates,
-            ))
+        let mut builder =
+            ParquetRecordBatchStreamBuilder::new_with_metadata(reader, self.parquet_metadata)
+                .with_row_groups(self.row_groups)
+                .with_row_filter(parquet::arrow::arrow_reader::RowFilter::new(
+                    built_predicates,
+                ));
+
+        if let Some(mask) = projection_mask {
+            builder = builder.with_projection(mask);
+        }
+
+        builder
             .build()
             .map_err(|e| OvertureMapsCollectionError::ArrowReaderError { source: e })
     }

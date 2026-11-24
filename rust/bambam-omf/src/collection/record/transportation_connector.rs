@@ -1,14 +1,15 @@
 use crate::collection::{OvertureMapsCollectionError, OvertureRecord};
 
 use super::geometry_wkb_codec;
-use super::{OvertureMapsBbox, OvertureMapsSource};
+use super::OvertureMapsBbox;
 use geo::Geometry;
 use routee_compass_core::model::network::Vertex;
 use serde::{Deserialize, Serialize};
 
 /// Represents a transportation connector record as defined in the Overture Maps Foundation schema.
-/// This struct contains the fields describing a transportation connector, including its unique
-/// identifier, geometry, bounding box, version, and data sources.
+///
+/// NOTE: The fields defined on this struct directly drive the Parquet [`ProjectionMask`]
+/// used when reading Overture GeoParquet files (`FieldRef::from_type::<TransportationConnectorRecord>()`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TransportationConnectorRecord {
     pub id: String,
@@ -22,8 +23,7 @@ pub struct TransportationConnectorRecord {
     pub bbox: OvertureMapsBbox,
     #[serde(default)]
     pub version: i32,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub sources: Option<Vec<Option<OvertureMapsSource>>>,
+    // pub sources: Option<Vec<Option<OvertureMapsSource>>>,
 }
 
 impl TryFrom<OvertureRecord> for TransportationConnectorRecord {

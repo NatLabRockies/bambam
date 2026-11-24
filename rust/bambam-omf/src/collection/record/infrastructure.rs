@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::collection::{OvertureMapsCollectionError, OvertureRecord};
 
-use super::{geometry_wkb_codec, OvertureMapsBbox, OvertureMapsNames, OvertureMapsSource};
+use super::{geometry_wkb_codec, OvertureMapsBbox};
 
 /// Default Overture Maps `theme=base/type=infrastructure` classes relevant to
 /// transportation network control and pedestrian/bicycle comfort metrics.
@@ -20,6 +20,9 @@ pub const DEFAULT_TRANSPORTATION_INFRASTRUCTURE_CLASSES: &[&str] = &[
 
 /// Represents an infrastructure record as defined in the Overture Maps Foundation
 /// `theme=base/type=infrastructure` schema.
+///
+/// NOTE: The fields defined on this struct directly drive the Parquet [`ProjectionMask`]
+/// used when reading Overture GeoParquet files (`FieldRef::from_type::<InfrastructureRecord>()`).
 ///
 /// See <https://docs.overturemaps.org/schema/reference/base/infrastructure/>
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -36,23 +39,18 @@ pub struct InfrastructureRecord {
     #[serde(default)]
     pub version: i32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub sources: Option<Vec<Option<OvertureMapsSource>>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub subtype: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub class: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub names: Option<OvertureMapsNames>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub level: Option<i32>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub height: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub surface: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub wikidata: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub source_tags: Option<HashMap<String, Option<String>>>,
+    // Unused Overture Infrastructure columns omitted from projection:
+    // pub sources: Option<Vec<Option<OvertureMapsSource>>>,
+    // pub names: Option<OvertureMapsNames>,
+    // pub level: Option<i32>,
+    // pub height: Option<f64>,
+    // pub surface: Option<String>,
+    // pub wikidata: Option<String>,
 }
 
 impl TryFrom<OvertureRecord> for InfrastructureRecord {
