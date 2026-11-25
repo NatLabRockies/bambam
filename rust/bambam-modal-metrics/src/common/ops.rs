@@ -19,8 +19,8 @@ use crate::{
 
 /// Opens a streaming CSV reader supporting both plain `.csv` and gzip-compressed `.csv.gz` files.
 pub fn open_csv_reader(filepath: &str) -> Result<csv::Reader<Box<dyn Read>>, Box<dyn Error>> {
-    let file = File::open(filepath)
-        .map_err(|e| format!("failed to open CSV file '{filepath}': {e}"))?;
+    let file =
+        File::open(filepath).map_err(|e| format!("failed to open CSV file '{filepath}': {e}"))?;
     let reader: Box<dyn Read> = if filepath.ends_with(".gz") {
         Box::new(GzDecoder::new(BufReader::with_capacity(1 << 20, file)))
     } else {

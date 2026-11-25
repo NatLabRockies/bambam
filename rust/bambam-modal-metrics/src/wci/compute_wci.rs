@@ -83,10 +83,7 @@ where
 
     // Total = Sum of WCI component scores
     Ok(WciComponents {
-        total: walkability
-            + traffic_speed_comfort
-            + cycleway_comfort
-            + traffic_signal_comfort,
+        total: walkability + traffic_speed_comfort + cycleway_comfort + traffic_signal_comfort,
         walkability: Some(walkability),
         traffic_speed_comfort: Some(traffic_speed_comfort),
         cycleway_comfort: Some(cycleway_comfort),

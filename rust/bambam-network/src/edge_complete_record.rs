@@ -267,9 +267,10 @@ mod tests {
 
     #[test]
     fn test_try_parse_linestring_wkt_fast() {
-        let parsed =
-            try_parse_linestring_wkt_fast("LINESTRING (-105.26 40.015, -105.259 40.016, -105.258 40.017)")
-                .unwrap();
+        let parsed = try_parse_linestring_wkt_fast(
+            "LINESTRING (-105.26 40.015, -105.259 40.016, -105.258 40.017)",
+        )
+        .unwrap();
         assert_eq!(
             parsed,
             LineString::from(vec![
