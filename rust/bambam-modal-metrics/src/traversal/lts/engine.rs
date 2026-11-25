@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     lts::lts::Lts,
-    traversal::lts::config::{LtsMappingConfig, LtsOperationConfig},
+    traversal::lts::config::LtsOperationConfig,
 };
 
 use super::LtsConfig;

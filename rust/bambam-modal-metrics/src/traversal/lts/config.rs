@@ -32,7 +32,7 @@ impl Clone for LtsMappingConfig {
     fn clone(&self) -> Self {
         let mut inner = HashMap::with_capacity(self.0.len());
         for (k, v) in self.0.iter() {
-            inner.insert(k.clone(), v.clone());
+            inner.insert(*k, v.clone());
         }
         Self(inner)
     }

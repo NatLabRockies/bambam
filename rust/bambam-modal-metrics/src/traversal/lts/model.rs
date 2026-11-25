@@ -116,7 +116,7 @@ fn parse_mapping(mapping: &LtsMappingConfig) -> Result<LtsMappingOps, TraversalM
     let mut result = HashMap::with_capacity(mapping.0.len());
     for (k, v) in mapping.0.iter() {
         let op: LtsOp = v.try_into()?;
-        result.insert(k.clone(), op);
+        result.insert(*k, op);
     }
     Ok(result)
 }
