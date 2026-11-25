@@ -223,12 +223,156 @@ pub fn find_neighboring_edges<'a, E>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network_traits::vertex_for_modal_metric::CompactVertexAttrs;
+    use crate::network_traits::vertex_for_modal_metric::{
+        CompactVertexAttrs, VertexForModalMetric,
+    };
+    use geo::LineString;
+
+    struct MockEdge {
+        id: String,
+        use_id_str: bool,
+        src_vertex_id: usize,
+        speed_limit: Option<i32>,
+        cycleway: Option<CyclewayTag>,
+        flags: [bool; 8],
+        linestring: LineString<f32>,
+    }
+
+    impl SpatialEdge for MockEdge {
+        fn id(&self) -> String {
+            self.id.clone()
+        }
+        fn id_str(&self) -> Option<&str> {
+            self.use_id_str.then_some(self.id.as_str())
+        }
+        fn linestring(&self) -> Option<&LineString<f32>> {
+            Some(&self.linestring)
+        }
+        fn src_vertex_id(&self) -> usize {
+            self.src_vertex_id
+        }
+    }
+
+    impl EdgeForModalMetric for MockEdge {
+        fn get_traffic_speed_limit(&self) -> Option<i32> {
+            self.speed_limit
+        }
+        fn get_cycleway_tag(&self) -> Option<CyclewayTag> {
+            self.cycleway
+        }
+        fn is_walkable(&self) -> bool {
+            self.flags[0]
+        }
+        fn is_walkable_highway(&self) -> bool {
+            self.flags[1]
+        }
+        fn is_sidewalk(&self) -> bool {
+            self.flags[2]
+        }
+        fn is_footway(&self) -> bool {
+            self.flags[3]
+        }
+        fn is_pedestrian_priority(&self) -> bool {
+            self.flags[4]
+        }
+        fn is_unbikeable(&self) -> bool {
+            self.flags[5]
+        }
+        fn is_non_motorized(&self) -> bool {
+            self.flags[6]
+        }
+        fn is_oneway(&self) -> bool {
+            self.flags[7]
+        }
+    }
+
+    struct MockVertex(bool, bool);
+    impl VertexForModalMetric for MockVertex {
+        fn has_traffic_signals(&self) -> bool {
+            self.0
+        }
+        fn has_stop_sign(&self) -> bool {
+            self.1
+        }
+    }
 
     #[test]
     fn test_compact_sizes() {
         assert_eq!(std::mem::size_of::<CompactEdgeAttrs>(), 16);
         assert_eq!(std::mem::size_of::<EdgeRTreeEntry<()>>(), 40);
         assert_eq!(std::mem::size_of::<CompactVertexAttrs>(), 1);
+    }
+
+    #[test]
+    fn test_compact_edge_attrs_isolated_bitflags_and_fields() {
+        let ls = LineString::from(vec![(-105.0, 40.0), (-104.99, 40.01)]);
+
+        // Test each of the 8 boolean flags in isolation to ensure no bit collisions
+        for bit_idx in 0..8 {
+            let mut flags = [false; 8];
+            flags[bit_idx] = true;
+            let edge = MockEdge {
+                id: format!("edge-{bit_idx}"),
+                use_id_str: true,
+                src_vertex_id: 123_456,
+                speed_limit: Some(35),
+                cycleway: Some(CyclewayTag::DedicatedNoBuffer),
+                flags,
+                linestring: ls.clone(),
+            };
+            let compact = CompactEdgeAttrs::from_edge(&edge);
+            assert_eq!(compact.src_vertex_id(), 123_456);
+            assert_eq!(compact.get_traffic_speed_limit(), Some(35));
+            assert_eq!(
+                compact.get_cycleway_tag(),
+                Some(CyclewayTag::DedicatedNoBuffer)
+            );
+            let actual_flags = [
+                compact.is_walkable(),
+                compact.is_walkable_highway(),
+                compact.is_sidewalk(),
+                compact.is_footway(),
+                compact.is_pedestrian_priority(),
+                compact.is_unbikeable(),
+                compact.is_non_motorized(),
+                compact.is_oneway(),
+            ];
+            assert_eq!(actual_flags, flags, "mismatch for isolated bit {bit_idx}");
+        }
+
+        // Verify None speed_limit and None cycleway_tag, and id_str vs owned id hash equivalence
+        let e_borrowed = MockEdge {
+            id: "same-source-id".to_string(),
+            use_id_str: true,
+            src_vertex_id: 0,
+            speed_limit: None,
+            cycleway: None,
+            flags: [false; 8],
+            linestring: ls.clone(),
+        };
+        let e_owned = MockEdge {
+            id: "same-source-id".to_string(),
+            use_id_str: false,
+            src_vertex_id: 0,
+            speed_limit: None,
+            cycleway: None,
+            flags: [false; 8],
+            linestring: ls,
+        };
+        let c_borrowed = CompactEdgeAttrs::from_edge(&e_borrowed);
+        let c_owned = CompactEdgeAttrs::from_edge(&e_owned);
+        assert_eq!(c_borrowed.get_traffic_speed_limit(), None);
+        assert_eq!(c_borrowed.get_cycleway_tag(), None);
+        assert_eq!(c_borrowed.id_hash(), c_owned.id_hash());
+    }
+
+    #[test]
+    fn test_compact_vertex_attrs_combinations() {
+        for (sig, stop) in [(false, false), (true, false), (false, true), (true, true)] {
+            let v = MockVertex(sig, stop);
+            let compact = CompactVertexAttrs::from_vertex(&v);
+            assert_eq!(compact.has_traffic_signals(), sig);
+            assert_eq!(compact.has_stop_sign(), stop);
+        }
     }
 }

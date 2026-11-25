@@ -357,6 +357,25 @@ mod tests {
     }
 
     #[test]
+    fn test_try_parse_linestring_wkt_fast_variants() {
+        let multi = super::try_parse_linestring_wkt_fast(
+            "LINESTRING(-105.2705 40.015, -105.269 40.016, -105.268 40.017)",
+        )
+        .unwrap();
+        assert_eq!(
+            multi,
+            geo::LineString::from(vec![
+                (-105.2705f32, 40.015f32),
+                (-105.269f32, 40.016f32),
+                (-105.268f32, 40.017f32),
+            ])
+        );
+        assert!(super::try_parse_linestring_wkt_fast("LINESTRING ()").is_none());
+        assert!(super::try_parse_linestring_wkt_fast("LINESTRING (0 0 5, 1 1 5)").is_none());
+        assert!(super::try_parse_linestring_wkt_fast("POINT (0 0)").is_none());
+    }
+
+    #[test]
     fn linestring_from_csv_01() {
         #[allow(unused)]
         #[derive(serde::Deserialize, Debug)]

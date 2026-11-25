@@ -801,7 +801,7 @@ impl App {
 fn discover_network_modes(network_dir: &std::path::Path) -> Vec<String> {
     let config_path = network_dir.join("bambam.toml");
     if let Ok(contents) = std::fs::read_to_string(&config_path) {
-        if let Ok(doc) = contents.parse::<toml::Value>() {
+        if let Ok(doc) = toml::from_str::<toml::Value>(&contents) {
             if let Some(edge_list) = doc
                 .get("graph")
                 .and_then(|g| g.get("edge_list"))
@@ -1130,6 +1130,32 @@ mod tests {
             output_file: wci_by_index_out,
         };
         assert!(bad_idx_app.run().is_err());
+
+        // Verify custom edge_list ordering in bambam.toml is respected when resolving indices
+        fs::write(
+            tmp_path.join("bambam.toml"),
+            r#"
+[graph]
+edge_list = [
+    { input_file = "drive/edges-compass.csv.gz" },
+    { input_file = "walk/edges-compass.csv.gz" },
+    { input_file = "bike/edges-compass.csv.gz" },
+]
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_target_mode(tmp_path, Some("0"), ModalMetric::WalkingComfortIndex).unwrap(),
+            "drive"
+        );
+        assert_eq!(
+            resolve_target_mode(tmp_path, Some("1"), ModalMetric::WalkingComfortIndex).unwrap(),
+            "walk"
+        );
+        assert_eq!(
+            resolve_target_mode(tmp_path, Some("2"), ModalMetric::LevelOfTrafficStress).unwrap(),
+            "bike"
+        );
 
         let _ = fs::remove_dir_all(tmp_dir);
     }

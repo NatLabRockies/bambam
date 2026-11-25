@@ -266,6 +266,34 @@ mod tests {
     }
 
     #[test]
+    fn test_try_parse_linestring_wkt_fast() {
+        let parsed =
+            try_parse_linestring_wkt_fast("LINESTRING (-105.26 40.015, -105.259 40.016, -105.258 40.017)")
+                .unwrap();
+        assert_eq!(
+            parsed,
+            LineString::from(vec![
+                (-105.26f32, 40.015f32),
+                (-105.259f32, 40.016f32),
+                (-105.258f32, 40.017f32),
+            ])
+        );
+
+        let no_space =
+            try_parse_linestring_wkt_fast("LINESTRING(-105.26 40.015,-105.259 40.015)").unwrap();
+        assert_eq!(
+            no_space,
+            LineString::from(vec![(-105.26f32, 40.015f32), (-105.259f32, 40.015f32)])
+        );
+
+        // Rejects empty, 3D coordinates, or non-LINESTRING WKT so caller falls back cleanly
+        assert!(try_parse_linestring_wkt_fast("LINESTRING ()").is_none());
+        assert!(try_parse_linestring_wkt_fast("LINESTRING (0 0 1, 1 1 2)").is_none());
+        assert!(try_parse_linestring_wkt_fast("MULTILINESTRING ((0 0, 1 1))").is_none());
+        assert!(try_parse_linestring_wkt_fast("POINT (0 0)").is_none());
+    }
+
+    #[test]
     fn test_edge_complete_record_predicates_and_csv_roundtrip() {
         let sidewalk = sample_edge(
             0,
