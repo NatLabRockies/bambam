@@ -113,7 +113,7 @@ impl Wci {
     /// Computes the cycleway `Wci` for an edge.
     pub fn cycleway_comfort<E: SpatialEdge + EdgeForModalMetric>(
         entry: &EdgeRTreeEntry<E>,
-        neighboring_ways: &Vec<&EdgeRTreeEntry<E>>,
+        neighboring_ways: &[&EdgeRTreeEntry<E>],
     ) -> Wci {
         // if the edge has a cycleway tag (string), use that, otherwise, use neighbors
         match &entry.edge.get_cycleway_tag() {
@@ -125,7 +125,7 @@ impl Wci {
     /// Computes the traffic speed `Wci` for an edge.
     pub fn traffic_speed_comfort<E: SpatialEdge + EdgeForModalMetric>(
         entry: &EdgeRTreeEntry<E>,
-        neighbors: &Vec<&EdgeRTreeEntry<E>>,
+        neighbors: &[&EdgeRTreeEntry<E>],
     ) -> Wci {
         Wci(traffic_speed_from_maxspeed(entry)
             .map(|speed_mph| traffic_speed_comfort_from_speed(speed_mph.round() as i32))
