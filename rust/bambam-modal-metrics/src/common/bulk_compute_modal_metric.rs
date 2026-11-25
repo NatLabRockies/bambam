@@ -94,6 +94,11 @@ where
         .build()?;
 
     // Open output writer up front so results can be streamed out batch-by-batch.
+    if let Ok(output_path) = std::fs::canonicalize(output_file) {
+        if output_path == std::fs::canonicalize(edges_file)? {
+            return Err("output file must not be the target edges input file".into());
+        }
+    }
     let file = File::create(output_file)?;
     let mut writer: Box<dyn Write> = if output_file.ends_with(".gz") {
         Box::new(BufWriter::with_capacity(
