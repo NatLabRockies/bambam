@@ -11,7 +11,6 @@ pub mod spatial_features;
 pub use calibration::{CalibrationConfig, CalibrationOutputConfig};
 pub use census::{
     BamcensusLodesConfig, BamcensusPopulationConfig, CensusSourceConfig, CensusStudyRegion,
-    FallbackPolicyConfig,
 };
 pub use cli::{
     CalibrateCliArgs, CongestionApp, CongestionCommand, ExportCensusCliArgs, ImputeCliArgs,

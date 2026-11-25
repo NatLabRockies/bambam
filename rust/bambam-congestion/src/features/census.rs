@@ -5,10 +5,18 @@ use std::{
     path::Path,
 };
 
-use bamcensus::app::{acs_tiger, lodes_tiger};
-use bamcensus_acs::model::{AcsApiQueryParams, AcsGeoidQuery};
-use bamcensus_core::model::identifier::{Geoid, HasGeoidString, StateCode};
-use bamcensus_lehd::model::LodesDataset;
+use bamcensus::app::{
+    acs_tiger::{self, AcsRegionQueryParams},
+    lodes_tiger,
+};
+use bamcensus::config::default_acs_categories;
+use bamcensus_core::{
+    model::{
+        identifier::{Geoid, HasGeoidString},
+        spatial::RegionFilter,
+    },
+    ops::http::build_retry_client,
+};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use geo::{Area, BoundingRect, Contains, Coord, Geometry, MultiPolygon, Point, Polygon, Rect};
 use geozero::{geojson::GeoJsonString, wkt::Wkt as WktReader, ToGeo, ToWkt};
@@ -286,48 +294,27 @@ pub fn load_census_bamcensus(
         )));
     }
 
-    let lodes_geoids = match &employment_source.study_region {
-        Some(CensusStudyRegion::National) => StateCode::ALL
-            .iter()
-            .map(|s| Geoid::try_from(s.to_fips_string().as_str()))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CongestionError::SpatialFeature)?,
-        Some(CensusStudyRegion::Census { geoids }) => geoids
-            .iter()
-            .map(|s| Geoid::try_from(s.as_str()))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(CongestionError::SpatialFeature)?,
-        None => state_geoids.clone(),
-    };
+    let lodes_geoids = employment_source
+        .study_region
+        .as_ref()
+        .map_or_else(|| state_geoids.clone(), CensusStudyRegion::get_geoids);
 
     let acs_categories = population_source
         .acs_categories
         .clone()
-        .unwrap_or_else(|| vec!["B01001_001E".to_string()]);
+        .unwrap_or_else(default_acs_categories);
 
-    let acs_queries = state_geoids
-        .iter()
-        .map(|state_geoid| {
-            let geoid_query =
-                AcsGeoidQuery::new(Some(state_geoid.clone()), population_source.acs_resolution)
-                    .map_err(CongestionError::SpatialFeature)?;
-            Ok(AcsApiQueryParams::new(
-                None,
-                population_source.acs_year,
-                population_source.acs_type,
-                acs_categories.clone(),
-                geoid_query,
-                Some(api_token.clone()),
-            ))
-        })
-        .collect::<Result<Vec<_>, CongestionError>>()?;
-
-    let lodes_dataset = LodesDataset::WAC {
-        edition: employment_source.edition,
-        job_type: employment_source.job_type,
-        segment: employment_source.segment,
-        year: employment_source.year,
+    let acs_region_params = AcsRegionQueryParams {
+        base_url: None,
+        year: population_source.acs_year,
+        acs_type: population_source.acs_type,
+        acs_get_query: acs_categories,
+        region: RegionFilter::Geoids(state_geoids),
+        output_resolution: population_source.acs_resolution,
+        acs_token: Some(api_token),
     };
+
+    let lodes_dataset = employment_source.to_dataset();
     let wac_segments = employment_source.resolved_wac_segments();
     let lodes_granularity = employment_source
         .data_granularity
@@ -343,15 +330,19 @@ pub fn load_census_bamcensus(
         })?;
 
     let (acs_res, lodes_res) = runtime.block_on(async {
-        let acs = acs_tiger::run_batch(&acs_queries).await.map_err(|e| {
-            CongestionError::SpatialFeature(format!("failure downloading ACS data: {e}"))
-        })?;
-        let lodes = lodes_tiger::run(
+        let client = build_retry_client();
+        let acs = acs_tiger::run_region_with_client(&client, &acs_region_params)
+            .await
+            .map_err(|e| {
+                CongestionError::SpatialFeature(format!("failure downloading ACS data: {e}"))
+            })?;
+        let lodes = lodes_tiger::run_with_client(
+            &client,
             &lodes_geoids,
             &lodes_granularity,
             &wac_segments,
             &lodes_dataset,
-            employment_source.fallback.0,
+            employment_source.fallback,
         )
         .await
         .map_err(|e| {
@@ -557,12 +548,10 @@ fn resolve_bamcensus_state_geoids(search_bbox: Rect<f64>) -> Result<Vec<Geoid>, 
 
     let mut tree_nodes = Vec::with_capacity(features.len());
     for feature in features {
-        let geoid_str = feature["properties"]["GEOID"].as_str().ok_or_else(|| {
-            CongestionError::SpatialFeature("no GEOID in state feature".to_string())
-        })?;
-        let geoid: Geoid = geoid_str.try_into().map_err(|e| {
-            CongestionError::SpatialFeature(format!("failure decoding state GEOID: {e}"))
-        })?;
+        let geoid: Geoid =
+            serde_json::from_value(feature["properties"]["GEOID"].clone()).map_err(|e| {
+                CongestionError::SpatialFeature(format!("failure decoding state GEOID: {e}"))
+            })?;
         let geometry_json = serde_json::to_string(&feature["geometry"]).map_err(|e| {
             CongestionError::SpatialFeature(format!(
                 "failure serializing geometry for state GEOID {geoid}: {e}"
@@ -1041,6 +1030,18 @@ year = 2022
             } => {
                 assert_eq!(population_source.acs_year, 2022);
                 assert_eq!(employment_source.year, 2022);
+                assert_eq!(
+                    employment_source.fallback,
+                    bamcensus_lehd::model::FallbackPolicy::TryPreviousYears(10)
+                );
+                assert_eq!(
+                    employment_source
+                        .study_region
+                        .as_ref()
+                        .unwrap()
+                        .get_geoids(),
+                    vec![Geoid::try_from("08013").unwrap()]
+                );
                 assert!(save_csv_path.is_none());
                 assert_eq!(
                     employment_source.resolved_wac_segments(),
@@ -1049,5 +1050,12 @@ year = 2022
             }
             other => panic!("expected Bamcensus variant, got {other:?}"),
         }
+
+        // Verify that schemars derives from bamcensus types (AcsType, GeoidType, FallbackPolicy)
+        let schema_json =
+            serde_json::to_string(&schemars::schema_for!(CensusSourceConfig)).unwrap();
+        assert!(schema_json.contains("TryPreviousYears"));
+        assert!(schema_json.contains("census_tract"));
+        assert!(schema_json.contains("five_year"));
     }
 }

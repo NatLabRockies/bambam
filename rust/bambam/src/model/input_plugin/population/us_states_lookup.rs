@@ -27,12 +27,7 @@ pub fn load() -> Result<PolygonalRTree<f64, Geoid>, String> {
     let n_features = features.len();
     let mut tree_nodes = Vec::with_capacity(n_features);
     for feature in features {
-        // rjf 2024-09-26: we cannot currently trust using Geoid's Deserialize impl.
-        let geoid_str = feature["properties"]["GEOID"]
-            .as_str()
-            .ok_or_else(|| String::from("no GEOID in feature!"))?;
-        let geoid: Geoid = geoid_str
-            .try_into()
+        let geoid: Geoid = serde_json::from_value(feature["properties"]["GEOID"].clone())
             .map_err(|e| format!("failure decoding GEOID in feature: {e}"))?;
         let geometry_json = serde_json::to_string(&feature["geometry"])
             .map_err(|e| format!("failure serializing geometry for GEOID {geoid}: {e}"))?;

@@ -399,6 +399,7 @@ fi
 # requires CENSUS_API_KEY
 if should_run_stage "census"; then
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam-congestion" export-census \
+        --config "${CONGESTION_CONFIG}" \
         --open-network-dir "${OUTPUT_DIR}" \
         --output-csv "${CENSUS_CSV}"
     mark_stage_completed "census"
