@@ -48,45 +48,47 @@ where
     V: VertexForModalMetric,
 {
     // general walk-eligibility based on edge attributes.
-    let is_walk_eligible = is_walk_eligible(entry);
-
-    // grab the neighboring edges
-    let neighboring_edges = find_neighboring_edges(entry, rtree);
-
-    if !is_walk_eligible {
+    if !is_walk_eligible(entry) {
         // Total WCI score = Min WCI score (unwalkable edge)
-        WciComponents::min_wci()
-    } else if entry.edge.is_footway()
-        || entry.edge.is_pedestrian_priority()
-        || (neighboring_edges.is_empty() && entry.edge.is_sidewalk())
-    {
-        // Total WCI score = Max WCI score (footway, pedestrian-priority street, or sidewalk with no adjacent edges)
-        WciComponents::max_wci()
-    } else {
-        // Compute all component scores.
-
-        let walkability = Wci::walkability(&entry.edge);
-
-        let cycleway_comfort = Wci::cycleway_comfort(entry, &neighboring_edges);
-
-        let traffic_speed_comfort = Wci::traffic_speed_comfort(entry, &neighboring_edges);
-
-        let traffic_signal_comfort = src_node
-            .map(|v| Wci::traffic_signal_comfort(v))
-            .unwrap_or_else(|| Wci::ZERO);
-
-        // Total = Sum of WCI component scores
-        Ok(WciComponents {
-            total: &walkability
-                + &traffic_speed_comfort
-                + &cycleway_comfort
-                + &traffic_signal_comfort,
-            walkability: Some(walkability),
-            traffic_speed_comfort: Some(traffic_speed_comfort),
-            cycleway_comfort: Some(cycleway_comfort),
-            traffic_signal_comfort: Some(traffic_signal_comfort),
-        })
+        return WciComponents::min_wci();
     }
+
+    if entry.edge.is_footway() || entry.edge.is_pedestrian_priority() {
+        // Total WCI score = Max WCI score (footway or pedestrian-priority street)
+        return WciComponents::max_wci();
+    }
+
+    let needs_neighbors = entry.edge.is_sidewalk()
+        || entry.edge.get_cycleway_tag().is_none()
+        || entry.edge.get_traffic_speed_limit().is_none();
+
+    let neighboring_edges = if needs_neighbors {
+        find_neighboring_edges(entry, rtree)
+    } else {
+        Vec::new()
+    };
+
+    if entry.edge.is_sidewalk() && neighboring_edges.is_empty() {
+        // Total WCI score = Max WCI score (sidewalk with no adjacent edges)
+        return WciComponents::max_wci();
+    }
+
+    // Compute all component scores.
+    let walkability = Wci::walkability(&entry.edge);
+    let cycleway_comfort = Wci::cycleway_comfort(entry, &neighboring_edges);
+    let traffic_speed_comfort = Wci::traffic_speed_comfort(entry, &neighboring_edges);
+    let traffic_signal_comfort = src_node
+        .map(|v| Wci::traffic_signal_comfort(v))
+        .unwrap_or_else(|| Wci::ZERO);
+
+    // Total = Sum of WCI component scores
+    Ok(WciComponents {
+        total: walkability + traffic_speed_comfort + cycleway_comfort + traffic_signal_comfort,
+        walkability: Some(walkability),
+        traffic_speed_comfort: Some(traffic_speed_comfort),
+        cycleway_comfort: Some(cycleway_comfort),
+        traffic_signal_comfort: Some(traffic_signal_comfort),
+    })
 }
 
 #[cfg(test)]

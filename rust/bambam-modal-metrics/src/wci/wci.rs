@@ -6,11 +6,13 @@ use crate::{
         vertex_for_modal_metric::VertexForModalMetric,
     },
 };
+use serde::{Deserialize, Deserializer, Serialize};
 use uom::num_traits::CheckedAdd;
 pub const MIN_WCI: i32 = -6;
 pub const MAX_WCI: i32 = 9;
 
-#[derive(Default, Eq, PartialEq, PartialOrd, Debug)]
+/// Walk Comfort Index score. A higher score is better.
+#[derive(Default, Clone, Copy, Eq, PartialEq, PartialOrd, Debug, Serialize)]
 pub struct Wci(i32);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -67,6 +69,16 @@ impl std::fmt::Display for Wci {
     }
 }
 
+impl<'de> Deserialize<'de> for Wci {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = i32::deserialize(deserializer)?;
+        Wci::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
 impl Wci {
     pub const ZERO: Wci = Wci(0);
 
@@ -101,7 +113,7 @@ impl Wci {
     /// Computes the cycleway `Wci` for an edge.
     pub fn cycleway_comfort<E: SpatialEdge + EdgeForModalMetric>(
         entry: &EdgeRTreeEntry<E>,
-        neighboring_ways: &Vec<&EdgeRTreeEntry<E>>,
+        neighboring_ways: &[&EdgeRTreeEntry<E>],
     ) -> Wci {
         // if the edge has a cycleway tag (string), use that, otherwise, use neighbors
         match &entry.edge.get_cycleway_tag() {
@@ -113,10 +125,33 @@ impl Wci {
     /// Computes the traffic speed `Wci` for an edge.
     pub fn traffic_speed_comfort<E: SpatialEdge + EdgeForModalMetric>(
         entry: &EdgeRTreeEntry<E>,
-        neighbors: &Vec<&EdgeRTreeEntry<E>>,
+        neighbors: &[&EdgeRTreeEntry<E>],
     ) -> Wci {
         Wci(traffic_speed_from_maxspeed(entry)
             .map(|speed_mph| traffic_speed_comfort_from_speed(speed_mph.round() as i32))
             .unwrap_or_else(|| traffic_speed_comfort_from_neighbors(entry, neighbors)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_valid_wci() {
+        let wci: Wci = serde_json::from_str("3").unwrap();
+        assert_eq!(wci, Wci::new(3).unwrap());
+
+        let min: Wci = serde_json::from_str("-6").unwrap();
+        assert_eq!(min, Wci::new(MIN_WCI).unwrap());
+
+        let max: Wci = serde_json::from_str("9").unwrap();
+        assert_eq!(max, Wci::new(MAX_WCI).unwrap());
+    }
+
+    #[test]
+    fn test_deserialize_invalid_wci() {
+        assert!(serde_json::from_str::<Wci>("-7").is_err());
+        assert!(serde_json::from_str::<Wci>("10").is_err());
     }
 }

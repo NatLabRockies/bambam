@@ -469,11 +469,13 @@ if should_run_stage "modal-metrics"; then
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" modal_metric \
         --modal-metric WCI \
         --network-dir "${OUTPUT_DIR}" \
+        --mode walk \
         --output-file "${OUTPUT_DIR}/walk/wci.csv.gz"
 
     RUST_LOG=info "${REPO_ROOT}/rust/target/release/bambam_util" modal_metric \
         --modal-metric LTS \
         --network-dir "${OUTPUT_DIR}" \
+        --mode bike \
         --output-file "${OUTPUT_DIR}/bike/lts.csv.gz"
     mark_stage_completed "modal-metrics"
 fi

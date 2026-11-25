@@ -41,6 +41,10 @@ impl SpatialEdge for EdgeCompleteRecord {
         self.source_id.clone()
     }
 
+    fn id_str(&self) -> Option<&str> {
+        Some(&self.source_id)
+    }
+
     fn linestring(&self) -> Option<&LineString<f32>> {
         Some(&self.linestring)
     }
@@ -149,6 +153,32 @@ where
     s.serialize_str(&wkt)
 }
 
+/// Fast-path WKT `LINESTRING (...)` parser that directly constructs a `LineString<f32>`
+/// without allocating an intermediate `geo::Geometry<f64>` vector.
+fn try_parse_linestring_wkt_fast(cleaned: &str) -> Option<LineString<f32>> {
+    let rest = cleaned.strip_prefix("LINESTRING")?.trim_start();
+    let inner = rest.strip_prefix('(')?.strip_suffix(')')?.trim();
+    if inner.is_empty() || inner.contains('(') || inner.contains(')') {
+        return None;
+    }
+
+    let cap = inner.bytes().filter(|&b| b == b',').count() + 1;
+    let mut coords = Vec::with_capacity(cap);
+    for pair in inner.split(',') {
+        let mut iter = pair.split_ascii_whitespace();
+        let x: f64 = iter.next()?.parse().ok()?;
+        let y: f64 = iter.next()?.parse().ok()?;
+        if iter.next().is_some() {
+            return None;
+        }
+        coords.push(geo::Coord {
+            x: x as f32,
+            y: y as f32,
+        });
+    }
+    Some(LineString(coords))
+}
+
 /// Deserializes a WKT `LINESTRING(...)` string into a `LineString<f32>`.
 pub fn deserialize_linestring_wkt<'de, D>(d: D) -> Result<LineString<f32>, D::Error>
 where
@@ -168,6 +198,9 @@ where
             E: de::Error,
         {
             let cleaned = v.trim().trim_matches('"');
+            if let Some(ls) = try_parse_linestring_wkt_fast(cleaned) {
+                return Ok(ls);
+            }
             let geometry_f64 = WktReader(cleaned)
                 .to_geo()
                 .map_err(|e| de::Error::custom(format!("failed to parse WKT string: {e}")))?;
@@ -230,6 +263,35 @@ mod tests {
             oneway,
             linestring: LineString::from(coords),
         }
+    }
+
+    #[test]
+    fn test_try_parse_linestring_wkt_fast() {
+        let parsed = try_parse_linestring_wkt_fast(
+            "LINESTRING (-105.26 40.015, -105.259 40.016, -105.258 40.017)",
+        )
+        .unwrap();
+        assert_eq!(
+            parsed,
+            LineString::from(vec![
+                (-105.26f32, 40.015f32),
+                (-105.259f32, 40.016f32),
+                (-105.258f32, 40.017f32),
+            ])
+        );
+
+        let no_space =
+            try_parse_linestring_wkt_fast("LINESTRING(-105.26 40.015,-105.259 40.015)").unwrap();
+        assert_eq!(
+            no_space,
+            LineString::from(vec![(-105.26f32, 40.015f32), (-105.259f32, 40.015f32)])
+        );
+
+        // Rejects empty, 3D coordinates, or non-LINESTRING WKT so caller falls back cleanly
+        assert!(try_parse_linestring_wkt_fast("LINESTRING ()").is_none());
+        assert!(try_parse_linestring_wkt_fast("LINESTRING (0 0 1, 1 1 2)").is_none());
+        assert!(try_parse_linestring_wkt_fast("MULTILINESTRING ((0 0, 1 1))").is_none());
+        assert!(try_parse_linestring_wkt_fast("POINT (0 0)").is_none());
     }
 
     #[test]
