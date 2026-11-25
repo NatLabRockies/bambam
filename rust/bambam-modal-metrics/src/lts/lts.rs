@@ -1,9 +1,11 @@
+use serde::{Deserialize, Deserializer, Serialize};
+
 use crate::common::cycleway_tag::CyclewayTag;
 
 pub const MIN_LTS: u8 = 1; // the best LTS score.
 pub const MAX_LTS: u8 = 4; // the worst LTS score.
 
-#[derive(Default, Eq, PartialEq, PartialOrd, Debug)]
+#[derive(Default, Eq, PartialEq, PartialOrd, Debug, Serialize, Clone, Copy, Hash)]
 pub struct Lts(u8);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -74,5 +76,15 @@ impl Lts {
         };
 
         Lts::new(value)
+    }
+}
+
+impl<'de> Deserialize<'de> for Lts {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = u8::deserialize(deserializer)?;
+        Lts::new(value).map_err(serde::de::Error::custom)
     }
 }
