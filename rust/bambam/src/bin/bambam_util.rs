@@ -49,8 +49,8 @@ pub enum App {
         /// optional network directory produced by bambam-omf or bambam-osm (resolves vertices-complete.csv.gz and <mode>/edges-complete.csv.gz)
         #[arg(long)]
         network_dir: Option<String>,
-        /// optional target mode subdirectory when --network-dir is used (defaults to "walk" for WCI, "bike" for LTS)
-        #[arg(long)]
+        /// optional target mode subdirectory or 0-based edge list index when --network-dir is used (e.g. "walk", "bike", "drive" or "0", "1", "2"; defaults to "walk" for WCI, "bike" for LTS)
+        #[arg(long, visible_alias = "edge-list")]
         mode: Option<String>,
         /// input csv / csv.gz file with edges data (required when --network-dir is not set)
         #[arg(long)]
@@ -344,17 +344,13 @@ impl App {
                 source,
                 output_file,
             } => {
-                let default_mode = match modal_metric {
-                    ModalMetric::WalkingComfortIndex => "walk",
-                    ModalMetric::LevelOfTrafficStress => "bike",
-                };
-                let target_mode = mode.as_deref().unwrap_or(default_mode);
-
                 let (resolved_edges_file, resolved_vertices_file, mut resolved_context_files) =
                     if let Some(net_dir) = network_dir {
                         let root = std::path::Path::new(net_dir);
+                        let target_mode =
+                            resolve_target_mode(root, mode.as_deref(), *modal_metric)?;
                         let e_file = edges_file.clone().unwrap_or_else(|| {
-                            root.join(target_mode)
+                            root.join(&target_mode)
                                 .join(COMPLETE_EDGES_FILENAME)
                                 .to_string_lossy()
                                 .into_owned()
@@ -365,8 +361,8 @@ impl App {
                                 .into_owned()
                         });
                         let mut ctx = Vec::new();
-                        for sibling_mode in ["walk", "bike", "drive"] {
-                            let candidate = root.join(sibling_mode).join(COMPLETE_EDGES_FILENAME);
+                        for sibling_mode in discover_network_modes(root) {
+                            let candidate = root.join(&sibling_mode).join(COMPLETE_EDGES_FILENAME);
                             let candidate_str = candidate.to_string_lossy().into_owned();
                             if candidate.exists() && candidate_str != e_file {
                                 ctx.push(candidate_str);
@@ -389,9 +385,9 @@ impl App {
                             .parent()
                             .and_then(|p| p.parent())
                         {
-                            for sibling_mode in ["walk", "bike", "drive"] {
+                            for sibling_mode in discover_network_modes(root) {
                                 let candidate =
-                                    root.join(sibling_mode).join(COMPLETE_EDGES_FILENAME);
+                                    root.join(&sibling_mode).join(COMPLETE_EDGES_FILENAME);
                                 let candidate_str = candidate.to_string_lossy().into_owned();
                                 if candidate.exists() && candidate_str != e_file {
                                     ctx.push(candidate_str);
@@ -800,6 +796,85 @@ impl App {
     }
 }
 
+/// Discovers ordered mode directory names for `network_dir` by inspecting `bambam.toml`
+/// (`[graph].edge_list` or `[label].modes`) and falling back to `["walk", "bike", "drive"]`.
+fn discover_network_modes(network_dir: &std::path::Path) -> Vec<String> {
+    let config_path = network_dir.join("bambam.toml");
+    if let Ok(contents) = std::fs::read_to_string(&config_path) {
+        if let Ok(doc) = toml::from_str::<toml::Value>(&contents) {
+            if let Some(edge_list) = doc
+                .get("graph")
+                .and_then(|g| g.get("edge_list"))
+                .and_then(|el| el.as_array())
+            {
+                let modes: Vec<String> = edge_list
+                    .iter()
+                    .filter_map(|entry| entry.get("input_file").and_then(|v| v.as_str()))
+                    .filter_map(|input_file| {
+                        std::path::Path::new(input_file)
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .and_then(|s| s.to_str())
+                            .map(String::from)
+                    })
+                    .collect();
+                if !modes.is_empty() {
+                    return modes;
+                }
+            }
+            if let Some(modes_arr) = doc
+                .get("label")
+                .and_then(|l| l.get("modes"))
+                .and_then(|m| m.as_array())
+            {
+                let modes: Vec<String> = modes_arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                if !modes.is_empty() {
+                    return modes;
+                }
+            }
+        }
+    }
+
+    vec!["walk".to_string(), "bike".to_string(), "drive".to_string()]
+}
+
+/// Resolves `--mode` / `--edge-list` into a mode subdirectory name under `network_dir`.
+/// Accepts either a directory name (e.g. `"walk"`, `"bike"`, `"drive"`) or a 0-based
+/// edge list index (e.g. `"0"`, `"1"`, `"2"`).
+fn resolve_target_mode(
+    network_dir: &std::path::Path,
+    mode_arg: Option<&str>,
+    modal_metric: ModalMetric,
+) -> Result<String, String> {
+    let default_mode = match modal_metric {
+        ModalMetric::WalkingComfortIndex => "walk",
+        ModalMetric::LevelOfTrafficStress => "bike",
+    };
+    let Some(raw) = mode_arg.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(default_mode.to_string());
+    };
+
+    if network_dir.join(raw).is_dir() {
+        return Ok(raw.to_string());
+    }
+
+    if let Ok(index) = raw.parse::<usize>() {
+        let modes = discover_network_modes(network_dir);
+        return modes.get(index).cloned().ok_or_else(|| {
+            format!(
+                "edge list index {index} is out of range for network directory '{}' (available modes: {:?})",
+                network_dir.display(),
+                modes
+            )
+        });
+    }
+
+    Ok(raw.to_string())
+}
+
 /// Inspects the header row of `edges_file` (`.csv` or `.csv.gz`) to determine whether it
 /// follows the `EdgeCompleteRecord` schema (`edge_id,source_id,...`) or the legacy
 /// `OsmWayDataSerializable` schema (`osmid,...`).
@@ -1007,6 +1082,80 @@ mod tests {
             .collect();
         assert_eq!(lts_lines.len(), 2);
         assert_eq!(lts_lines[1], "1");
+
+        // Verify explicit mode selection by directory name ("bike") and by 0-based edge list index ("0", "1")
+        let wci_by_index_out = walk_dir.join("wci_idx0.csv").to_string_lossy().into_owned();
+        let wci_idx_app = App::ModalMetricSet {
+            modal_metric: ModalMetric::WalkingComfortIndex,
+            network_dir: Some(tmp_dir.path().to_string_lossy().into_owned()),
+            mode: Some("0".to_string()),
+            edges_file: None,
+            vertices_file: None,
+            context_edges_files: None,
+            source: None,
+            output_file: wci_by_index_out.clone(),
+        };
+        wci_idx_app.run().unwrap();
+        assert_eq!(
+            fs::read_to_string(&wci_by_index_out).unwrap(),
+            fs::read_to_string(&wci_out).unwrap()
+        );
+
+        let lts_by_index_out = bike_dir.join("lts_idx1.csv").to_string_lossy().into_owned();
+        let lts_idx_app = App::ModalMetricSet {
+            modal_metric: ModalMetric::LevelOfTrafficStress,
+            network_dir: Some(tmp_dir.path().to_string_lossy().into_owned()),
+            mode: Some("1".to_string()),
+            edges_file: None,
+            vertices_file: None,
+            context_edges_files: None,
+            source: None,
+            output_file: lts_by_index_out.clone(),
+        };
+        lts_idx_app.run().unwrap();
+        assert_eq!(
+            fs::read_to_string(&lts_by_index_out).unwrap(),
+            fs::read_to_string(&lts_out).unwrap()
+        );
+
+        // Out-of-range edge list index should return an error
+        let bad_idx_app = App::ModalMetricSet {
+            modal_metric: ModalMetric::WalkingComfortIndex,
+            network_dir: Some(tmp_dir.path().to_string_lossy().into_owned()),
+            mode: Some("5".to_string()),
+            edges_file: None,
+            vertices_file: None,
+            context_edges_files: None,
+            source: None,
+            output_file: wci_by_index_out,
+        };
+        assert!(bad_idx_app.run().is_err());
+
+        // Verify custom edge_list ordering in bambam.toml is respected when resolving indices
+        fs::write(
+            tmp_path.join("bambam.toml"),
+            r#"
+[graph]
+edge_list = [
+    { input_file = "drive/edges-compass.csv.gz" },
+    { input_file = "walk/edges-compass.csv.gz" },
+    { input_file = "bike/edges-compass.csv.gz" },
+]
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_target_mode(tmp_path, Some("0"), ModalMetric::WalkingComfortIndex).unwrap(),
+            "drive"
+        );
+        assert_eq!(
+            resolve_target_mode(tmp_path, Some("1"), ModalMetric::WalkingComfortIndex).unwrap(),
+            "walk"
+        );
+        assert_eq!(
+            resolve_target_mode(tmp_path, Some("2"), ModalMetric::LevelOfTrafficStress).unwrap(),
+            "bike"
+        );
 
         let _ = fs::remove_dir_all(tmp_dir);
     }

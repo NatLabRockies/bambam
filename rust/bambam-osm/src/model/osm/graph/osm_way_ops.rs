@@ -134,6 +134,32 @@ pub fn deserialize_speed(
     }
 }
 
+/// Fast-path WKT `LINESTRING (...)` parser that directly constructs a `LineString<f32>`
+/// without allocating an intermediate `geo::Geometry<f64>` vector.
+fn try_parse_linestring_wkt_fast(cleaned: &str) -> Option<LineString<f32>> {
+    let rest = cleaned.strip_prefix("LINESTRING")?.trim_start();
+    let inner = rest.strip_prefix('(')?.strip_suffix(')')?.trim();
+    if inner.is_empty() || inner.contains('(') || inner.contains(')') {
+        return None;
+    }
+
+    let cap = inner.bytes().filter(|&b| b == b',').count() + 1;
+    let mut coords = Vec::with_capacity(cap);
+    for pair in inner.split(',') {
+        let mut iter = pair.split_ascii_whitespace();
+        let x: f64 = iter.next()?.parse().ok()?;
+        let y: f64 = iter.next()?.parse().ok()?;
+        if iter.next().is_some() {
+            return None;
+        }
+        coords.push(geo::Coord {
+            x: x as f32,
+            y: y as f32,
+        });
+    }
+    Some(LineString(coords))
+}
+
 /// deserializes a CSV string, which should be enquoted, into a LineString<f32>.
 pub fn csv_string_to_linestring(v: &str) -> Result<LineString<f32>, String> {
     // Remove surrounding double quotes if present
@@ -142,6 +168,10 @@ pub fn csv_string_to_linestring(v: &str) -> Result<LineString<f32>, String> {
     } else {
         v
     };
+
+    if let Some(ls) = try_parse_linestring_wkt_fast(cleaned_v.trim()) {
+        return Ok(ls);
+    }
 
     let geometry_f64 = WktReader(cleaned_v)
         .to_geo()
@@ -324,6 +354,25 @@ mod tests {
             Ok(_) => {}
             Err(e) => panic!("{e}"),
         }
+    }
+
+    #[test]
+    fn test_try_parse_linestring_wkt_fast_variants() {
+        let multi = super::try_parse_linestring_wkt_fast(
+            "LINESTRING(-105.2705 40.015, -105.269 40.016, -105.268 40.017)",
+        )
+        .unwrap();
+        assert_eq!(
+            multi,
+            geo::LineString::from(vec![
+                (-105.2705f32, 40.015f32),
+                (-105.269f32, 40.016f32),
+                (-105.268f32, 40.017f32),
+            ])
+        );
+        assert!(super::try_parse_linestring_wkt_fast("LINESTRING ()").is_none());
+        assert!(super::try_parse_linestring_wkt_fast("LINESTRING (0 0 5, 1 1 5)").is_none());
+        assert!(super::try_parse_linestring_wkt_fast("POINT (0 0)").is_none());
     }
 
     #[test]

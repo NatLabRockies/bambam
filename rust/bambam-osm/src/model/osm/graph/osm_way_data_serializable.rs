@@ -234,6 +234,13 @@ impl SpatialEdge for OsmWayDataSerializable {
         self.osmid.to_string()
     }
 
+    fn id_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        self.osmid.0.hash(&mut hasher);
+        hasher.finish()
+    }
+
     fn linestring(&self) -> Option<&LineString<f32>> {
         Some(&self.linestring)
     }

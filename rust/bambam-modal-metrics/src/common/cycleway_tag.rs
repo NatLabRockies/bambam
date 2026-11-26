@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// You can generate a new cycleway tag by passing in
 /// the edge's cycleway attribute.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CyclewayTag {
     DedicatedWithBuffer,
     DedicatedNoBuffer,

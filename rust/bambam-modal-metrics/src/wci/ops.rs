@@ -22,26 +22,23 @@ pub fn cycleway_comfort_from_neighbors<E: SpatialEdge + EdgeForModalMetric>(
     neighboring_edges: &[&EdgeRTreeEntry<E>],
 ) -> i32 {
     let mut total_distance: f32 = 0.0;
-    let mut scored: Vec<(i32, f32)> = Vec::new();
+    let mut weighted_score_num: f32 = 0.0;
+    let mut found_any = false;
 
     for neighbor in neighboring_edges {
         let distance = Euclidean.distance(entry.centroid, neighbor.centroid);
         total_distance += distance;
         if let Some(tag) = neighbor.edge.get_cycleway_tag() {
-            scored.push((cycleway_comfort_from_tag(&tag), distance));
+            found_any = true;
+            weighted_score_num += cycleway_comfort_from_tag(&tag) as f32 * distance;
         }
     }
 
-    if scored.is_empty() || total_distance == 0.0 {
+    if !found_any || total_distance == 0.0 {
         return NO_CYCLEWAY_FOUND_SCORE;
     }
 
-    let weighted: f32 = scored
-        .iter()
-        .map(|&(score, d)| score as f32 * (d / total_distance))
-        .sum();
-
-    weighted as i32
+    (weighted_score_num / total_distance) as i32
 }
 
 /// Converts a speed in MPH to a numerical comfort index.
