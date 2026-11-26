@@ -1,8 +1,7 @@
-//! Wci Constraint Model
+//! WCI Constraint Model
 //!
-//! A stubbed version of a constraint model module that compiles. Used in codegen.
-//! If code changes in Compass lead to compiler errors in this module, the changes
-//! should get updated.
+//! Filters edges during walk search based on a Walk Comfort Index (WCI) threshold.
+//! Edges with WCI values below the configured threshold are rejected.
 
 mod builder;
 mod config;

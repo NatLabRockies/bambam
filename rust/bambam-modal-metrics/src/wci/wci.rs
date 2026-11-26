@@ -12,7 +12,7 @@ pub const MIN_WCI: i32 = -6;
 pub const MAX_WCI: i32 = 9;
 
 /// Walk Comfort Index score. A higher score is better.
-#[derive(Default, Clone, Copy, Eq, PartialEq, PartialOrd, Debug, Serialize, Hash)]
+#[derive(Default, Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug, Serialize, Hash)]
 pub struct Wci(i32);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

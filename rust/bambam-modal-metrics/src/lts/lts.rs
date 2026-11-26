@@ -5,7 +5,7 @@ use crate::common::cycleway_tag::CyclewayTag;
 pub const MIN_LTS: u8 = 1; // the best LTS score.
 pub const MAX_LTS: u8 = 4; // the worst LTS score.
 
-#[derive(Default, Eq, PartialEq, PartialOrd, Debug, Serialize, Clone, Copy, Hash)]
+#[derive(Default, Eq, PartialEq, Ord, PartialOrd, Debug, Serialize, Clone, Copy, Hash)]
 pub struct Lts(u8);
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

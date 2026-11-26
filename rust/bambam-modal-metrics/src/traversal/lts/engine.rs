@@ -32,6 +32,11 @@ impl TryFrom<&LtsOperationConfig> for LtsOp {
     fn try_from(value: &LtsOperationConfig) -> Result<Self, Self::Error> {
         match value {
             LtsOperationConfig::PercentPenalty { percent } => {
+                if !percent.is_finite() || *percent <= 0.0 || *percent > 100.0 {
+                    return Err(TraversalModelError::BuildError(format!(
+                        "LTS percent penalty must be in (0.0, 100.0], found {percent}"
+                    )));
+                }
                 let ratio = Ratio::new::<uom::si::ratio::percent>(*percent);
                 Ok(Self::RatioPenalty { ratio })
             }
@@ -80,13 +85,13 @@ impl TryFrom<LtsConfig> for LtsEngine {
     fn try_from(config: LtsConfig) -> Result<Self, Self::Error> {
         let bar_builder = BarBuilder::default().desc("lts values");
         let op = |_idx: usize, row: String| {
-            let wci_val = row.parse().map_err(|e| {
+            let lts_val = row.parse().map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("bad LTS value '{row}': {e}"),
                 )
             })?;
-            Lts::new(wci_val).map_err(|e| {
+            Lts::new(lts_val).map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!("bad LTS value '{row}': {e}"),
