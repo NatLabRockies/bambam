@@ -472,10 +472,7 @@ pub fn gtfs_traversal_model_config(
     available_modes: &[String],
     fq_route_ids_filepath: Option<&Path>,
 ) -> Result<serde_json::Value, GtfsConfigError> {
-    let dtc_conf = DistanceTraversalConfig {
-        distance_unit: Some(DistanceUnit::Miles),
-        include_trip_distance: Some(true),
-    };
+    let dtc_conf = DistanceTraversalConfig::default();
     let ttc_conf = match schedule_format {
         ScheduleOutputFormat::Rkyv => TransitTraversalConfig::Rkyv {
             timetable_input_file: edges_schedules.to_string(),
