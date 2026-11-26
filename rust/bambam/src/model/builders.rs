@@ -16,6 +16,8 @@ use bambam_gbfs::model::constraint::gbfs_constraint::GbfsConstraintBuilder;
 use bambam_gbfs::model::traversal::gbfs_traversal::GbfsTraversalBuilder;
 use bambam_gtfs_flex::model::constraint::GtfsFlexDepartureFrontierBuilder;
 use bambam_gtfs_flex::model::traversal::flex::GtfsFlexBuilder;
+use bambam_modal_metrics::constraint::wci::WciBuilder;
+use bambam_modal_metrics::traversal::lts::LtsBuilder;
 use bambam_transit::model::traversal::transit::TransitTraversalBuilder;
 use inventory;
 use routee_compass::app::compass::BuilderRegistration;
@@ -58,6 +60,9 @@ pub const BUILDER_REGISTRATION: BuilderRegistration = BuilderRegistration(|build
         String::from("gtfs-flex"),
         Rc::new(GtfsFlexDepartureFrontierBuilder {}),
     );
+
+    builders.add_constraint_model(String::from("wci"), Rc::new(WciBuilder {}));
+    builders.add_traversal_model(String::from("lts"), Rc::new(LtsBuilder {}));
 
     builders.add_input_plugin(String::from("grid"), Rc::new(GridInputPluginBuilder {}));
     builders.add_input_plugin(

@@ -27,7 +27,7 @@ impl TraversalModelService for LtsService {
             let msg = format!("failure reading params for Lts service: {e}");
             TraversalModelError::BuildError(msg)
         })?;
-        let model = LtsModel::new(self.engine.clone(), params);
+        let model = LtsModel::new(self.engine.clone(), params)?;
         Ok(Arc::new(model))
     }
 }
