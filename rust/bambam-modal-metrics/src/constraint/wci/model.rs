@@ -73,7 +73,13 @@ mod tests {
     }
 
     fn mock_edge(edge_id: usize) -> Edge {
-        Edge::new(0, edge_id, 0, 1, Length::new::<uom::si::length::meter>(100.0))
+        Edge::new(
+            0,
+            edge_id,
+            0,
+            1,
+            Length::new::<uom::si::length::meter>(100.0),
+        )
     }
 
     #[test]
@@ -130,7 +136,9 @@ mod tests {
         let edge_neg = mock_edge(1);
         let ctx_neg = EdgeFrontierContext::new(&label, &src, &edge_neg, &dst, &tree);
         assert!(!model.valid_edge(&edge_neg).unwrap());
-        assert!(!model.valid_frontier(&ctx_neg, &state, &state_model).unwrap());
+        assert!(!model
+            .valid_frontier(&ctx_neg, &state, &state_model)
+            .unwrap());
 
         let edge_zero = mock_edge(2);
         let ctx_zero = EdgeFrontierContext::new(&label, &src, &edge_zero, &dst, &tree);

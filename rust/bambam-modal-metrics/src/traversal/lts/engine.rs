@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{
-    lts::lts::Lts,
-    traversal::lts::config::LtsOperationConfig,
-};
+use crate::{lts::lts::Lts, traversal::lts::config::LtsOperationConfig};
 
 use super::LtsConfig;
 
